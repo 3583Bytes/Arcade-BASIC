@@ -19,6 +19,9 @@ public sealed record class AssignStmt(SourceSpan Span, Expr Target, Expr Value, 
 /// <summary>PRINT statement.</summary>
 public sealed record class PrintStmt(SourceSpan Span, IReadOnlyList<PrintItem> Items) : Stmt(Span);
 
+/// <summary>PRINT USING format$ : items — formatted print using a picture string (Editing module).</summary>
+public sealed record class PrintUsingStmt(SourceSpan Span, Expr Format, IReadOnlyList<Expr> Items) : Stmt(Span);
+
 /// <summary>INPUT statement.</summary>
 public sealed record class InputStmt(SourceSpan Span, Expr? Prompt, bool PromptIsSemicolon, IReadOnlyList<Expr> Targets) : Stmt(Span);
 

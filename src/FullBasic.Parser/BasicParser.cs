@@ -231,6 +231,10 @@ public sealed partial class BasicParser
         {
             return ParsePrintFile(start);
         }
+        if (Match(TokenKind.KwUsing))
+        {
+            return ParsePrintUsing(start);
+        }
         var items = new List<PrintItem>();
 
         while (!AtStatementEnd())
@@ -274,6 +278,27 @@ public sealed partial class BasicParser
         }
 
         return new PrintStmt(SpanFrom(start, Previous().Span), items);
+    }
+
+    private PrintUsingStmt? ParsePrintUsing(Token start)
+    {
+        // PRINT USING <format-expr> : items
+        var format = ParseExpression();
+        if (format is null) return null;
+        if (!ExpectKind(TokenKind.Colon, "':' after PRINT USING format")) return null;
+
+        var items = new List<Expr>();
+        if (!AtStatementEnd())
+        {
+            do
+            {
+                var e = ParseExpression();
+                if (e is null) return null;
+                items.Add(e);
+            }
+            while (Match(TokenKind.Comma));
+        }
+        return new PrintUsingStmt(SpanFrom(start, Previous().Span), format, items);
     }
 
     private Stmt? ParseInput()

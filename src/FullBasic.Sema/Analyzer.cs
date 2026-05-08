@@ -255,6 +255,11 @@ public sealed class Analyzer
                 AnalyzeAssignment(a, scope);
                 break;
 
+            case PrintUsingStmt pu:
+                ExpectType(pu.Format, AnalyzeExpr(pu.Format, scope), BasicType.String, "PRINT USING format");
+                foreach (var item in pu.Items) AnalyzeExpr(item, scope);
+                break;
+
             case PrintStmt p:
                 foreach (var item in p.Items)
                 {

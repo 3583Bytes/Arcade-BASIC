@@ -123,6 +123,15 @@ public sealed partial class BasicInterpreter
         _ => v.ToString() ?? "",
     };
 
+    private FlowControl ExecPrintUsing(PrintUsingStmt stmt, ActivationRecord frame)
+    {
+        var format = EvalString(stmt.Format, frame);
+        var values = stmt.Items.Select(e => EvalExpr(e, frame)).ToList();
+        var parts = PictureFormat.Parse(format);
+        _out.WriteLine(PictureFormat.Apply(parts, values));
+        return FlowControl.Continue;
+    }
+
     /// <summary>BASIC-style numeric formatting: leading space for non-negative.</summary>
     private static string FormatNumeric(BigDecimal x)
     {

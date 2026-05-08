@@ -152,6 +152,7 @@ public sealed partial class BasicInterpreter
         {
             case AssignStmt a: return ExecAssign(a, frame);
             case PrintStmt p: return ExecPrint(p, frame);
+            case PrintUsingStmt pu: return ExecPrintUsing(pu, frame);
             case InputStmt i: return ExecInput(i, frame);
             case ReadStmt r: return ExecRead(r, frame);
             case DataStmt: return FlowControl.Continue; // collected at sema time
