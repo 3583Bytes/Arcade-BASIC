@@ -406,6 +406,34 @@ public sealed class Analyzer
             case MatPrintStmt mp: CheckMatTarget(mp.TargetName, mp.TargetIsString, mp.Span, scope); break;
             case MatReadStmt mrd: CheckMatTarget(mrd.TargetName, mrd.TargetIsString, mrd.Span, scope); break;
 
+            case OpenStmt op:
+                ExpectType(op.Channel, AnalyzeExpr(op.Channel, scope), BasicType.Numeric, "OPEN channel");
+                ExpectType(op.Name, AnalyzeExpr(op.Name, scope), BasicType.String, "OPEN file name");
+                break;
+            case CloseStmt cs:
+                ExpectType(cs.Channel, AnalyzeExpr(cs.Channel, scope), BasicType.Numeric, "CLOSE channel");
+                break;
+            case PrintFileStmt pf:
+                ExpectType(pf.Channel, AnalyzeExpr(pf.Channel, scope), BasicType.Numeric, "PRINT # channel");
+                foreach (var item in pf.Items)
+                {
+                    if (item is PrintExprItem ei) AnalyzeExpr(ei.Value, scope);
+                }
+                break;
+            case InputFileStmt ifs:
+                ExpectType(ifs.Channel, AnalyzeExpr(ifs.Channel, scope), BasicType.Numeric, "INPUT # channel");
+                foreach (var t in ifs.Targets) AnalyzeAssignableTarget(t, scope);
+                break;
+            case LineInputFileStmt li2:
+                ExpectType(li2.Channel, AnalyzeExpr(li2.Channel, scope), BasicType.Numeric, "LINE INPUT # channel");
+                AnalyzeAssignableTarget(li2.Target, scope);
+                if (TypeOfTarget(li2.Target) != BasicType.String)
+                {
+                    _diags.Error(ErrTypeMismatch, li2.Target.Span,
+                        "LINE INPUT # target must be a string variable");
+                }
+                break;
+
             default:
                 // Other statement kinds we don't yet handle in sema (file I/O,
                 // exception handlers, modules) fall through silently for now.

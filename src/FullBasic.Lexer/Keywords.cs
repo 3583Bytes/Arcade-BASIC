@@ -55,6 +55,7 @@ internal static class Keywords
             ["CONDITION"] = TokenKind.KwCondition,
             ["CONTINUE"] = TokenKind.KwContinue,
             ["COPY"] = TokenKind.KwCopy,
+            ["CREATE"] = TokenKind.KwCreate,
             ["DATA"] = TokenKind.KwData,
             ["DECLARE"] = TokenKind.KwDeclare,
             ["DEF"] = TokenKind.KwDef,

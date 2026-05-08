@@ -144,6 +144,8 @@ public sealed partial class BasicParser
             TokenKind.KwFunction => ParseFunction(),
             TokenKind.KwCall => ParseCall(),
             TokenKind.KwMat => ParseMat(),
+            TokenKind.KwOpen => ParseOpenStmt(),
+            TokenKind.KwClose => ParseCloseStmt(),
             TokenKind.Identifier or TokenKind.StringIdentifier => ParseAssignmentOrFunctionCall(),
             _ => UnsupportedStatement(),
         };
@@ -214,9 +216,13 @@ public sealed partial class BasicParser
         return new NameRefExpr(tok.Span, name, isString);
     }
 
-    private PrintStmt ParsePrint()
+    private Stmt? ParsePrint()
     {
         var start = Advance(); // PRINT
+        if (Check(TokenKind.Hash))
+        {
+            return ParsePrintFile(start);
+        }
         var items = new List<PrintItem>();
 
         while (!AtStatementEnd())
@@ -262,9 +268,13 @@ public sealed partial class BasicParser
         return new PrintStmt(SpanFrom(start, Previous().Span), items);
     }
 
-    private InputStmt? ParseInput()
+    private Stmt? ParseInput()
     {
         var start = Advance(); // INPUT
+        if (Check(TokenKind.Hash))
+        {
+            return ParseInputFile(start);
+        }
         Expr? prompt = null;
         var promptIsSemi = false;
 
@@ -299,6 +309,11 @@ public sealed partial class BasicParser
             return null;
         }
         Advance(); // INPUT
+
+        if (Check(TokenKind.Hash))
+        {
+            return ParseLineInputFile(start);
+        }
 
         Expr? prompt = null;
         var promptIsSemi = false;

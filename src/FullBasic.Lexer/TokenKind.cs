@@ -81,6 +81,7 @@ public enum TokenKind
     KwCondition,
     KwContinue,
     KwCopy,
+    KwCreate,
     KwData,
     KwDeclare,
     KwDef,

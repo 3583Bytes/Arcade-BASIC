@@ -28,6 +28,7 @@ public sealed partial class BasicInterpreter
     private ActivationRecord _programFrame;
     private int _dataCursor;
     private int _optionBase;
+    private readonly ChannelTable _channels = new();
 
     public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in)
     {
@@ -64,6 +65,10 @@ public sealed partial class BasicInterpreter
             _out.Flush();
             Console.Error.WriteLine($"runtime error [{ex.TypeCode}]: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            _channels.Dispose();
         }
     }
 
@@ -158,6 +163,11 @@ public sealed partial class BasicInterpreter
             case MatInputStmt mi: return ExecMatInput(mi, frame);
             case MatPrintStmt mp: return ExecMatPrint(mp, frame);
             case MatReadStmt mrd: return ExecMatRead(mrd, frame);
+            case OpenStmt op: return ExecOpen(op, frame);
+            case CloseStmt cs: return ExecClose(cs, frame);
+            case PrintFileStmt pf: return ExecPrintFile(pf, frame);
+            case InputFileStmt ifs: return ExecInputFile(ifs, frame);
+            case LineInputFileStmt li2: return ExecLineInputFile(li2, frame);
             case SubStmt: return FlowControl.Continue; // declarations only execute when called
             case FunctionStmt: return FlowControl.Continue;
             case DefStmt: return FlowControl.Continue;
