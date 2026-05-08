@@ -166,14 +166,21 @@ public sealed record class DefStmt(
     bool IsString,
     IReadOnlyList<Param> Params,
     Expr? SingleLineBody,
-    IReadOnlyList<Stmt>? MultiLineBody) : Stmt(Span);
+    IReadOnlyList<Stmt>? MultiLineBody) : Stmt(Span)
+{
+    public bool IsPublic { get; init; }
+}
 
 /// <summary>SUB name [(params)] / ... / END SUB.</summary>
 public sealed record class SubStmt(
     SourceSpan Span,
     string Name,
     IReadOnlyList<Param> Params,
-    IReadOnlyList<Stmt> Body) : Stmt(Span);
+    IReadOnlyList<Stmt> Body) : Stmt(Span)
+{
+    /// <summary>True if declared with PUBLIC prefix inside a MODULE.</summary>
+    public bool IsPublic { get; init; }
+}
 
 /// <summary>FUNCTION name [(params)] / ... / END FUNCTION.</summary>
 public sealed record class FunctionStmt(
@@ -181,7 +188,10 @@ public sealed record class FunctionStmt(
     string Name,
     bool IsString,
     IReadOnlyList<Param> Params,
-    IReadOnlyList<Stmt> Body) : Stmt(Span);
+    IReadOnlyList<Stmt> Body) : Stmt(Span)
+{
+    public bool IsPublic { get; init; }
+}
 
 /// <summary>CALL name [(args)].</summary>
 public sealed record class CallStmt(SourceSpan Span, string Name, IReadOnlyList<Expr> Args) : Stmt(Span);

@@ -151,6 +151,9 @@ public sealed partial class BasicParser
             TokenKind.KwCause => ParseCause(),
             TokenKind.KwRetry => ParseRetry(),
             TokenKind.KwContinue => ParseContinueResume(),
+            TokenKind.KwModule => ParseModule(),
+            TokenKind.KwPublic => ParsePublicDecl(),
+            TokenKind.KwPrivate => ParsePrivateDecl(),
             TokenKind.Identifier or TokenKind.StringIdentifier => ParseAssignmentOrFunctionCall(),
             _ => UnsupportedStatement(),
         };

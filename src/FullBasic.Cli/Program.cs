@@ -183,25 +183,60 @@ static int RunAnalyze(ReadOnlySpan<string> args)
 
 static int RunProgram(ReadOnlySpan<string> args)
 {
-    if (args.Length != 1)
+    if (args.Length < 1)
     {
-        Console.Error.WriteLine("usage: full-basic run <file>");
+        Console.Error.WriteLine("usage: full-basic run <main-file> [module-file ...]");
         return 2;
     }
 
-    var path = args[0];
-    if (!File.Exists(path))
+    foreach (var path in args)
     {
-        Console.Error.WriteLine($"file not found: {path}");
-        return 1;
+        if (!File.Exists(path))
+        {
+            Console.Error.WriteLine($"file not found: {path}");
+            return 1;
+        }
     }
 
-    var content = File.ReadAllText(path);
-    var file = new SourceFile(path, content);
+    // Lex + parse each file. Modules go first in the combined statement list
+    // so they're declaration-registered before the main file's executable
+    // body runs (declarations don't execute, so this only affects ordering
+    // of any future module-level init we add).
     var diags = new DiagnosticBag();
-    var tokens = new BasicLexer(file, diags).Lex();
-    var program = new BasicParser(tokens, file, diags).ParseProgram();
-    var info = Analyzer.Analyze(program, diags);
+    var allStatements = new List<FullBasic.Parser.Ast.Stmt>();
+    SourceFile? mainFile = null;
+    var moduleFiles = new List<FullBasic.Parser.Ast.Program>();
+
+    var mainPath = args[0];
+    foreach (var path in args)
+    {
+        var content = File.ReadAllText(path);
+        var file = new SourceFile(path, content);
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        if (path == mainPath)
+        {
+            mainFile = file;
+        }
+        else
+        {
+            moduleFiles.Add(program);
+        }
+        // Defer combining — we want modules first.
+    }
+
+    // Now combine: modules first, then main.
+    foreach (var mod in moduleFiles) allStatements.AddRange(mod.Statements);
+    // Re-parse main last (we already parsed it above; loop above stored
+    // module programs but discarded the main one — re-find it).
+    var mainContent = File.ReadAllText(mainPath);
+    var mainFileObj = mainFile ?? new SourceFile(mainPath, mainContent);
+    var mainTokens = new BasicLexer(mainFileObj, diags).Lex();
+    var mainProgram = new BasicParser(mainTokens, mainFileObj, diags).ParseProgram();
+    allStatements.AddRange(mainProgram.Statements);
+
+    var combined = new FullBasic.Parser.Ast.Program(mainProgram.Span, allStatements);
+    var info = Analyzer.Analyze(combined, diags);
 
     var useColor = !Console.IsErrorRedirected;
     foreach (var diag in diags.All)
@@ -210,7 +245,7 @@ static int RunProgram(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
-    var interp = new BasicInterpreter(program, info, Console.Out, Console.In);
+    var interp = new BasicInterpreter(combined, info, Console.Out, Console.In);
     return interp.Run();
 }
 

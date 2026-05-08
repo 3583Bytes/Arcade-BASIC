@@ -20,6 +20,9 @@ public sealed class SemanticInfo
     /// <summary>Line-label → statement map for GOTO/GOSUB/RESTORE resolution.</summary>
     public required IReadOnlyDictionary<int, Stmt> LineLabels { get; init; }
 
+    /// <summary>CallStmt → resolved SubSymbol. Walks scope chain at sema time so cross-module CALLs work.</summary>
+    public required IReadOnlyDictionary<CallStmt, SubSymbol> CallTargets { get; init; }
+
     /// <summary>Lookup the resolution for a given expression. Returns ResolvedError for unresolved names.</summary>
     public ResolvedRef Resolve(Expr expr) =>
         Resolutions.TryGetValue(expr, out var r) ? r : new ResolvedError("not resolved");

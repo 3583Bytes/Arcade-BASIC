@@ -34,6 +34,8 @@ public sealed class Analyzer
     private readonly Dictionary<Expr, BasicType> _types = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<int, Stmt> _labels = new();
     private readonly List<DataItem> _dataPool = new();
+    private readonly Dictionary<ModuleStmt, Scope> _moduleScopes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CallStmt, SubSymbol> _callTargets = new(ReferenceEqualityComparer.Instance);
 
     private Analyzer(DiagnosticBag diagnostics)
     {
@@ -55,6 +57,7 @@ public sealed class Analyzer
             ExpressionTypes = a._types,
             DataPool = a._dataPool,
             LineLabels = a._labels,
+            CallTargets = a._callTargets,
         };
     }
 
@@ -174,6 +177,35 @@ public sealed class Analyzer
                 Pass1(w.InBody, scope);
                 if (w.UseBody is not null) Pass1(w.UseBody, scope);
                 break;
+
+            case ModuleStmt mod:
+                Pass1Module(mod, scope);
+                break;
+        }
+    }
+
+    private void Pass1Module(ModuleStmt mod, Scope parent)
+    {
+        var modScope = new Scope(ScopeKind.Module, parent);
+        _moduleScopes[mod] = modScope;
+        Pass1(mod.Body, modScope);
+
+        // Re-export PUBLIC SUB/FUNCTION/DEF symbols into the parent scope so
+        // they can be called from outside the module. Module-private
+        // declarations stay only in modScope.
+        foreach (var (key, sym) in modScope.Symbols.ToList())
+        {
+            var isPublic = sym switch
+            {
+                SubSymbol ss => ss.Stmt.IsPublic,
+                FunctionSymbol fs => fs.Stmt.IsPublic,
+                DefSymbol ds => ds.Stmt.IsPublic,
+                _ => false,
+            };
+            if (isPublic && parent.LocalLookup(key) is null)
+            {
+                parent.Declare(key, sym);
+            }
         }
     }
 
@@ -394,10 +426,14 @@ public sealed class Analyzer
                 {
                     _diags.Error(ErrUndefinedName, call.Span, $"SUB '{call.Name}' is not defined");
                 }
-                else if (ss.Params.Count != call.Args.Count)
+                else
                 {
-                    _diags.Error(ErrArityMismatch, call.Span,
-                        $"SUB '{call.Name}' expects {ss.Params.Count} arg(s), got {call.Args.Count}");
+                    _callTargets[call] = ss;
+                    if (ss.Params.Count != call.Args.Count)
+                    {
+                        _diags.Error(ErrArityMismatch, call.Span,
+                            $"SUB '{call.Name}' expects {ss.Params.Count} arg(s), got {call.Args.Count}");
+                    }
                 }
                 foreach (var a in call.Args) AnalyzeExpr(a, scope);
                 break;
@@ -447,6 +483,13 @@ public sealed class Analyzer
 
             case RetryStmt: case ContinueResumeStmt:
                 // Validity (must be inside a USE handler) is enforced at runtime.
+                break;
+
+            case ModuleStmt mod:
+                if (_moduleScopes.TryGetValue(mod, out var modScope))
+                {
+                    foreach (var t in mod.Body) AnalyzeStmt(t, modScope);
+                }
                 break;
 
             case OpenStmt op:

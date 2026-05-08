@@ -443,8 +443,12 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecCall(CallStmt c, ActivationRecord frame)
     {
-        var sym = (SubSymbol?)_info.ProgramScope.Lookup(Scope.Key(c.Name, isString: false))
-            ?? throw new BasicRuntimeException(0, $"undefined SUB '{c.Name}'");
+        // Use sema's resolved target so cross-module/scope CALLs work — the
+        // SubSymbol may live in a module scope not reachable via ProgramScope.
+        if (!_info.CallTargets.TryGetValue(c, out var sym))
+        {
+            throw new BasicRuntimeException(0, $"undefined SUB '{c.Name}'");
+        }
         var args = EvalArgs(c.Args, frame);
         InvokeSubOrFunction(sym.BodyScope, sym.Stmt.Params, args, sym.Stmt.Body, returnSlot: -1);
         return FlowControl.Continue;

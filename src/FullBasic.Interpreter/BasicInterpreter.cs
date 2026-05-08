@@ -199,6 +199,7 @@ public sealed partial class BasicInterpreter
             case CauseStmt cause: return ExecCause(cause, frame);
             case RetryStmt: return FlowControl.RetryFlow;
             case ContinueResumeStmt: return FlowControl.ResumeFlow;
+            case ModuleStmt: return FlowControl.Continue; // declaration only
             case SubStmt: return FlowControl.Continue; // declarations only execute when called
             case FunctionStmt: return FlowControl.Continue;
             case DefStmt: return FlowControl.Continue;
