@@ -1,0 +1,40 @@
+## .NET build outputs
+bin/
+obj/
+out/
+publish/
+*.user
+*.suo
+*.rsuser
+
+## .NET tool outputs
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+## Test outputs
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.coveragexml
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget/
+project.lock.json
+
+## Verify snapshot received files (kept files have .verified.* suffix)
+*.received.*
+
+## Local config
+*.local.json
+
+## Reference documents — kept locally, not in git
+## (spec PDF likely copyrighted; NBS PDFs public domain but large)
+/full-basic-standard.pdf
+/NBS Minimal BASIC Test Programs*.pdf

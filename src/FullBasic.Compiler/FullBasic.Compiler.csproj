@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\FullBasic.Core\FullBasic.Core.csproj" />
+    <ProjectReference Include="..\FullBasic.Parser\FullBasic.Parser.csproj" />
+    <ProjectReference Include="..\FullBasic.Sema\FullBasic.Sema.csproj" />
+    <ProjectReference Include="..\FullBasic.Bytecode\FullBasic.Bytecode.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
