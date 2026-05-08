@@ -1,6 +1,7 @@
 using FullBasic.Core;
 using FullBasic.Lexer;
 using FullBasic.Parser;
+using FullBasic.Sema;
 using Singulink.Numerics;
 
 return Run(args);
@@ -19,6 +20,7 @@ static int Run(string[] args)
         "--bigdecimal-spike" => RunBigDecimalSpike(),
         "lex" => RunLex(args.AsSpan(1)),
         "parse" => RunParse(args.AsSpan(1)),
+        "analyze" => RunAnalyze(args.AsSpan(1)),
         "--help" or "-h" => PrintUsage(),
         _ => UnknownCommand(args[0]),
     };
@@ -38,6 +40,7 @@ static int PrintUsage()
         commands:
           lex <file>            Run the lexer over <file> and print the token stream.
           parse <file>          Lex + parse <file> and pretty-print the AST.
+          analyze <file>        Lex + parse + analyze; print symbol summary.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
           --help                Print this help.
@@ -119,6 +122,58 @@ static int RunParse(ReadOnlySpan<string> args)
     }
 
     Console.Write(AstPrinter.Print(program));
+
+    return diags.HasErrors ? 1 : 0;
+}
+
+static int RunAnalyze(ReadOnlySpan<string> args)
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("usage: full-basic analyze <file>");
+        return 2;
+    }
+
+    var path = args[0];
+    if (!File.Exists(path))
+    {
+        Console.Error.WriteLine($"file not found: {path}");
+        return 1;
+    }
+
+    var content = File.ReadAllText(path);
+    var file = new SourceFile(path, content);
+    var diags = new DiagnosticBag();
+    var tokens = new BasicLexer(file, diags).Lex();
+    var program = new BasicParser(tokens, file, diags).ParseProgram();
+    var info = Analyzer.Analyze(program, diags);
+
+    var useColor = !Console.IsErrorRedirected;
+    foreach (var diag in diags.All)
+    {
+        Console.Error.Write(diag.Render(useColor));
+    }
+
+    Console.WriteLine($"Program scope ({info.ProgramScope.FrameSize} slots):");
+    foreach (var (key, sym) in info.ProgramScope.Symbols.OrderBy(kv => kv.Key))
+    {
+        if (sym is BuiltinSymbol or ConstantSymbol) continue;
+        Console.WriteLine($"  {key,-20}  {sym.GetType().Name}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"DATA pool: {info.DataPool.Count} item(s)");
+    foreach (var item in info.DataPool)
+    {
+        Console.WriteLine($"  {(item.IsString ? "string" : "number"),-7}  {item.Text}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"Line labels: {info.LineLabels.Count}");
+    foreach (var (lbl, stmt) in info.LineLabels.OrderBy(kv => kv.Key))
+    {
+        Console.WriteLine($"  {lbl,5}  {stmt.GetType().Name}");
+    }
 
     return diags.HasErrors ? 1 : 0;
 }

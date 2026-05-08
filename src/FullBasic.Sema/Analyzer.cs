@@ -1,0 +1,730 @@
+using FullBasic.Core;
+using FullBasic.Parser.Ast;
+
+namespace FullBasic.Sema;
+
+/// <summary>
+/// Two-pass semantic analyzer.
+///
+/// Pass 1 collects top-level / hoisted declarations: SUB / FUNCTION / DEF
+/// signatures, DIM array declarations, line labels, DATA items, and the
+/// builtin/constant registry. This makes forward references work — Pass 2
+/// can resolve a call to a SUB defined later in the file.
+///
+/// Pass 2 walks every statement and expression, introducing implicit
+/// variables on first reference, resolving names to symbols, doing basic
+/// numeric-vs-string type checking, and resolving line labels for GOTO/GOSUB.
+/// Resolution info is stashed in a side table keyed by AST node identity.
+/// </summary>
+public sealed class Analyzer
+{
+    // Diagnostic codes (FB03xx range = sema)
+    public const string ErrUndefinedName = "FB0301";
+    public const string ErrTypeMismatch = "FB0302";
+    public const string ErrArityMismatch = "FB0303";
+    public const string ErrDuplicateDeclaration = "FB0304";
+    public const string ErrUndefinedLineLabel = "FB0305";
+    public const string ErrInvalidAssignmentTarget = "FB0306";
+    public const string ErrCannotCall = "FB0307";
+    public const string WarnImplicitVariable = "FB0308";
+    public const string ErrInvalidStringOp = "FB0309";
+
+    private readonly DiagnosticBag _diags;
+    private readonly Dictionary<Expr, ResolvedRef> _resolutions = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Expr, ValueType> _types = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<int, Stmt> _labels = new();
+    private readonly List<DataItem> _dataPool = new();
+
+    private Analyzer(DiagnosticBag diagnostics)
+    {
+        _diags = diagnostics;
+    }
+
+    public static SemanticInfo Analyze(Program program, DiagnosticBag diagnostics)
+    {
+        var a = new Analyzer(diagnostics);
+        var scope = new Scope(ScopeKind.Program);
+        a.PreloadBuiltins(scope);
+        a.Pass1(program.Statements, scope);
+        a.Pass2(program.Statements, scope);
+
+        return new SemanticInfo
+        {
+            ProgramScope = scope,
+            Resolutions = a._resolutions,
+            ExpressionTypes = a._types,
+            DataPool = a._dataPool,
+            LineLabels = a._labels,
+        };
+    }
+
+    private void PreloadBuiltins(Scope scope)
+    {
+        foreach (var sym in Builtins.All())
+        {
+            scope.Declare(Scope.Key(sym.Name, sym.IsString), sym);
+        }
+    }
+
+    // -- Pass 1: collect declarations -----------------------------------
+
+    private void Pass1(IEnumerable<Stmt> stmts, Scope scope)
+    {
+        foreach (var stmt in stmts)
+        {
+            Pass1Stmt(stmt, scope);
+        }
+    }
+
+    private void Pass1Stmt(Stmt stmt, Scope scope)
+    {
+        // Record line label → stmt mapping (program-level only is sufficient
+        // for GOTO/GOSUB; nested labels are unusual but we don't reject them).
+        if (stmt.Label is { } label)
+        {
+            if (!_labels.TryAdd(label, stmt))
+            {
+                _diags.Error(ErrDuplicateDeclaration, stmt.Span,
+                    $"line label {label} appears more than once");
+            }
+        }
+
+        switch (stmt)
+        {
+            case DimStmt dim:
+                foreach (var spec in dim.Specs)
+                {
+                    DeclareArray(scope, spec);
+                }
+                break;
+
+            case DataStmt data:
+                _dataPool.AddRange(data.Items);
+                break;
+
+            case SubStmt sub:
+            {
+                var bodyScope = new Scope(ScopeKind.Sub, scope);
+                DeclareParams(bodyScope, sub.Params);
+                var sym = new SubSymbol(sub.Name, sub.Params, bodyScope, sub);
+                if (!scope.Declare(Scope.Key(sub.Name, isString: false), sym))
+                {
+                    _diags.Error(ErrDuplicateDeclaration, sub.Span,
+                        $"SUB '{sub.Name}' redeclares an existing name");
+                }
+                Pass1(sub.Body, bodyScope);
+                break;
+            }
+
+            case FunctionStmt fn:
+            {
+                var bodyScope = new Scope(ScopeKind.Function, scope);
+                DeclareParams(bodyScope, fn.Params);
+                // The function's own name is also a slot in its body scope —
+                // assignments to it inside the body are how we set the return value.
+                bodyScope.Declare(Scope.Key(fn.Name, fn.IsString),
+                    new VariableSymbol(fn.Name, fn.IsString, bodyScope.AllocateSlot()));
+                var sym = new FunctionSymbol(fn.Name, fn.IsString, fn.Params, bodyScope, fn);
+                if (!scope.Declare(Scope.Key(fn.Name, fn.IsString), sym))
+                {
+                    _diags.Error(ErrDuplicateDeclaration, fn.Span,
+                        $"FUNCTION '{fn.Name}' redeclares an existing name");
+                }
+                Pass1(fn.Body, bodyScope);
+                break;
+            }
+
+            case DefStmt def:
+            {
+                // DEF doesn't get its own scope — single-line refs are evaluated
+                // with caller-side scope plus a small param environment in the
+                // interpreter. We only register the signature here.
+                var sym = new DefSymbol(def.Name, def.IsString, def.Params, def);
+                if (!scope.Declare(Scope.Key(def.Name, def.IsString), sym))
+                {
+                    _diags.Error(ErrDuplicateDeclaration, def.Span,
+                        $"DEF '{def.Name}' redeclares an existing name");
+                }
+                break;
+            }
+
+            case IfStmt ifs:
+                Pass1(ifs.ThenBlock, scope);
+                foreach (var ei in ifs.ElseIfs) Pass1(ei.Body, scope);
+                if (ifs.ElseBlock is not null) Pass1(ifs.ElseBlock, scope);
+                break;
+
+            case ForStmt f: Pass1(f.Body, scope); break;
+            case DoStmt d: Pass1(d.Body, scope); break;
+            case SelectStmt s:
+                foreach (var c in s.Cases) Pass1(c.Body, scope);
+                if (s.CaseElse is not null) Pass1(s.CaseElse, scope);
+                break;
+        }
+    }
+
+    private void DeclareArray(Scope scope, DimSpec spec)
+    {
+        var key = Scope.Key(spec.Name, spec.IsString);
+        if (scope.LocalLookup(key) is not null)
+        {
+            _diags.Error(ErrDuplicateDeclaration, spec.Span,
+                $"'{spec.Name}{(spec.IsString ? "$" : "")}' is declared more than once");
+            return;
+        }
+        var slot = scope.AllocateSlot();
+        scope.Declare(key, new ArraySymbol(spec.Name, spec.IsString, slot, spec));
+    }
+
+    private void DeclareParams(Scope scope, IReadOnlyList<Param> ps)
+    {
+        foreach (var p in ps)
+        {
+            var key = Scope.Key(p.Name, p.IsString);
+            if (scope.LocalLookup(key) is not null)
+            {
+                _diags.Error(ErrDuplicateDeclaration, p.Span,
+                    $"parameter '{p.Name}' is declared more than once");
+                continue;
+            }
+            scope.Declare(key, new ParamSymbol(p.Name, p.IsString, scope.AllocateSlot(), p.IsArray));
+        }
+    }
+
+    // -- Pass 2: resolve references -------------------------------------
+
+    private void Pass2(IEnumerable<Stmt> stmts, Scope scope)
+    {
+        foreach (var stmt in stmts)
+        {
+            AnalyzeStmt(stmt, scope);
+        }
+    }
+
+    private void AnalyzeStmt(Stmt stmt, Scope scope)
+    {
+        switch (stmt)
+        {
+            case AssignStmt a:
+                AnalyzeAssignment(a, scope);
+                break;
+
+            case PrintStmt p:
+                foreach (var item in p.Items)
+                {
+                    switch (item)
+                    {
+                        case PrintExprItem ei: AnalyzeExpr(ei.Value, scope); break;
+                        case PrintTab t:
+                            var ty = AnalyzeExpr(t.Column, scope);
+                            ExpectType(t.Column, ty, ValueType.Numeric, "TAB column");
+                            break;
+                    }
+                }
+                break;
+
+            case InputStmt i:
+                if (i.Prompt is not null) AnalyzeExpr(i.Prompt, scope);
+                foreach (var t in i.Targets) AnalyzeAssignableTarget(t, scope);
+                break;
+
+            case LineInputStmt li:
+                if (li.Prompt is not null) AnalyzeExpr(li.Prompt, scope);
+                AnalyzeAssignableTarget(li.Target, scope);
+                if (TypeOfTarget(li.Target) != ValueType.String)
+                {
+                    _diags.Error(ErrTypeMismatch, li.Target.Span,
+                        "LINE INPUT target must be a string variable");
+                }
+                break;
+
+            case ReadStmt r:
+                foreach (var t in r.Targets) AnalyzeAssignableTarget(t, scope);
+                break;
+
+            case DataStmt: /* already collected in Pass1 */ break;
+
+            case RestoreStmt rs:
+                if (rs.LabelTarget is not null)
+                {
+                    AnalyzeExpr(rs.LabelTarget, scope);
+                    if (rs.LabelTarget is NumberExpr n && int.TryParse(n.Text, out var lbl) && !_labels.ContainsKey(lbl))
+                    {
+                        _diags.Error(ErrUndefinedLineLabel, n.Span, $"line label {lbl} not found");
+                    }
+                }
+                break;
+
+            case GotoStmt g: AnalyzeLabelTarget(g.LabelTarget, scope); break;
+            case GosubStmt g: AnalyzeLabelTarget(g.LabelTarget, scope); break;
+
+            case ReturnStmt: case StopStmt: case EndStmt: case EndBlockStmt: case RunStmt:
+            case RemStmt: case OptionBaseStmt: case OptionArithmeticStmt:
+            case ExitStmt: case NextStmt: case LoopStmt:
+                break;
+
+            case RandomizeStmt rnd:
+                if (rnd.Seed is not null)
+                {
+                    var ty = AnalyzeExpr(rnd.Seed, scope);
+                    ExpectType(rnd.Seed, ty, ValueType.Numeric, "RANDOMIZE seed");
+                }
+                break;
+
+            case DimStmt dim:
+                // Bounds expressions evaluated at runtime; resolve names here.
+                foreach (var spec in dim.Specs)
+                {
+                    foreach (var b in spec.Bounds)
+                    {
+                        if (b.Lower is not null)
+                        {
+                            var ty = AnalyzeExpr(b.Lower, scope);
+                            ExpectType(b.Lower, ty, ValueType.Numeric, "array lower bound");
+                        }
+                        var tu = AnalyzeExpr(b.Upper, scope);
+                        ExpectType(b.Upper, tu, ValueType.Numeric, "array upper bound");
+                    }
+                }
+                break;
+
+            case IfStmt ifs:
+                var ct = AnalyzeExpr(ifs.Condition, scope);
+                ExpectType(ifs.Condition, ct, ValueType.Numeric, "IF condition");
+                foreach (var t in ifs.ThenBlock) AnalyzeStmt(t, scope);
+                foreach (var ei in ifs.ElseIfs)
+                {
+                    var et = AnalyzeExpr(ei.Condition, scope);
+                    ExpectType(ei.Condition, et, ValueType.Numeric, "ELSEIF condition");
+                    foreach (var t in ei.Body) AnalyzeStmt(t, scope);
+                }
+                if (ifs.ElseBlock is not null) foreach (var t in ifs.ElseBlock) AnalyzeStmt(t, scope);
+                break;
+
+            case ForStmt f:
+                IntroduceVariableIfNeeded(f.Variable, scope);
+                _resolutions[f.Variable] = ResolveNameRef(f.Variable, scope) ?? new ResolvedError("for-var");
+                _types[f.Variable] = ValueType.Numeric;
+                ExpectType(f.From, AnalyzeExpr(f.From, scope), ValueType.Numeric, "FOR from-value");
+                ExpectType(f.To, AnalyzeExpr(f.To, scope), ValueType.Numeric, "FOR to-value");
+                if (f.Step is not null) ExpectType(f.Step, AnalyzeExpr(f.Step, scope), ValueType.Numeric, "FOR step");
+                foreach (var t in f.Body) AnalyzeStmt(t, scope);
+                break;
+
+            case DoStmt dst:
+                if (dst.Pre is not null) AnalyzeExpr(dst.Pre.Condition, scope);
+                foreach (var t in dst.Body) AnalyzeStmt(t, scope);
+                if (dst.Post is not null) AnalyzeExpr(dst.Post.Condition, scope);
+                break;
+
+            case SelectStmt sl:
+                AnalyzeExpr(sl.Subject, scope);
+                foreach (var c in sl.Cases)
+                {
+                    foreach (var v in c.Values)
+                    {
+                        switch (v)
+                        {
+                            case CaseValue cv: AnalyzeExpr(cv.Value, scope); break;
+                            case CaseRange cr: AnalyzeExpr(cr.Lo, scope); AnalyzeExpr(cr.Hi, scope); break;
+                            case CaseIs ci: AnalyzeExpr(ci.Value, scope); break;
+                        }
+                    }
+                    foreach (var t in c.Body) AnalyzeStmt(t, scope);
+                }
+                if (sl.CaseElse is not null) foreach (var t in sl.CaseElse) AnalyzeStmt(t, scope);
+                break;
+
+            case SubStmt sub:
+            {
+                if (scope.LocalLookup(Scope.Key(sub.Name, false)) is SubSymbol ss)
+                {
+                    foreach (var t in sub.Body) AnalyzeStmt(t, ss.BodyScope);
+                }
+                break;
+            }
+            case FunctionStmt fn:
+            {
+                if (scope.LocalLookup(Scope.Key(fn.Name, fn.IsString)) is FunctionSymbol fs)
+                {
+                    foreach (var t in fn.Body) AnalyzeStmt(t, fs.BodyScope);
+                }
+                break;
+            }
+            case DefStmt def:
+            {
+                // Single-line DEF: parameters live in a temporary scope just for
+                // the body expression. Multi-line DEF: same, but for statements.
+                var defScope = new Scope(ScopeKind.Def, scope);
+                foreach (var p in def.Params)
+                {
+                    defScope.Declare(Scope.Key(p.Name, p.IsString),
+                        new ParamSymbol(p.Name, p.IsString, defScope.AllocateSlot(), p.IsArray));
+                }
+                if (def.SingleLineBody is not null)
+                {
+                    var bt = AnalyzeExpr(def.SingleLineBody, defScope);
+                    var expected = def.IsString ? ValueType.String : ValueType.Numeric;
+                    ExpectType(def.SingleLineBody, bt, expected, $"DEF {def.Name} body");
+                }
+                if (def.MultiLineBody is not null)
+                {
+                    foreach (var t in def.MultiLineBody) AnalyzeStmt(t, defScope);
+                }
+                break;
+            }
+            case CallStmt call:
+            {
+                var sym = scope.Lookup(Scope.Key(call.Name, isString: false));
+                if (sym is not SubSymbol ss)
+                {
+                    _diags.Error(ErrUndefinedName, call.Span, $"SUB '{call.Name}' is not defined");
+                }
+                else if (ss.Params.Count != call.Args.Count)
+                {
+                    _diags.Error(ErrArityMismatch, call.Span,
+                        $"SUB '{call.Name}' expects {ss.Params.Count} arg(s), got {call.Args.Count}");
+                }
+                foreach (var a in call.Args) AnalyzeExpr(a, scope);
+                break;
+            }
+            default:
+                // Other statement kinds we don't yet handle in sema (file I/O,
+                // MAT, exception handlers) fall through silently for now.
+                break;
+        }
+    }
+
+    private void AnalyzeAssignment(AssignStmt a, Scope scope)
+    {
+        AnalyzeAssignableTarget(a.Target, scope);
+        var rhsType = AnalyzeExpr(a.Value, scope);
+        var lhsType = TypeOfTarget(a.Target);
+        if (lhsType != rhsType)
+        {
+            _diags.Error(ErrTypeMismatch, a.Span,
+                $"cannot assign {rhsType.ToString().ToLowerInvariant()} value to {lhsType.ToString().ToLowerInvariant()} target");
+        }
+    }
+
+    private void AnalyzeAssignableTarget(Expr target, Scope scope)
+    {
+        switch (target)
+        {
+            case NameRefExpr n:
+                IntroduceVariableIfNeeded(n, scope);
+                _resolutions[n] = ResolveNameRef(n, scope) ?? new ResolvedError("name");
+                _types[n] = n.IsString ? ValueType.String : ValueType.Numeric;
+                break;
+
+            case CallOrIndexExpr c:
+                {
+                    // Subscripted assignment: target must be an array.
+                    var sym = scope.Lookup(Scope.Key(c.Name, c.IsString));
+                    if (sym is null)
+                    {
+                        // Implicit array introduction is a spec feature; emit a
+                        // warning and decline to introduce here (DIM is required
+                        // in our impl; sema warnings on usage would be in pass 1).
+                        _diags.Error(ErrUndefinedName, c.Span,
+                            $"undeclared array '{c.Name}{(c.IsString ? "$" : "")}'",
+                            "explicit DIM is required for arrays in this implementation");
+                        _resolutions[c] = new ResolvedError("array");
+                    }
+                    else if (sym is ArraySymbol arr)
+                    {
+                        _resolutions[c] = new ResolvedArrayAccess(arr);
+                    }
+                    else
+                    {
+                        _diags.Error(ErrInvalidAssignmentTarget, c.Span,
+                            $"'{c.Name}' is not an array (cannot assign to indexed value)");
+                        _resolutions[c] = new ResolvedError("not-array");
+                    }
+                    foreach (var idx in c.Args)
+                    {
+                        var ty = AnalyzeExpr(idx, scope);
+                        ExpectType(idx, ty, ValueType.Numeric, "array index");
+                    }
+                    _types[c] = c.IsString ? ValueType.String : ValueType.Numeric;
+                    break;
+                }
+
+            default:
+                _diags.Error(ErrInvalidAssignmentTarget, target.Span,
+                    "assignment target must be a variable name or array element");
+                break;
+        }
+    }
+
+    private void IntroduceVariableIfNeeded(NameRefExpr n, Scope scope)
+    {
+        var key = Scope.Key(n.Name, n.IsString);
+        if (scope.Lookup(key) is not null) return;
+        var slot = scope.AllocateSlot();
+        scope.Declare(key, new VariableSymbol(n.Name, n.IsString, slot));
+    }
+
+    private void AnalyzeLabelTarget(Expr target, Scope scope)
+    {
+        AnalyzeExpr(target, scope);
+        if (target is NumberExpr ne && int.TryParse(ne.Text, out var lbl) && !_labels.ContainsKey(lbl))
+        {
+            _diags.Error(ErrUndefinedLineLabel, ne.Span, $"line label {lbl} not found");
+        }
+    }
+
+    // -- Expressions -----------------------------------------------------
+
+    private ValueType AnalyzeExpr(Expr expr, Scope scope)
+    {
+        ValueType ty;
+        switch (expr)
+        {
+            case NumberExpr: ty = ValueType.Numeric; break;
+            case StringExpr: ty = ValueType.String; break;
+            case ParenExpr p: ty = AnalyzeExpr(p.Inner, scope); break;
+
+            case NameRefExpr n:
+                ty = AnalyzeNameRef(n, scope);
+                break;
+
+            case CallOrIndexExpr c:
+                ty = AnalyzeCallOrIndex(c, scope);
+                break;
+
+            case UnaryExpr u:
+            {
+                var inner = AnalyzeExpr(u.Operand, scope);
+                if (u.Op is UnaryOp.Plus or UnaryOp.Negate or UnaryOp.Not or UnaryOp.BNot)
+                {
+                    ExpectType(u.Operand, inner, ValueType.Numeric, $"unary {u.Op}");
+                }
+                ty = ValueType.Numeric;
+                break;
+            }
+
+            case BinaryExpr b:
+                ty = AnalyzeBinary(b, scope);
+                break;
+
+            default:
+                ty = ValueType.Numeric;
+                break;
+        }
+        _types[expr] = ty;
+        return ty;
+    }
+
+    private ValueType AnalyzeNameRef(NameRefExpr n, Scope scope)
+    {
+        var key = Scope.Key(n.Name, n.IsString);
+        var sym = scope.Lookup(key);
+        if (sym is null)
+        {
+            // Read-before-write: introduce as a default-initialized variable
+            // in the nearest non-builtin scope. Spec-allowed but we warn.
+            var declScope = NearestVariableScope(scope);
+            var slot = declScope.AllocateSlot();
+            var v = new VariableSymbol(n.Name, n.IsString, slot);
+            declScope.Declare(key, v);
+            _diags.Warning(WarnImplicitVariable, n.Span,
+                $"implicit declaration of '{n.Name}{(n.IsString ? "$" : "")}'",
+                "consider DIM-ing arrays or LET-ing scalars before use");
+            _resolutions[n] = new ResolvedVariable(v);
+            return n.IsString ? ValueType.String : ValueType.Numeric;
+        }
+
+        switch (sym)
+        {
+            case VariableSymbol v: _resolutions[n] = new ResolvedVariable(v); return v.IsString ? ValueType.String : ValueType.Numeric;
+            case ParamSymbol p: _resolutions[n] = new ResolvedParam(p); return p.IsString ? ValueType.String : ValueType.Numeric;
+            case ConstantSymbol c: _resolutions[n] = new ResolvedConstant(c); return c.IsString ? ValueType.String : ValueType.Numeric;
+            case BuiltinSymbol bsym when bsym.Signature.MinArgs == 0:
+                // 0-arg builtin used without parens — equivalent to a parameterless call.
+                _resolutions[n] = new ResolvedBuiltinCall(bsym);
+                return bsym.IsString ? ValueType.String : ValueType.Numeric;
+            case ArraySymbol:
+                _diags.Error(ErrCannotCall, n.Span,
+                    $"'{n.Name}' is an array; index it with parentheses");
+                _resolutions[n] = new ResolvedError("array-without-index");
+                return n.IsString ? ValueType.String : ValueType.Numeric;
+            default:
+                _diags.Error(ErrCannotCall, n.Span, $"'{n.Name}' cannot be used as a value");
+                _resolutions[n] = new ResolvedError("non-value");
+                return ValueType.Numeric;
+        }
+    }
+
+    private ValueType AnalyzeCallOrIndex(CallOrIndexExpr c, Scope scope)
+    {
+        var key = Scope.Key(c.Name, c.IsString);
+        var sym = scope.Lookup(key);
+
+        // Resolve args first so partial errors still record argument types.
+        var argTypes = new ValueType[c.Args.Count];
+        for (var i = 0; i < c.Args.Count; i++)
+        {
+            argTypes[i] = AnalyzeExpr(c.Args[i], scope);
+        }
+
+        if (sym is null)
+        {
+            _diags.Error(ErrUndefinedName, c.Span,
+                $"undefined name '{c.Name}{(c.IsString ? "$" : "")}'");
+            _resolutions[c] = new ResolvedError("undefined");
+            return c.IsString ? ValueType.String : ValueType.Numeric;
+        }
+
+        switch (sym)
+        {
+            case ArraySymbol arr:
+                // Index args must be numeric.
+                for (var i = 0; i < c.Args.Count; i++)
+                {
+                    ExpectType(c.Args[i], argTypes[i], ValueType.Numeric, "array index");
+                }
+                _resolutions[c] = new ResolvedArrayAccess(arr);
+                return arr.IsString ? ValueType.String : ValueType.Numeric;
+
+            case BuiltinSymbol bsym:
+                CheckBuiltinSignature(c, bsym, argTypes);
+                _resolutions[c] = new ResolvedBuiltinCall(bsym);
+                return bsym.IsString ? ValueType.String : ValueType.Numeric;
+
+            case FunctionSymbol fs:
+                CheckArity(c, fs.Params.Count, c.Args.Count);
+                _resolutions[c] = new ResolvedFunctionCall(fs);
+                return fs.IsString ? ValueType.String : ValueType.Numeric;
+
+            case DefSymbol ds:
+                CheckArity(c, ds.Params.Count, c.Args.Count);
+                _resolutions[c] = new ResolvedDefCall(ds);
+                return ds.IsString ? ValueType.String : ValueType.Numeric;
+
+            case SubSymbol:
+                _diags.Error(ErrCannotCall, c.Span,
+                    $"'{c.Name}' is a SUB; use CALL to invoke it");
+                _resolutions[c] = new ResolvedError("sub-as-expr");
+                return ValueType.Numeric;
+
+            default:
+                _diags.Error(ErrCannotCall, c.Span, $"'{c.Name}' cannot be called or indexed");
+                _resolutions[c] = new ResolvedError("non-callable");
+                return ValueType.Numeric;
+        }
+    }
+
+    private void CheckBuiltinSignature(CallOrIndexExpr c, BuiltinSymbol b, ValueType[] argTypes)
+    {
+        var n = c.Args.Count;
+        if (n < b.Signature.MinArgs || n > b.Signature.MaxArgs)
+        {
+            var range = b.Signature.MinArgs == b.Signature.MaxArgs
+                ? b.Signature.MinArgs.ToString()
+                : $"{b.Signature.MinArgs}–{(b.Signature.MaxArgs == int.MaxValue ? "..." : b.Signature.MaxArgs.ToString())}";
+            _diags.Error(ErrArityMismatch, c.Span,
+                $"'{b.Name}' expects {range} arg(s), got {n}");
+            return;
+        }
+        for (var i = 0; i < n; i++)
+        {
+            // For variadic functions (e.g. MAX), use the last argument type
+            // as the recurring expected type.
+            var expected = i < b.Signature.Args.Length ? b.Signature.Args[i] : b.Signature.Args[^1];
+            if (expected == BuiltinArgType.Any) continue;
+            var want = expected == BuiltinArgType.String ? ValueType.String : ValueType.Numeric;
+            if (argTypes[i] != want)
+            {
+                _diags.Error(ErrTypeMismatch, c.Args[i].Span,
+                    $"argument {i + 1} of '{b.Name}' must be {want.ToString().ToLowerInvariant()}, got {argTypes[i].ToString().ToLowerInvariant()}");
+            }
+        }
+    }
+
+    private void CheckArity(CallOrIndexExpr c, int expected, int got)
+    {
+        if (expected != got)
+        {
+            _diags.Error(ErrArityMismatch, c.Span,
+                $"'{c.Name}' expects {expected} arg(s), got {got}");
+        }
+    }
+
+    private ValueType AnalyzeBinary(BinaryExpr b, Scope scope)
+    {
+        var lt = AnalyzeExpr(b.Left, scope);
+        var rt = AnalyzeExpr(b.Right, scope);
+
+        switch (b.Op)
+        {
+            case BinaryOp.Concat:
+                if (lt != ValueType.String) _diags.Error(ErrInvalidStringOp, b.Left.Span, "left operand of '&' must be string");
+                if (rt != ValueType.String) _diags.Error(ErrInvalidStringOp, b.Right.Span, "right operand of '&' must be string");
+                return ValueType.String;
+
+            case BinaryOp.Equal:
+            case BinaryOp.NotEqual:
+            case BinaryOp.Less:
+            case BinaryOp.LessEqual:
+            case BinaryOp.Greater:
+            case BinaryOp.GreaterEqual:
+                // Comparisons accept (numeric, numeric) or (string, string).
+                if (lt != rt)
+                {
+                    _diags.Error(ErrTypeMismatch, b.Span,
+                        $"cannot compare {lt.ToString().ToLowerInvariant()} with {rt.ToString().ToLowerInvariant()}");
+                }
+                return ValueType.Numeric; // BASIC comparison yields a numeric (-1/0)
+
+            default:
+                // Arithmetic / logical / bitwise — both sides must be numeric.
+                if (lt != ValueType.Numeric) _diags.Error(ErrTypeMismatch, b.Left.Span,
+                    $"left operand of {b.Op} must be numeric");
+                if (rt != ValueType.Numeric) _diags.Error(ErrTypeMismatch, b.Right.Span,
+                    $"right operand of {b.Op} must be numeric");
+                return ValueType.Numeric;
+        }
+    }
+
+    private ResolvedRef? ResolveNameRef(NameRefExpr n, Scope scope)
+    {
+        var sym = scope.Lookup(Scope.Key(n.Name, n.IsString));
+        return sym switch
+        {
+            VariableSymbol v => new ResolvedVariable(v),
+            ParamSymbol p => new ResolvedParam(p),
+            ConstantSymbol c => new ResolvedConstant(c),
+            BuiltinSymbol bsym when bsym.Signature.MinArgs == 0 => new ResolvedBuiltinCall(bsym),
+            _ => null,
+        };
+    }
+
+    private void ExpectType(Expr e, ValueType actual, ValueType expected, string what)
+    {
+        if (actual != expected)
+        {
+            _diags.Error(ErrTypeMismatch, e.Span,
+                $"{what} must be {expected.ToString().ToLowerInvariant()} (got {actual.ToString().ToLowerInvariant()})");
+        }
+    }
+
+    private ValueType TypeOfTarget(Expr target) => target switch
+    {
+        NameRefExpr n => n.IsString ? ValueType.String : ValueType.Numeric,
+        CallOrIndexExpr c => c.IsString ? ValueType.String : ValueType.Numeric,
+        _ => ValueType.Numeric,
+    };
+
+    private static Scope NearestVariableScope(Scope scope)
+    {
+        // Locals belong to the nearest non-Module scope; the program scope is
+        // always available as a fallback. (Modules — Phase 7 — would shift
+        // this logic; not yet relevant.)
+        for (var s = scope; s is not null; s = s.Parent)
+        {
+            if (s.Kind != ScopeKind.Module) return s;
+        }
+        return scope;
+    }
+}
