@@ -1,21 +1,92 @@
+using FullBasic.Core;
+using FullBasic.Lexer;
 using Singulink.Numerics;
 
-// Phase 0 spike: confirm Singulink.Numerics.BigDecimal works under Native AOT
-// and exercises the rounding modes we'll need for spec-conformant arithmetic.
+return Run(args);
 
-if (args.Length > 0 && args[0] == "--version")
+static int Run(string[] args)
 {
-    Console.WriteLine("full-basic 0.0.0 (Phase 0 spike)");
+    if (args.Length == 0)
+    {
+        PrintUsage();
+        return 0;
+    }
+
+    return args[0] switch
+    {
+        "--version" or "-v" => PrintVersion(),
+        "--bigdecimal-spike" => RunBigDecimalSpike(),
+        "lex" => RunLex(args.AsSpan(1)),
+        "--help" or "-h" => PrintUsage(),
+        _ => UnknownCommand(args[0]),
+    };
+}
+
+static int PrintVersion()
+{
+    Console.WriteLine("full-basic 0.0.0 (Phase 1)");
     return 0;
 }
 
-if (args.Length > 0 && args[0] == "--bigdecimal-spike")
+static int PrintUsage()
 {
-    return RunBigDecimalSpike();
+    Console.WriteLine("""
+        usage: full-basic <command> [args]
+
+        commands:
+          lex <file>            Run the lexer over <file> and print the token stream.
+          --version             Print version info.
+          --bigdecimal-spike    Run the BigDecimal smoke test.
+          --help                Print this help.
+        """);
+    return 0;
 }
 
-Console.WriteLine("usage: full-basic [--version | --bigdecimal-spike]");
-return 0;
+static int UnknownCommand(string cmd)
+{
+    Console.Error.WriteLine($"unknown command: {cmd}");
+    PrintUsage();
+    return 2;
+}
+
+static int RunLex(ReadOnlySpan<string> args)
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("usage: full-basic lex <file>");
+        return 2;
+    }
+
+    var path = args[0];
+    if (!File.Exists(path))
+    {
+        Console.Error.WriteLine($"file not found: {path}");
+        return 1;
+    }
+
+    var content = File.ReadAllText(path);
+    var file = new SourceFile(path, content);
+    var diags = new DiagnosticBag();
+    var lexer = new BasicLexer(file, diags);
+    var tokens = lexer.Lex();
+
+    var useColor = !Console.IsErrorRedirected;
+    foreach (var diag in diags.All)
+    {
+        Console.Error.Write(diag.Render(useColor));
+    }
+
+    foreach (var tok in tokens)
+    {
+        var (line, col) = tok.Span.StartPosition.LineCol;
+        var displayText = tok.Text
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
+        Console.WriteLine($"{line,4}:{col,-3}  {tok.Kind,-22}  {displayText}");
+    }
+
+    return diags.HasErrors ? 1 : 0;
+}
 
 static int RunBigDecimalSpike()
 {

@@ -7,6 +7,7 @@
     <ProjectReference Include="..\FullBasic.Interpreter\FullBasic.Interpreter.csproj" />
     <ProjectReference Include="..\FullBasic.Compiler\FullBasic.Compiler.csproj" />
     <ProjectReference Include="..\FullBasic.Vm\FullBasic.Vm.csproj" />
+    <ProjectReference Include="..\FullBasic.Lexer\FullBasic.Lexer.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
