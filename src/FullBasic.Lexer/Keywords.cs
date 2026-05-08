@@ -150,6 +150,7 @@ internal static class Keywords
             ["RETRY"] = TokenKind.KwRetry,
             ["RETURN"] = TokenKind.KwReturn,
             ["REWRITE"] = TokenKind.KwRewrite,
+            ["RUN"] = TokenKind.KwRun,
             ["ROUND"] = TokenKind.KwRound,
             ["RSET"] = TokenKind.KwRset,
             ["SAME"] = TokenKind.KwSame,

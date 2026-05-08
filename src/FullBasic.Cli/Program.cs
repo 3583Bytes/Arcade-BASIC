@@ -1,5 +1,6 @@
 using FullBasic.Core;
 using FullBasic.Lexer;
+using FullBasic.Parser;
 using Singulink.Numerics;
 
 return Run(args);
@@ -17,6 +18,7 @@ static int Run(string[] args)
         "--version" or "-v" => PrintVersion(),
         "--bigdecimal-spike" => RunBigDecimalSpike(),
         "lex" => RunLex(args.AsSpan(1)),
+        "parse" => RunParse(args.AsSpan(1)),
         "--help" or "-h" => PrintUsage(),
         _ => UnknownCommand(args[0]),
     };
@@ -35,6 +37,7 @@ static int PrintUsage()
 
         commands:
           lex <file>            Run the lexer over <file> and print the token stream.
+          parse <file>          Lex + parse <file> and pretty-print the AST.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
           --help                Print this help.
@@ -84,6 +87,38 @@ static int RunLex(ReadOnlySpan<string> args)
             .Replace("\n", "\\n", StringComparison.Ordinal);
         Console.WriteLine($"{line,4}:{col,-3}  {tok.Kind,-22}  {displayText}");
     }
+
+    return diags.HasErrors ? 1 : 0;
+}
+
+static int RunParse(ReadOnlySpan<string> args)
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("usage: full-basic parse <file>");
+        return 2;
+    }
+
+    var path = args[0];
+    if (!File.Exists(path))
+    {
+        Console.Error.WriteLine($"file not found: {path}");
+        return 1;
+    }
+
+    var content = File.ReadAllText(path);
+    var file = new SourceFile(path, content);
+    var diags = new DiagnosticBag();
+    var tokens = new BasicLexer(file, diags).Lex();
+    var program = new BasicParser(tokens, file, diags).ParseProgram();
+
+    var useColor = !Console.IsErrorRedirected;
+    foreach (var diag in diags.All)
+    {
+        Console.Error.Write(diag.Render(useColor));
+    }
+
+    Console.Write(AstPrinter.Print(program));
 
     return diags.HasErrors ? 1 : 0;
 }

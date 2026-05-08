@@ -176,6 +176,7 @@ public enum TokenKind
     KwRetry,
     KwReturn,
     KwRewrite,
+    KwRun,
     KwRound,
     KwRset,
     KwSame,
