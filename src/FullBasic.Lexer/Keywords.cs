@@ -151,7 +151,7 @@ internal static class Keywords
             ["RETURN"] = TokenKind.KwReturn,
             ["REWRITE"] = TokenKind.KwRewrite,
             ["RUN"] = TokenKind.KwRun,
-            ["ROUND"] = TokenKind.KwRound,
+            // ROUND is a function name (handled by Sema/Builtins), not a keyword.
             ["RSET"] = TokenKind.KwRset,
             ["SAME"] = TokenKind.KwSame,
             ["SELECT"] = TokenKind.KwSelect,
@@ -177,7 +177,7 @@ internal static class Keywords
             ["TRACE"] = TokenKind.KwTrace,
             ["TRANSFORM"] = TokenKind.KwTransform,
             ["TRN"] = TokenKind.KwTrn,
-            ["TRUNCATE"] = TokenKind.KwTruncate,
+            // TRUNCATE is a function name (handled by Sema/Builtins), not a keyword.
             ["TYPE"] = TokenKind.KwType,
             ["UNSAVE"] = TokenKind.KwUnsave,
             ["UNTIL"] = TokenKind.KwUntil,

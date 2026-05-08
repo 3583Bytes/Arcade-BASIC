@@ -12,7 +12,7 @@ public sealed class SemanticInfo
     public required IReadOnlyDictionary<Expr, ResolvedRef> Resolutions { get; init; }
 
     /// <summary>Static type tag (numeric or string) per expression. Reference-keyed.</summary>
-    public required IReadOnlyDictionary<Expr, ValueType> ExpressionTypes { get; init; }
+    public required IReadOnlyDictionary<Expr, BasicType> ExpressionTypes { get; init; }
 
     /// <summary>DATA pool — items in source order across the whole program.</summary>
     public required IReadOnlyList<DataItem> DataPool { get; init; }
@@ -25,11 +25,11 @@ public sealed class SemanticInfo
         Resolutions.TryGetValue(expr, out var r) ? r : new ResolvedError("not resolved");
 
     /// <summary>Lookup the static type of an expression. Defaults to Numeric for unresolved nodes.</summary>
-    public ValueType TypeOf(Expr expr) =>
-        ExpressionTypes.TryGetValue(expr, out var t) ? t : ValueType.Numeric;
+    public BasicType TypeOf(Expr expr) =>
+        ExpressionTypes.TryGetValue(expr, out var t) ? t : BasicType.Numeric;
 }
 
-public enum ValueType
+public enum BasicType
 {
     Numeric,
     String,

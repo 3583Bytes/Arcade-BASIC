@@ -1,4 +1,5 @@
 using FullBasic.Core;
+using FullBasic.Interpreter;
 using FullBasic.Lexer;
 using FullBasic.Parser;
 using FullBasic.Sema;
@@ -21,6 +22,7 @@ static int Run(string[] args)
         "lex" => RunLex(args.AsSpan(1)),
         "parse" => RunParse(args.AsSpan(1)),
         "analyze" => RunAnalyze(args.AsSpan(1)),
+        "run" => RunProgram(args.AsSpan(1)),
         "--help" or "-h" => PrintUsage(),
         _ => UnknownCommand(args[0]),
     };
@@ -41,6 +43,7 @@ static int PrintUsage()
           lex <file>            Run the lexer over <file> and print the token stream.
           parse <file>          Lex + parse <file> and pretty-print the AST.
           analyze <file>        Lex + parse + analyze; print symbol summary.
+          run <file>            Lex + parse + analyze + run the program.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
           --help                Print this help.
@@ -176,6 +179,39 @@ static int RunAnalyze(ReadOnlySpan<string> args)
     }
 
     return diags.HasErrors ? 1 : 0;
+}
+
+static int RunProgram(ReadOnlySpan<string> args)
+{
+    if (args.Length != 1)
+    {
+        Console.Error.WriteLine("usage: full-basic run <file>");
+        return 2;
+    }
+
+    var path = args[0];
+    if (!File.Exists(path))
+    {
+        Console.Error.WriteLine($"file not found: {path}");
+        return 1;
+    }
+
+    var content = File.ReadAllText(path);
+    var file = new SourceFile(path, content);
+    var diags = new DiagnosticBag();
+    var tokens = new BasicLexer(file, diags).Lex();
+    var program = new BasicParser(tokens, file, diags).ParseProgram();
+    var info = Analyzer.Analyze(program, diags);
+
+    var useColor = !Console.IsErrorRedirected;
+    foreach (var diag in diags.All)
+    {
+        Console.Error.Write(diag.Render(useColor));
+    }
+    if (diags.HasErrors) return 1;
+
+    var interp = new BasicInterpreter(program, info, Console.Out, Console.In);
+    return interp.Run();
 }
 
 static int RunBigDecimalSpike()

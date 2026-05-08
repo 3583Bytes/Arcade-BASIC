@@ -31,7 +31,7 @@ public sealed class Analyzer
 
     private readonly DiagnosticBag _diags;
     private readonly Dictionary<Expr, ResolvedRef> _resolutions = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Expr, ValueType> _types = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Expr, BasicType> _types = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<int, Stmt> _labels = new();
     private readonly List<DataItem> _dataPool = new();
 
@@ -217,7 +217,7 @@ public sealed class Analyzer
                         case PrintExprItem ei: AnalyzeExpr(ei.Value, scope); break;
                         case PrintTab t:
                             var ty = AnalyzeExpr(t.Column, scope);
-                            ExpectType(t.Column, ty, ValueType.Numeric, "TAB column");
+                            ExpectType(t.Column, ty, BasicType.Numeric, "TAB column");
                             break;
                     }
                 }
@@ -231,7 +231,7 @@ public sealed class Analyzer
             case LineInputStmt li:
                 if (li.Prompt is not null) AnalyzeExpr(li.Prompt, scope);
                 AnalyzeAssignableTarget(li.Target, scope);
-                if (TypeOfTarget(li.Target) != ValueType.String)
+                if (TypeOfTarget(li.Target) != BasicType.String)
                 {
                     _diags.Error(ErrTypeMismatch, li.Target.Span,
                         "LINE INPUT target must be a string variable");
@@ -267,7 +267,7 @@ public sealed class Analyzer
                 if (rnd.Seed is not null)
                 {
                     var ty = AnalyzeExpr(rnd.Seed, scope);
-                    ExpectType(rnd.Seed, ty, ValueType.Numeric, "RANDOMIZE seed");
+                    ExpectType(rnd.Seed, ty, BasicType.Numeric, "RANDOMIZE seed");
                 }
                 break;
 
@@ -280,22 +280,22 @@ public sealed class Analyzer
                         if (b.Lower is not null)
                         {
                             var ty = AnalyzeExpr(b.Lower, scope);
-                            ExpectType(b.Lower, ty, ValueType.Numeric, "array lower bound");
+                            ExpectType(b.Lower, ty, BasicType.Numeric, "array lower bound");
                         }
                         var tu = AnalyzeExpr(b.Upper, scope);
-                        ExpectType(b.Upper, tu, ValueType.Numeric, "array upper bound");
+                        ExpectType(b.Upper, tu, BasicType.Numeric, "array upper bound");
                     }
                 }
                 break;
 
             case IfStmt ifs:
                 var ct = AnalyzeExpr(ifs.Condition, scope);
-                ExpectType(ifs.Condition, ct, ValueType.Numeric, "IF condition");
+                ExpectType(ifs.Condition, ct, BasicType.Numeric, "IF condition");
                 foreach (var t in ifs.ThenBlock) AnalyzeStmt(t, scope);
                 foreach (var ei in ifs.ElseIfs)
                 {
                     var et = AnalyzeExpr(ei.Condition, scope);
-                    ExpectType(ei.Condition, et, ValueType.Numeric, "ELSEIF condition");
+                    ExpectType(ei.Condition, et, BasicType.Numeric, "ELSEIF condition");
                     foreach (var t in ei.Body) AnalyzeStmt(t, scope);
                 }
                 if (ifs.ElseBlock is not null) foreach (var t in ifs.ElseBlock) AnalyzeStmt(t, scope);
@@ -304,10 +304,10 @@ public sealed class Analyzer
             case ForStmt f:
                 IntroduceVariableIfNeeded(f.Variable, scope);
                 _resolutions[f.Variable] = ResolveNameRef(f.Variable, scope) ?? new ResolvedError("for-var");
-                _types[f.Variable] = ValueType.Numeric;
-                ExpectType(f.From, AnalyzeExpr(f.From, scope), ValueType.Numeric, "FOR from-value");
-                ExpectType(f.To, AnalyzeExpr(f.To, scope), ValueType.Numeric, "FOR to-value");
-                if (f.Step is not null) ExpectType(f.Step, AnalyzeExpr(f.Step, scope), ValueType.Numeric, "FOR step");
+                _types[f.Variable] = BasicType.Numeric;
+                ExpectType(f.From, AnalyzeExpr(f.From, scope), BasicType.Numeric, "FOR from-value");
+                ExpectType(f.To, AnalyzeExpr(f.To, scope), BasicType.Numeric, "FOR to-value");
+                if (f.Step is not null) ExpectType(f.Step, AnalyzeExpr(f.Step, scope), BasicType.Numeric, "FOR step");
                 foreach (var t in f.Body) AnalyzeStmt(t, scope);
                 break;
 
@@ -364,7 +364,7 @@ public sealed class Analyzer
                 if (def.SingleLineBody is not null)
                 {
                     var bt = AnalyzeExpr(def.SingleLineBody, defScope);
-                    var expected = def.IsString ? ValueType.String : ValueType.Numeric;
+                    var expected = def.IsString ? BasicType.String : BasicType.Numeric;
                     ExpectType(def.SingleLineBody, bt, expected, $"DEF {def.Name} body");
                 }
                 if (def.MultiLineBody is not null)
@@ -414,7 +414,7 @@ public sealed class Analyzer
             case NameRefExpr n:
                 IntroduceVariableIfNeeded(n, scope);
                 _resolutions[n] = ResolveNameRef(n, scope) ?? new ResolvedError("name");
-                _types[n] = n.IsString ? ValueType.String : ValueType.Numeric;
+                _types[n] = n.IsString ? BasicType.String : BasicType.Numeric;
                 break;
 
             case CallOrIndexExpr c:
@@ -444,9 +444,9 @@ public sealed class Analyzer
                     foreach (var idx in c.Args)
                     {
                         var ty = AnalyzeExpr(idx, scope);
-                        ExpectType(idx, ty, ValueType.Numeric, "array index");
+                        ExpectType(idx, ty, BasicType.Numeric, "array index");
                     }
-                    _types[c] = c.IsString ? ValueType.String : ValueType.Numeric;
+                    _types[c] = c.IsString ? BasicType.String : BasicType.Numeric;
                     break;
                 }
 
@@ -476,13 +476,13 @@ public sealed class Analyzer
 
     // -- Expressions -----------------------------------------------------
 
-    private ValueType AnalyzeExpr(Expr expr, Scope scope)
+    private BasicType AnalyzeExpr(Expr expr, Scope scope)
     {
-        ValueType ty;
+        BasicType ty;
         switch (expr)
         {
-            case NumberExpr: ty = ValueType.Numeric; break;
-            case StringExpr: ty = ValueType.String; break;
+            case NumberExpr: ty = BasicType.Numeric; break;
+            case StringExpr: ty = BasicType.String; break;
             case ParenExpr p: ty = AnalyzeExpr(p.Inner, scope); break;
 
             case NameRefExpr n:
@@ -498,9 +498,9 @@ public sealed class Analyzer
                 var inner = AnalyzeExpr(u.Operand, scope);
                 if (u.Op is UnaryOp.Plus or UnaryOp.Negate or UnaryOp.Not or UnaryOp.BNot)
                 {
-                    ExpectType(u.Operand, inner, ValueType.Numeric, $"unary {u.Op}");
+                    ExpectType(u.Operand, inner, BasicType.Numeric, $"unary {u.Op}");
                 }
-                ty = ValueType.Numeric;
+                ty = BasicType.Numeric;
                 break;
             }
 
@@ -509,14 +509,14 @@ public sealed class Analyzer
                 break;
 
             default:
-                ty = ValueType.Numeric;
+                ty = BasicType.Numeric;
                 break;
         }
         _types[expr] = ty;
         return ty;
     }
 
-    private ValueType AnalyzeNameRef(NameRefExpr n, Scope scope)
+    private BasicType AnalyzeNameRef(NameRefExpr n, Scope scope)
     {
         var key = Scope.Key(n.Name, n.IsString);
         var sym = scope.Lookup(key);
@@ -532,37 +532,47 @@ public sealed class Analyzer
                 $"implicit declaration of '{n.Name}{(n.IsString ? "$" : "")}'",
                 "consider DIM-ing arrays or LET-ing scalars before use");
             _resolutions[n] = new ResolvedVariable(v);
-            return n.IsString ? ValueType.String : ValueType.Numeric;
+            return n.IsString ? BasicType.String : BasicType.Numeric;
         }
 
         switch (sym)
         {
-            case VariableSymbol v: _resolutions[n] = new ResolvedVariable(v); return v.IsString ? ValueType.String : ValueType.Numeric;
-            case ParamSymbol p: _resolutions[n] = new ResolvedParam(p); return p.IsString ? ValueType.String : ValueType.Numeric;
-            case ConstantSymbol c: _resolutions[n] = new ResolvedConstant(c); return c.IsString ? ValueType.String : ValueType.Numeric;
+            case VariableSymbol v: _resolutions[n] = new ResolvedVariable(v); return v.IsString ? BasicType.String : BasicType.Numeric;
+            case ParamSymbol p: _resolutions[n] = new ResolvedParam(p); return p.IsString ? BasicType.String : BasicType.Numeric;
+            case ConstantSymbol c: _resolutions[n] = new ResolvedConstant(c); return c.IsString ? BasicType.String : BasicType.Numeric;
             case BuiltinSymbol bsym when bsym.Signature.MinArgs == 0:
                 // 0-arg builtin used without parens — equivalent to a parameterless call.
                 _resolutions[n] = new ResolvedBuiltinCall(bsym);
-                return bsym.IsString ? ValueType.String : ValueType.Numeric;
+                return bsym.IsString ? BasicType.String : BasicType.Numeric;
             case ArraySymbol:
                 _diags.Error(ErrCannotCall, n.Span,
                     $"'{n.Name}' is an array; index it with parentheses");
                 _resolutions[n] = new ResolvedError("array-without-index");
-                return n.IsString ? ValueType.String : ValueType.Numeric;
+                return n.IsString ? BasicType.String : BasicType.Numeric;
             default:
                 _diags.Error(ErrCannotCall, n.Span, $"'{n.Name}' cannot be used as a value");
                 _resolutions[n] = new ResolvedError("non-value");
-                return ValueType.Numeric;
+                return BasicType.Numeric;
         }
     }
 
-    private ValueType AnalyzeCallOrIndex(CallOrIndexExpr c, Scope scope)
+    private BasicType AnalyzeCallOrIndex(CallOrIndexExpr c, Scope scope)
     {
         var key = Scope.Key(c.Name, c.IsString);
         var sym = scope.Lookup(key);
 
+        // Inside a FUNCTION body, the function name itself is also a slot
+        // (for setting the return value), but a *call* using that name should
+        // bind to the parent-scope FunctionSymbol — that's how recursion works.
+        if (sym is VariableSymbol vsym
+            && vsym.OwnerScope?.Parent?.Lookup(key) is FunctionSymbol fnInParent
+            && fnInParent.Name.Equals(c.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            sym = fnInParent;
+        }
+
         // Resolve args first so partial errors still record argument types.
-        var argTypes = new ValueType[c.Args.Count];
+        var argTypes = new BasicType[c.Args.Count];
         for (var i = 0; i < c.Args.Count; i++)
         {
             argTypes[i] = AnalyzeExpr(c.Args[i], scope);
@@ -573,7 +583,7 @@ public sealed class Analyzer
             _diags.Error(ErrUndefinedName, c.Span,
                 $"undefined name '{c.Name}{(c.IsString ? "$" : "")}'");
             _resolutions[c] = new ResolvedError("undefined");
-            return c.IsString ? ValueType.String : ValueType.Numeric;
+            return c.IsString ? BasicType.String : BasicType.Numeric;
         }
 
         switch (sym)
@@ -582,40 +592,40 @@ public sealed class Analyzer
                 // Index args must be numeric.
                 for (var i = 0; i < c.Args.Count; i++)
                 {
-                    ExpectType(c.Args[i], argTypes[i], ValueType.Numeric, "array index");
+                    ExpectType(c.Args[i], argTypes[i], BasicType.Numeric, "array index");
                 }
                 _resolutions[c] = new ResolvedArrayAccess(arr);
-                return arr.IsString ? ValueType.String : ValueType.Numeric;
+                return arr.IsString ? BasicType.String : BasicType.Numeric;
 
             case BuiltinSymbol bsym:
                 CheckBuiltinSignature(c, bsym, argTypes);
                 _resolutions[c] = new ResolvedBuiltinCall(bsym);
-                return bsym.IsString ? ValueType.String : ValueType.Numeric;
+                return bsym.IsString ? BasicType.String : BasicType.Numeric;
 
             case FunctionSymbol fs:
                 CheckArity(c, fs.Params.Count, c.Args.Count);
                 _resolutions[c] = new ResolvedFunctionCall(fs);
-                return fs.IsString ? ValueType.String : ValueType.Numeric;
+                return fs.IsString ? BasicType.String : BasicType.Numeric;
 
             case DefSymbol ds:
                 CheckArity(c, ds.Params.Count, c.Args.Count);
                 _resolutions[c] = new ResolvedDefCall(ds);
-                return ds.IsString ? ValueType.String : ValueType.Numeric;
+                return ds.IsString ? BasicType.String : BasicType.Numeric;
 
             case SubSymbol:
                 _diags.Error(ErrCannotCall, c.Span,
                     $"'{c.Name}' is a SUB; use CALL to invoke it");
                 _resolutions[c] = new ResolvedError("sub-as-expr");
-                return ValueType.Numeric;
+                return BasicType.Numeric;
 
             default:
                 _diags.Error(ErrCannotCall, c.Span, $"'{c.Name}' cannot be called or indexed");
                 _resolutions[c] = new ResolvedError("non-callable");
-                return ValueType.Numeric;
+                return BasicType.Numeric;
         }
     }
 
-    private void CheckBuiltinSignature(CallOrIndexExpr c, BuiltinSymbol b, ValueType[] argTypes)
+    private void CheckBuiltinSignature(CallOrIndexExpr c, BuiltinSymbol b, BasicType[] argTypes)
     {
         var n = c.Args.Count;
         if (n < b.Signature.MinArgs || n > b.Signature.MaxArgs)
@@ -633,7 +643,7 @@ public sealed class Analyzer
             // as the recurring expected type.
             var expected = i < b.Signature.Args.Length ? b.Signature.Args[i] : b.Signature.Args[^1];
             if (expected == BuiltinArgType.Any) continue;
-            var want = expected == BuiltinArgType.String ? ValueType.String : ValueType.Numeric;
+            var want = expected == BuiltinArgType.String ? BasicType.String : BasicType.Numeric;
             if (argTypes[i] != want)
             {
                 _diags.Error(ErrTypeMismatch, c.Args[i].Span,
@@ -651,7 +661,7 @@ public sealed class Analyzer
         }
     }
 
-    private ValueType AnalyzeBinary(BinaryExpr b, Scope scope)
+    private BasicType AnalyzeBinary(BinaryExpr b, Scope scope)
     {
         var lt = AnalyzeExpr(b.Left, scope);
         var rt = AnalyzeExpr(b.Right, scope);
@@ -659,9 +669,9 @@ public sealed class Analyzer
         switch (b.Op)
         {
             case BinaryOp.Concat:
-                if (lt != ValueType.String) _diags.Error(ErrInvalidStringOp, b.Left.Span, "left operand of '&' must be string");
-                if (rt != ValueType.String) _diags.Error(ErrInvalidStringOp, b.Right.Span, "right operand of '&' must be string");
-                return ValueType.String;
+                if (lt != BasicType.String) _diags.Error(ErrInvalidStringOp, b.Left.Span, "left operand of '&' must be string");
+                if (rt != BasicType.String) _diags.Error(ErrInvalidStringOp, b.Right.Span, "right operand of '&' must be string");
+                return BasicType.String;
 
             case BinaryOp.Equal:
             case BinaryOp.NotEqual:
@@ -675,15 +685,15 @@ public sealed class Analyzer
                     _diags.Error(ErrTypeMismatch, b.Span,
                         $"cannot compare {lt.ToString().ToLowerInvariant()} with {rt.ToString().ToLowerInvariant()}");
                 }
-                return ValueType.Numeric; // BASIC comparison yields a numeric (-1/0)
+                return BasicType.Numeric; // BASIC comparison yields a numeric (-1/0)
 
             default:
                 // Arithmetic / logical / bitwise — both sides must be numeric.
-                if (lt != ValueType.Numeric) _diags.Error(ErrTypeMismatch, b.Left.Span,
+                if (lt != BasicType.Numeric) _diags.Error(ErrTypeMismatch, b.Left.Span,
                     $"left operand of {b.Op} must be numeric");
-                if (rt != ValueType.Numeric) _diags.Error(ErrTypeMismatch, b.Right.Span,
+                if (rt != BasicType.Numeric) _diags.Error(ErrTypeMismatch, b.Right.Span,
                     $"right operand of {b.Op} must be numeric");
-                return ValueType.Numeric;
+                return BasicType.Numeric;
         }
     }
 
@@ -700,7 +710,7 @@ public sealed class Analyzer
         };
     }
 
-    private void ExpectType(Expr e, ValueType actual, ValueType expected, string what)
+    private void ExpectType(Expr e, BasicType actual, BasicType expected, string what)
     {
         if (actual != expected)
         {
@@ -709,11 +719,11 @@ public sealed class Analyzer
         }
     }
 
-    private ValueType TypeOfTarget(Expr target) => target switch
+    private BasicType TypeOfTarget(Expr target) => target switch
     {
-        NameRefExpr n => n.IsString ? ValueType.String : ValueType.Numeric,
-        CallOrIndexExpr c => c.IsString ? ValueType.String : ValueType.Numeric,
-        _ => ValueType.Numeric,
+        NameRefExpr n => n.IsString ? BasicType.String : BasicType.Numeric,
+        CallOrIndexExpr c => c.IsString ? BasicType.String : BasicType.Numeric,
+        _ => BasicType.Numeric,
     };
 
     private static Scope NearestVariableScope(Scope scope)

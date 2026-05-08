@@ -20,6 +20,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FullBasic.Interpreter\FullBasic.Interpreter.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Lexer\FullBasic.Lexer.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Parser\FullBasic.Parser.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Sema\FullBasic.Sema.csproj" />
   </ItemGroup>
 
 </Project>
