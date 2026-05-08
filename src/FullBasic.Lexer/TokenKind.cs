@@ -167,6 +167,7 @@ public enum TokenKind
     KwRecord,
     KwRecsize,
     KwRectype,
+    KwRedim,
     KwRelative,
     KwRem,
     KwRepeat,

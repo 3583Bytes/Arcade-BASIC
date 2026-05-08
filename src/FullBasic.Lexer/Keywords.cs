@@ -141,6 +141,7 @@ internal static class Keywords
             ["RECORD"] = TokenKind.KwRecord,
             ["RECSIZE"] = TokenKind.KwRecsize,
             ["RECTYPE"] = TokenKind.KwRectype,
+            ["REDIM"] = TokenKind.KwRedim,
             ["RELATIVE"] = TokenKind.KwRelative,
             ["REM"] = TokenKind.KwRem,
             ["REPEAT"] = TokenKind.KwRepeat,

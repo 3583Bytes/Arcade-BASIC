@@ -245,7 +245,7 @@ public sealed partial class BasicInterpreter
             var upper = new int[rank];
             for (var i = 0; i < rank; i++)
             {
-                lower[i] = spec.Bounds[i].Lower is null ? 0 : (int)EvalNumeric(spec.Bounds[i].Lower!, frame);
+                lower[i] = spec.Bounds[i].Lower is null ? _optionBase : (int)EvalNumeric(spec.Bounds[i].Lower!, frame);
                 upper[i] = (int)EvalNumeric(spec.Bounds[i].Upper, frame);
                 if (upper[i] < lower[i])
                 {

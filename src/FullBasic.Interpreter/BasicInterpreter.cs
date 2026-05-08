@@ -27,6 +27,7 @@ public sealed partial class BasicInterpreter
 
     private ActivationRecord _programFrame;
     private int _dataCursor;
+    private int _optionBase;
 
     public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in)
     {
@@ -140,7 +141,7 @@ public sealed partial class BasicInterpreter
             case EndBlockStmt: return FlowControl.Continue;
             case RunStmt: return FlowControl.Continue;
             case RemStmt: return FlowControl.Continue;
-            case OptionBaseStmt: return FlowControl.Continue;
+            case OptionBaseStmt ob: _optionBase = ob.Base; return FlowControl.Continue;
             case OptionArithmeticStmt: return FlowControl.Continue;
             case RandomizeStmt rnd: return ExecRandomize(rnd, frame);
             case DimStmt dim: return ExecDim(dim, frame);
@@ -152,6 +153,11 @@ public sealed partial class BasicInterpreter
             case SelectStmt s: return ExecSelect(s, frame);
             case ExitStmt e: return new FlowControl.Exit(MapExit(e.Target));
             case CallStmt c: return ExecCall(c, frame);
+            case MatAssignStmt ma: return ExecMatAssign(ma, frame);
+            case MatRedimStmt mr: return ExecMatRedim(mr, frame);
+            case MatInputStmt mi: return ExecMatInput(mi, frame);
+            case MatPrintStmt mp: return ExecMatPrint(mp, frame);
+            case MatReadStmt mrd: return ExecMatRead(mrd, frame);
             case SubStmt: return FlowControl.Continue; // declarations only execute when called
             case FunctionStmt: return FlowControl.Continue;
             case DefStmt: return FlowControl.Continue;

@@ -388,9 +388,104 @@ public sealed class Analyzer
                 foreach (var a in call.Args) AnalyzeExpr(a, scope);
                 break;
             }
+            case MatAssignStmt mat:
+                CheckMatTarget(mat.TargetName, mat.TargetIsString, mat.Span, scope);
+                CheckMatRhs(mat.Rhs, mat.TargetIsString, scope);
+                break;
+
+            case MatRedimStmt mr:
+                CheckMatTarget(mr.TargetName, mr.TargetIsString, mr.Span, scope);
+                foreach (var b in mr.Bounds)
+                {
+                    if (b.Lower is not null) ExpectType(b.Lower, AnalyzeExpr(b.Lower, scope), BasicType.Numeric, "MAT REDIM lower bound");
+                    ExpectType(b.Upper, AnalyzeExpr(b.Upper, scope), BasicType.Numeric, "MAT REDIM upper bound");
+                }
+                break;
+
+            case MatInputStmt mi: CheckMatTarget(mi.TargetName, mi.TargetIsString, mi.Span, scope); break;
+            case MatPrintStmt mp: CheckMatTarget(mp.TargetName, mp.TargetIsString, mp.Span, scope); break;
+            case MatReadStmt mrd: CheckMatTarget(mrd.TargetName, mrd.TargetIsString, mrd.Span, scope); break;
+
             default:
                 // Other statement kinds we don't yet handle in sema (file I/O,
-                // MAT, exception handlers) fall through silently for now.
+                // exception handlers, modules) fall through silently for now.
+                break;
+        }
+    }
+
+    private void CheckMatTarget(string name, bool isString, SourceSpan span, Scope scope)
+    {
+        var sym = scope.Lookup(Scope.Key(name, isString));
+        if (sym is null)
+        {
+            _diags.Error(ErrUndefinedName, span,
+                $"MAT target '{name}{(isString ? "$" : "")}' is undeclared",
+                "explicit DIM is required for arrays");
+        }
+        else if (sym is not ArraySymbol)
+        {
+            _diags.Error(ErrInvalidAssignmentTarget, span,
+                $"MAT target '{name}' must be an array");
+        }
+    }
+
+    private void CheckMatRhs(MatRhs rhs, bool targetIsString, Scope scope)
+    {
+        switch (rhs)
+        {
+            case MatRhsName n:
+                if (n.IsString != targetIsString)
+                {
+                    _diags.Error(ErrTypeMismatch, n.Span,
+                        $"MAT operand '{n.Name}' type does not match target");
+                }
+                if (scope.Lookup(Scope.Key(n.Name, n.IsString)) is not ArraySymbol)
+                {
+                    _diags.Error(ErrUndefinedName, n.Span,
+                        $"MAT operand '{n.Name}' is not a declared array");
+                }
+                break;
+
+            case MatRhsBinary b:
+                if (targetIsString)
+                {
+                    _diags.Error(ErrInvalidStringOp, b.Span,
+                        "MAT arithmetic is not allowed on string arrays");
+                    return;
+                }
+                CheckMatRhs(b.Left, targetIsString, scope);
+                CheckMatRhs(b.Right, targetIsString, scope);
+                break;
+
+            case MatRhsScalarMul sm:
+                if (targetIsString)
+                {
+                    _diags.Error(ErrInvalidStringOp, sm.Span,
+                        "MAT scalar multiply is not allowed on string arrays");
+                    return;
+                }
+                ExpectType(sm.Scalar, AnalyzeExpr(sm.Scalar, scope), BasicType.Numeric, "MAT scalar multiplier");
+                CheckMatRhs(sm.Matrix, targetIsString, scope);
+                break;
+
+            case MatRhsInv:
+            case MatRhsTrn:
+                if (targetIsString)
+                {
+                    _diags.Error(ErrInvalidStringOp, rhs.Span,
+                        "MAT INV / TRN are not allowed on string arrays");
+                    return;
+                }
+                CheckMatRhs(rhs is MatRhsInv inv ? inv.Operand : ((MatRhsTrn)rhs).Operand, targetIsString, scope);
+                break;
+
+            case MatRhsConst c:
+                var stringConst = c.Kind == MatConstKind.NullString;
+                if (stringConst != targetIsString)
+                {
+                    _diags.Error(ErrTypeMismatch, c.Span,
+                        $"MAT constant {c.Kind} requires {(stringConst ? "string" : "numeric")} target");
+                }
                 break;
         }
     }

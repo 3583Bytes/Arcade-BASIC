@@ -143,6 +143,7 @@ public sealed partial class BasicParser
             TokenKind.KwSub => ParseSub(),
             TokenKind.KwFunction => ParseFunction(),
             TokenKind.KwCall => ParseCall(),
+            TokenKind.KwMat => ParseMat(),
             TokenKind.Identifier or TokenKind.StringIdentifier => ParseAssignmentOrFunctionCall(),
             _ => UnsupportedStatement(),
         };
