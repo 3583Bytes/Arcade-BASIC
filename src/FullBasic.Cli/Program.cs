@@ -1,3 +1,4 @@
+using FullBasic.Bytecode;
 using FullBasic.Compiler;
 using FullBasic.Core;
 using FullBasic.Interpreter;
@@ -6,6 +7,31 @@ using FullBasic.Parser;
 using FullBasic.Sema;
 using FullBasic.Vm;
 using Singulink.Numerics;
+
+// Phase 10: if this binary has a bundled bytecode payload, run it directly
+// without consulting argv (the user invoked the compiled BASIC program, not
+// the CLI). Sub-commands of the CLI still work in the unbundled stub.
+{
+    var selfPath = Environment.ProcessPath;
+    if (!string.IsNullOrEmpty(selfPath))
+    {
+        var payload = EmbeddedPayload.TryRead(selfPath);
+        if (payload is not null)
+        {
+            try
+            {
+                var compiled = BytecodeSerializer.Deserialize(payload);
+                var vm = new BasicVm(compiled, Console.Out, Console.In);
+                return vm.Run();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"bundled program failed to load: {ex.Message}");
+                return 1;
+            }
+        }
+    }
+}
 
 return Run(args);
 
@@ -26,6 +52,7 @@ static int Run(string[] args)
         "analyze" => RunAnalyze(args.AsSpan(1)),
         "run" => RunProgram(args.AsSpan(1)),
         "vm" => RunVm(args.AsSpan(1)),
+        "build" => RunBuild(args.AsSpan(1)),
         "--help" or "-h" => PrintUsage(),
         _ => UnknownCommand(args[0]),
     };
@@ -48,6 +75,7 @@ static int PrintUsage()
           analyze <file>        Lex + parse + analyze; print symbol summary.
           run <file>            Lex + parse + analyze + run the program (tree-walker).
           vm <file>             Lex + parse + analyze + compile + run on bytecode VM.
+          build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
           --help                Print this help.
@@ -131,6 +159,96 @@ static int RunParse(ReadOnlySpan<string> args)
     Console.Write(AstPrinter.Print(program));
 
     return diags.HasErrors ? 1 : 0;
+}
+
+static int RunBuild(ReadOnlySpan<string> args)
+{
+    string? source = null;
+    string? output = null;
+    for (var i = 0; i < args.Length; i++)
+    {
+        if (args[i] == "-o" && i + 1 < args.Length) { output = args[i + 1]; i++; }
+        else if (source is null) source = args[i];
+        else { Console.Error.WriteLine("usage: full-basic build <source> [-o <output>]"); return 2; }
+    }
+    if (source is null)
+    {
+        Console.Error.WriteLine("usage: full-basic build <source> [-o <output>]");
+        return 2;
+    }
+    if (!File.Exists(source))
+    {
+        Console.Error.WriteLine($"file not found: {source}");
+        return 1;
+    }
+
+    output ??= Path.ChangeExtension(source, null) ?? "a.out";
+    if (string.IsNullOrEmpty(output) || output == source) output = "a.out";
+
+    // Lex + parse + sema + compile to bytecode.
+    var content = File.ReadAllText(source);
+    var file = new SourceFile(source, content);
+    var diags = new DiagnosticBag();
+    var tokens = new BasicLexer(file, diags).Lex();
+    var program = new BasicParser(tokens, file, diags).ParseProgram();
+    var info = Analyzer.Analyze(program, diags);
+
+    var useColor = !Console.IsErrorRedirected;
+    foreach (var diag in diags.All) Console.Error.Write(diag.Render(useColor));
+    if (diags.HasErrors) return 1;
+
+    FullBasic.Bytecode.Program compiled;
+    try
+    {
+        compiled = BasicCompiler.Compile(program, info);
+    }
+    catch (BasicCompiler.UnsupportedFeatureException ex)
+    {
+        Console.Error.WriteLine($"build error: {ex.Message}");
+        return 1;
+    }
+
+    var payload = BytecodeSerializer.Serialize(compiled);
+
+    // Locate the running CLI binary; we use it as the VM stub.
+    var stubPath = Environment.ProcessPath;
+    if (string.IsNullOrEmpty(stubPath) || !File.Exists(stubPath))
+    {
+        Console.Error.WriteLine("build error: cannot locate the running CLI binary to use as a stub");
+        return 1;
+    }
+
+    var stubBytes = File.ReadAllBytes(stubPath);
+
+    // If our stub already has an embedded payload (e.g. user re-bundling),
+    // strip it so we don't grow the binary on each rebuild.
+    var existing = EmbeddedPayload.TryRead(stubPath);
+    if (existing is not null)
+    {
+        var strip = existing.Length + 12;
+        Array.Resize(ref stubBytes, stubBytes.Length - strip);
+    }
+
+    using (var fs = File.Create(output))
+    {
+        fs.Write(stubBytes, 0, stubBytes.Length);
+        EmbeddedPayload.Append(fs, payload);
+    }
+
+    if (!OperatingSystem.IsWindows())
+    {
+        try
+        {
+            File.SetUnixFileMode(output,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+        catch { /* best effort — chmod failure is non-fatal */ }
+    }
+
+    Console.WriteLine($"wrote {output} ({new FileInfo(output).Length:N0} bytes, payload {payload.Length:N0} bytes)");
+    return 0;
 }
 
 static int RunVm(ReadOnlySpan<string> args)
