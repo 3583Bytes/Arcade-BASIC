@@ -1,6 +1,8 @@
 # NBS Minimal BASIC Test Programs — sources
 
-We use the four-volume NBS Minimal BASIC Test Programs (NBSIR 78-1420, Cugini et al., NBS 1978–1980) as the conformance oracle for the subset of Full BASIC inherited from Minimal BASIC.
+> **Status: deferred.** The archive.org OCR is too column-shredded for clean programmatic extraction. We're using spec-derived tests instead for now. This document remains as a reference if/when we revisit.
+
+The four-volume NBS Minimal BASIC Test Programs (NBSIR 78-1420, Cugini et al., NBS 1978–1980) is the only public conformance oracle for any ANSI BASIC standard.
 
 The PDFs and OCR text are not redistributed in this repo; download them from archive.org / nvlpubs.nist.gov as needed.
 
