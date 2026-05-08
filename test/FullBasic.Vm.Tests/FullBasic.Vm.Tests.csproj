@@ -20,6 +20,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FullBasic.Vm\FullBasic.Vm.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Lexer\FullBasic.Lexer.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Parser\FullBasic.Parser.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Sema\FullBasic.Sema.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Compiler\FullBasic.Compiler.csproj" />
+    <ProjectReference Include="..\..\src\FullBasic.Bytecode\FullBasic.Bytecode.csproj" />
   </ItemGroup>
 
 </Project>
