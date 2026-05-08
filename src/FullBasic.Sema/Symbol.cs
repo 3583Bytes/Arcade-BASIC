@@ -35,6 +35,9 @@ public sealed record class DefSymbol(string Name, bool IsString, IReadOnlyList<P
 /// <summary>A predefined supplied function (SIN, COS, MID$, etc.).</summary>
 public sealed record class BuiltinSymbol(string Name, bool IsString, BuiltinSignature Signature) : Symbol(Name, IsString);
 
+/// <summary>A named exception handler declared via HANDLER ... END HANDLER.</summary>
+public sealed record class HandlerSymbol(string Name, HandlerStmt Stmt) : Symbol(Name, IsString: false);
+
 /// <summary>A predefined constant identifier (PI, EPS, MAXNUM, INF).</summary>
 public sealed record class ConstantSymbol(string Name, bool IsString) : Symbol(Name, IsString);
 

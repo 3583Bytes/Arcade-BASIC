@@ -507,6 +507,25 @@ public sealed partial class BasicInterpreter
 
     private Value CallBuiltin(BuiltinSymbol b, Value[] args)
     {
+        // Exception accessors read from the interpreter's current-exception
+        // slot rather than the static stub registry. Only meaningful inside
+        // a USE handler body; default to spec-safe zero/empty otherwise.
+        switch (b.Name.ToUpperInvariant())
+        {
+            case "EXTYPE":
+                return _currentException is null
+                    ? NumericValue.Zero
+                    : new NumericValue(BigDecimal.Parse(_currentException.Type.ToString()));
+            case "EXLINE":
+                return _currentException is null
+                    ? NumericValue.Zero
+                    : new NumericValue(BigDecimal.Parse(_currentException.Line.ToString()));
+            case "EXTEXT":
+                return _currentException is null
+                    ? StringValue.Empty
+                    : new StringValue(_currentException.Text);
+        }
+
         if (!BuiltinImpls.All.TryGetValue(b.Name, out var fn))
         {
             throw new BasicRuntimeException(0, $"builtin '{b.Name}' has no implementation");

@@ -146,6 +146,11 @@ public sealed partial class BasicParser
             TokenKind.KwMat => ParseMat(),
             TokenKind.KwOpen => ParseOpenStmt(),
             TokenKind.KwClose => ParseCloseStmt(),
+            TokenKind.KwWhen => ParseWhen(),
+            TokenKind.KwHandler => ParseHandler(),
+            TokenKind.KwCause => ParseCause(),
+            TokenKind.KwRetry => ParseRetry(),
+            TokenKind.KwContinue => ParseContinueResume(),
             TokenKind.Identifier or TokenKind.StringIdentifier => ParseAssignmentOrFunctionCall(),
             _ => UnsupportedStatement(),
         };

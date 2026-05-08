@@ -29,9 +29,23 @@ public abstract record class FlowControl
     /// <summary>EXIT — exit a specific kind of enclosing block (FOR/DO/SUB/etc.).</summary>
     public sealed record class Exit(ExitKind Kind) : FlowControl;
 
+    /// <summary>An exception was raised. Propagates until a handler catches it.</summary>
+    public sealed record class Cause(BasicException Exception) : FlowControl;
+
+    /// <summary>RETRY from a USE handler — restart the IN body of the enclosing WHEN.</summary>
+    public sealed record class Retry : FlowControl;
+
+    /// <summary>
+    /// CONTINUE from a USE handler — resume the IN body at the statement
+    /// after the one that raised.
+    /// </summary>
+    public sealed record class Resume : FlowControl;
+
     public static readonly Next Continue = new();
     public static readonly Stop Stopped = new();
     public static readonly End Ended = new();
+    public static readonly Retry RetryFlow = new();
+    public static readonly Resume ResumeFlow = new();
 }
 
 public enum ExitKind

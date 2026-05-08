@@ -54,6 +54,13 @@ public sealed partial class BasicInterpreter
             // runtime the slot is still null when we read it). Detect that
             // and report a clear error.
             var fc = ExecuteStatementList(_program.Statements, _programFrame);
+            if (fc is FlowControl.Cause c)
+            {
+                _out.Flush();
+                Console.Error.WriteLine(
+                    $"unhandled exception type {c.Exception.Type} at line {c.Exception.Line}: {c.Exception.Text}");
+                return 1;
+            }
             return fc switch
             {
                 FlowControl.End or FlowControl.Stop or FlowControl.Next => 0,
@@ -102,6 +109,9 @@ public sealed partial class BasicInterpreter
                     return r; // function/sub return — caller handles
                 case FlowControl.End or FlowControl.Stop: return fc;
                 case FlowControl.Exit: return fc;
+                case FlowControl.Cause: return fc;     // propagate to handler / top-level
+                case FlowControl.Retry: return fc;     // only valid inside a handler body
+                case FlowControl.Resume: return fc;
                 default: pc++; break;
             }
         }
@@ -121,6 +131,22 @@ public sealed partial class BasicInterpreter
     // -- Statement dispatch ----------------------------------------------
 
     private FlowControl ExecStmt(Stmt stmt, ActivationRecord frame)
+    {
+        try
+        {
+            return ExecStmtImpl(stmt, frame);
+        }
+        catch (BasicRuntimeException ex)
+        {
+            // Phase-6 conversion: runtime errors that escape expression
+            // evaluation become FlowControl.Cause so user WHEN/USE handlers
+            // can catch them. Top-level Run prints unhandled Cause flow.
+            var line = stmt.Span.StartPosition.LineCol.Line;
+            return new FlowControl.Cause(new BasicException(ex.TypeCode, line, ex.Message));
+        }
+    }
+
+    private FlowControl ExecStmtImpl(Stmt stmt, ActivationRecord frame)
     {
         switch (stmt)
         {
@@ -168,6 +194,11 @@ public sealed partial class BasicInterpreter
             case PrintFileStmt pf: return ExecPrintFile(pf, frame);
             case InputFileStmt ifs: return ExecInputFile(ifs, frame);
             case LineInputFileStmt li2: return ExecLineInputFile(li2, frame);
+            case WhenStmt w: return ExecWhen(w, frame);
+            case HandlerStmt: return FlowControl.Continue; // declaration only
+            case CauseStmt cause: return ExecCause(cause, frame);
+            case RetryStmt: return FlowControl.RetryFlow;
+            case ContinueResumeStmt: return FlowControl.ResumeFlow;
             case SubStmt: return FlowControl.Continue; // declarations only execute when called
             case FunctionStmt: return FlowControl.Continue;
             case DefStmt: return FlowControl.Continue;

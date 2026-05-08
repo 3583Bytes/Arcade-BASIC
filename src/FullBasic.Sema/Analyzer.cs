@@ -160,6 +160,20 @@ public sealed class Analyzer
                 foreach (var c in s.Cases) Pass1(c.Body, scope);
                 if (s.CaseElse is not null) Pass1(s.CaseElse, scope);
                 break;
+
+            case HandlerStmt h:
+                if (!scope.Declare(Scope.Key(h.Name, isString: false), new HandlerSymbol(h.Name, h)))
+                {
+                    _diags.Error(ErrDuplicateDeclaration, h.Span,
+                        $"HANDLER '{h.Name}' redeclares an existing name");
+                }
+                Pass1(h.Body, scope);
+                break;
+
+            case WhenStmt w:
+                Pass1(w.InBody, scope);
+                if (w.UseBody is not null) Pass1(w.UseBody, scope);
+                break;
         }
     }
 
@@ -405,6 +419,35 @@ public sealed class Analyzer
             case MatInputStmt mi: CheckMatTarget(mi.TargetName, mi.TargetIsString, mi.Span, scope); break;
             case MatPrintStmt mp: CheckMatTarget(mp.TargetName, mp.TargetIsString, mp.Span, scope); break;
             case MatReadStmt mrd: CheckMatTarget(mrd.TargetName, mrd.TargetIsString, mrd.Span, scope); break;
+
+            case WhenStmt w:
+                foreach (var t in w.InBody) AnalyzeStmt(t, scope);
+                if (w.UseBody is not null)
+                {
+                    foreach (var t in w.UseBody) AnalyzeStmt(t, scope);
+                }
+                else if (w.UseHandlerName is not null)
+                {
+                    var hsym = scope.Lookup(Scope.Key(w.UseHandlerName, isString: false));
+                    if (hsym is not HandlerSymbol)
+                    {
+                        _diags.Error(ErrUndefinedName, w.Span,
+                            $"HANDLER '{w.UseHandlerName}' is not defined");
+                    }
+                }
+                break;
+
+            case HandlerStmt hs:
+                foreach (var t in hs.Body) AnalyzeStmt(t, scope);
+                break;
+
+            case CauseStmt cause:
+                ExpectType(cause.Type, AnalyzeExpr(cause.Type, scope), BasicType.Numeric, "CAUSE EXCEPTION type");
+                break;
+
+            case RetryStmt: case ContinueResumeStmt:
+                // Validity (must be inside a USE handler) is enforced at runtime.
+                break;
 
             case OpenStmt op:
                 ExpectType(op.Channel, AnalyzeExpr(op.Channel, scope), BasicType.Numeric, "OPEN channel");
