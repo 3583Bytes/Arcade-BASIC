@@ -132,51 +132,120 @@ public sealed partial class BasicInterpreter
         return FlowControl.Continue;
     }
 
-    /// <summary>BASIC-style numeric formatting: leading space for non-negative.</summary>
+    /// <summary>Significant-digit cap for PRINT output. ISO 10279 mandates
+    /// at least 6 significant digits; we use 9 as a reasonable default.</summary>
+    private const int DisplaySignificantDigits = 9;
+
+    /// <summary>BASIC-style numeric formatting: leading space for non-negative.
+    /// Caps the printed value at <see cref="DisplaySignificantDigits"/> so
+    /// expressions through BigDecimal arithmetic don't dump huge digit tails.</summary>
     private static string FormatNumeric(BigDecimal x)
     {
-        var s = x.ToString();
+        var rounded = RoundForDisplay(x);
+        var s = rounded.ToString();
+        if (s.Contains('.'))
+        {
+            s = s.TrimEnd('0').TrimEnd('.');
+            if (s.Length == 0 || s == "-") s = "0";
+        }
         return x >= BigDecimal.Zero ? " " + s + " " : s + " ";
+    }
+
+    private static BigDecimal RoundForDisplay(BigDecimal x)
+    {
+        if (x == BigDecimal.Zero) return x;
+        var s = BigDecimal.Abs(x).ToString();
+        var dot = s.IndexOf('.');
+        int intDigits;
+        if (dot < 0)
+        {
+            intDigits = s.Length;
+        }
+        else if (dot == 1 && s[0] == '0')
+        {
+            // 0.xxx — count leading zeros after the decimal as negative "integer digits".
+            intDigits = 1;
+            for (var i = dot + 1; i < s.Length && s[i] == '0'; i++) intDigits--;
+        }
+        else
+        {
+            intDigits = dot;
+        }
+        if (intDigits >= DisplaySignificantDigits)
+        {
+            return BigDecimal.Round(x, 0, RoundingMode.MidpointToEven);
+        }
+        return BigDecimal.Round(x, DisplaySignificantDigits - intDigits, RoundingMode.MidpointToEven);
     }
 
     // -- INPUT -----------------------------------------------------------
 
     private FlowControl ExecInput(InputStmt input, ActivationRecord frame)
     {
-        if (input.Prompt is not null)
+        // Bad-input retry loop: re-prompt with "Redo from start" if the user
+        // supplies too few fields or a non-numeric value for a numeric target.
+        // Matches conventional BASIC behaviour; the ISO 10279 exception (4002)
+        // is only raised once the input stream is exhausted (ReadLine -> null).
+        while (true)
         {
-            _out.Write(EvalString(input.Prompt, frame));
-            if (input.PromptIsSemicolon) _out.Write(' ');
-            else _out.Write("? ");
-        }
-        else
-        {
-            _out.Write("? ");
-        }
-        _out.Flush();
+            if (input.Prompt is not null)
+            {
+                _out.Write(EvalString(input.Prompt, frame));
+                if (input.PromptIsSemicolon) _out.Write(' ');
+                else _out.Write("? ");
+            }
+            else
+            {
+                _out.Write("? ");
+            }
+            _out.Flush();
 
-        var line = _in.ReadLine() ?? "";
-        var fields = line.Split(',');
-        if (fields.Length < input.Targets.Count)
-        {
-            throw new BasicRuntimeException(4001,
-                $"INPUT: expected {input.Targets.Count} value(s), got {fields.Length}");
-        }
+            var rawLine = _in.ReadLine();
+            if (rawLine is null)
+            {
+                throw new BasicRuntimeException(4003, "INPUT: end of input stream");
+            }
+            var fields = rawLine.Split(',');
+            if (fields.Length < input.Targets.Count)
+            {
+                _out.WriteLine("Not enough data — redo from start.");
+                continue;
+            }
 
-        for (var i = 0; i < input.Targets.Count; i++)
-        {
-            var target = input.Targets[i];
-            var raw = fields[i].Trim();
-            var isString = TargetIsString(target);
-            Value value = isString
-                ? new StringValue(raw)
-                : (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd)
-                    ? new NumericValue(bd)
-                    : throw new BasicRuntimeException(4002, $"INPUT: '{raw}' is not numeric"));
-            WriteAssignableTarget(target, value, frame);
-        }
+            var parsed = new Value[input.Targets.Count];
+            var badField = -1;
+            for (var i = 0; i < input.Targets.Count; i++)
+            {
+                var target = input.Targets[i];
+                var raw = fields[i].Trim();
+                var isString = TargetIsString(target);
+                if (isString)
+                {
+                    parsed[i] = new StringValue(raw);
+                }
+                else if (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+                {
+                    parsed[i] = new NumericValue(bd);
+                }
+                else
+                {
+                    badField = i;
+                    break;
+                }
+            }
 
-        return FlowControl.Continue;
+            if (badField >= 0)
+            {
+                _out.WriteLine($"'{fields[badField].Trim()}' is not numeric — redo from start.");
+                continue;
+            }
+
+            for (var i = 0; i < input.Targets.Count; i++)
+            {
+                WriteAssignableTarget(input.Targets[i], parsed[i], frame);
+            }
+            return FlowControl.Continue;
+        }
     }
 
     private bool TargetIsString(Expr e) => e switch

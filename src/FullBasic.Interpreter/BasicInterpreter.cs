@@ -103,7 +103,15 @@ public sealed partial class BasicInterpreter
                         pc = idx;
                         break;
                     }
-                    return fc;
+                    // Target is at program level (typical case for SST-style
+                    // subroutines called from inside FOR/DO bodies). Execute
+                    // it inline so RETURN brings us back here instead of
+                    // unwinding the surrounding block.
+                    {
+                        var rfc = RunGosubAtLabel(gs.Label, frame);
+                        if (rfc is FlowControl.Next) { pc++; break; }
+                        return rfc;
+                    }
                 case FlowControl.Return r:
                     if (gosubReturnStack.Count > 0) { pc = gosubReturnStack.Pop(); break; }
                     return r; // function/sub return — caller handles
@@ -111,6 +119,57 @@ public sealed partial class BasicInterpreter
                 case FlowControl.Exit: return fc;
                 case FlowControl.Cause: return fc;     // propagate to handler / top-level
                 case FlowControl.Retry: return fc;     // only valid inside a handler body
+                case FlowControl.Resume: return fc;
+                default: pc++; break;
+            }
+        }
+        return FlowControl.Continue;
+    }
+
+    /// <summary>
+    /// Execute the program-level subroutine that starts at <paramref name="label"/>,
+    /// stopping when the RETURN at depth zero is reached. Used when a GOSUB is
+    /// issued from inside a nested block (FOR/DO/IF/SELECT) so the surrounding
+    /// block can resume correctly when the subroutine returns.
+    /// </summary>
+    private FlowControl RunGosubAtLabel(int label, ActivationRecord frame)
+    {
+        var stmts = _program.Statements;
+        var labelMap = BuildLabelMap(stmts);
+        if (!labelMap.TryGetValue(label, out var startPc))
+            return new FlowControl.Goto(label);
+
+        var localStack = new Stack<int>();
+        var pc = startPc;
+        while (pc < stmts.Count)
+        {
+            var fc = ExecStmt(stmts[pc], frame);
+            switch (fc)
+            {
+                case FlowControl.Next: pc++; break;
+                case FlowControl.Goto g:
+                    if (labelMap.TryGetValue(g.Label, out var gi)) { pc = gi; break; }
+                    return fc;
+                case FlowControl.Gosub gs:
+                    if (labelMap.TryGetValue(gs.Label, out var sidx))
+                    {
+                        localStack.Push(pc + 1);
+                        pc = sidx;
+                        break;
+                    }
+                    // Nested GOSUB from a block within this subroutine — recurse.
+                    {
+                        var nfc = RunGosubAtLabel(gs.Label, frame);
+                        if (nfc is FlowControl.Next) { pc++; break; }
+                        return nfc;
+                    }
+                case FlowControl.Return:
+                    if (localStack.Count > 0) { pc = localStack.Pop(); break; }
+                    return FlowControl.Continue; // RETURN from this subroutine
+                case FlowControl.End or FlowControl.Stop: return fc;
+                case FlowControl.Exit: return fc;
+                case FlowControl.Cause: return fc;
+                case FlowControl.Retry: return fc;
                 case FlowControl.Resume: return fc;
                 default: pc++; break;
             }

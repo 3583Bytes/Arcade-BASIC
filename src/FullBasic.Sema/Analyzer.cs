@@ -738,9 +738,13 @@ public sealed class Analyzer
         {
             // Read-before-write: introduce as a default-initialized variable
             // in the nearest non-builtin scope. Spec-allowed but we warn.
-            var declScope = NearestVariableScope(scope);
+            // Implicit declarations from a *read* go to program scope, so
+            // names referenced inside DEF/SUB/FUNCTION bodies close over the
+            // surrounding program-level variables rather than allocating a
+            // shadowed local.
+            var declScope = ProgramScope(scope);
             var slot = declScope.AllocateSlot();
-            var v = new VariableSymbol(n.Name, n.IsString, slot);
+            var v = new VariableSymbol(n.Name, n.IsString, slot) { OwnerScope = declScope };
             declScope.Declare(key, v);
             _diags.Warning(WarnImplicitVariable, n.Span,
                 $"implicit declaration of '{n.Name}{(n.IsString ? "$" : "")}'",
@@ -948,6 +952,21 @@ public sealed class Analyzer
         for (var s = scope; s is not null; s = s.Parent)
         {
             if (s.Kind != ScopeKind.Module) return s;
+        }
+        return scope;
+    }
+
+    /// <summary>
+    /// Walk up to the Program scope. Used for implicit declarations of names
+    /// read inside nested DEF/SUB/FUNCTION bodies, so that those bodies close
+    /// over program-level variables instead of allocating a fresh local slot
+    /// that shadows the caller's value.
+    /// </summary>
+    private static Scope ProgramScope(Scope scope)
+    {
+        for (var s = scope; s is not null; s = s.Parent)
+        {
+            if (s.Kind == ScopeKind.Program) return s;
         }
         return scope;
     }

@@ -72,7 +72,10 @@ public static class BuiltinImpls
         t["COT"] = args => Num(FromDouble(1.0 / Math.Tan(ToDouble(args[0]))));
 
         var rng = new Random();
-        t["RND"] = args => Num(BigDecimal.Parse(rng.NextDouble().ToString("R", System.Globalization.CultureInfo.InvariantCulture)));
+        t["RND"] = args => Num(BigDecimal.Parse(
+            rng.NextDouble().ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture));
 
         t["MAX"] = args =>
         {
