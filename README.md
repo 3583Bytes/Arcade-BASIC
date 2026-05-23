@@ -1,6 +1,20 @@
 # Full BASIC
 
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/OWNER/REPO?label=release)](https://github.com/OWNER/REPO/releases/latest)
+[![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
+[![Spec: ISO 10279](https://img.shields.io/badge/spec-ISO%2010279%3A1991-blue)](https://www.iso.org/standard/18305.html)
+
+> Replace `OWNER/REPO` in the badges above with your GitHub `owner/repo` once the project is pushed.
+
 A Full BASIC (ISO/IEC 10279:1991, ANSI X3.113-1987) interpreter and compiler in C#.
+
+## Documentation
+
+- [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures.
+- [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
+- [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
+- [**Examples**](examples/README.md) — sample programs with a feature matrix across tree-walker and bytecode VM.
 
 ## Status
 

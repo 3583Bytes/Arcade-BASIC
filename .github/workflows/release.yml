@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag/name to use for the release (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Native AOT binaries — one per (OS, RID). Each runner produces a single
+  # self-contained executable that needs no .NET runtime installed.
+  # -------------------------------------------------------------------------
+  aot:
+    name: AOT (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            ext: ''
+          - os: macos-latest
+            rid: osx-arm64
+            ext: ''
+          - os: macos-13
+            rid: osx-x64
+            ext: ''
+          - os: windows-latest
+            rid: win-x64
+            ext: '.exe'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Publish AOT
+        shell: bash
+        run: |
+          dotnet publish src/FullBasic.Cli \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            /p:PublishAot=true \
+            --output publish/aot
+
+      - name: Smoke-test the binary
+        shell: bash
+        run: |
+          ./publish/aot/FullBasic.Cli${{ matrix.ext }} --version
+          ./publish/aot/FullBasic.Cli${{ matrix.ext }} run examples/hello.bas
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp publish/aot/FullBasic.Cli${{ matrix.ext }} \
+             artifacts/full-basic-${{ matrix.rid }}${{ matrix.ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aot-${{ matrix.rid }}
+          path: artifacts/
+
+  # -------------------------------------------------------------------------
+  # Framework-dependent portable build — single zip, runs on any host that
+  # has .NET 9 installed. Much smaller than the AOT binaries.
+  # -------------------------------------------------------------------------
+  framework-dependent:
+    name: Framework-dependent (portable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Publish framework-dependent
+        run: |
+          dotnet publish src/FullBasic.Cli \
+            --configuration Release \
+            --no-self-contained \
+            --output publish/fw
+
+      - name: Package
+        run: |
+          mkdir -p artifacts
+          cd publish/fw
+          zip -r ../../artifacts/full-basic-framework-dependent.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: framework-dependent
+          path: artifacts/
+
+  # -------------------------------------------------------------------------
+  # Collect every artifact and attach to a GitHub release.
+  # -------------------------------------------------------------------------
+  release:
+    name: Publish GitHub release
+    needs: [aot, framework-dependent]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.tag.outputs.name }}
+          tag_name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
+          files: dist/*
