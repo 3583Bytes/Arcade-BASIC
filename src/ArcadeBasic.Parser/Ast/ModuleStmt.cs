@@ -1,6 +1,6 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Parser.Ast;
+namespace ArcadeBasic.Parser.Ast;
 
 /// <summary>
 /// MODULE name ... END MODULE — a named module containing declarations

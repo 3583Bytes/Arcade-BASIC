@@ -1,4 +1,4 @@
-namespace FullBasic.Sema;
+namespace ArcadeBasic.Sema;
 
 /// <summary>
 /// Predefined supplied functions and constants per ISO/IEC 10279.

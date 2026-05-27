@@ -1,7 +1,7 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Maps channel numbers (Full BASIC's #n) to open BasicFile instances. Channel
+/// Maps channel numbers (Arcade BASIC's #n) to open BasicFile instances. Channel
 /// 0 is reserved for the program's stdin/stdout (handled by the interpreter,
 /// not this table). Channels 1..N hold files opened by user code.
 /// </summary>

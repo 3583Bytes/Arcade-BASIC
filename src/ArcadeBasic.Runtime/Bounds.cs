@@ -1,4 +1,4 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// Per-dimension lower/upper bounds for an array. Supports up to 7 dimensions

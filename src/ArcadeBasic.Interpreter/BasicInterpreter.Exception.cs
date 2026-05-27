@@ -1,8 +1,8 @@
-using FullBasic.Parser.Ast;
-using FullBasic.Runtime;
-using FullBasic.Sema;
+using ArcadeBasic.Parser.Ast;
+using ArcadeBasic.Runtime;
+using ArcadeBasic.Sema;
 
-namespace FullBasic.Interpreter;
+namespace ArcadeBasic.Interpreter;
 
 /// <summary>
 /// Phase-6 exception-handling execution. WHEN/USE/HANDLER, CAUSE, RETRY, CONTINUE.

@@ -3,7 +3,7 @@ using UnityEditor;
 using UnityEditor.AssetImporters;
 using UnityEngine;
 
-namespace FullBasic.Editor
+namespace ArcadeBasic.Editor
 {
     /// <summary>
     /// Custom inspector for <c>.bas</c> files. Shows a source preview, a
@@ -29,7 +29,7 @@ namespace FullBasic.Editor
 
             // Header bar.
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Full BASIC", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Arcade BASIC", EditorStyles.boldLabel);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("Refresh", EditorStyles.miniButton, GUILayout.Width(60)))
             {

@@ -1,6 +1,6 @@
 using Singulink.Numerics;
 
-namespace FullBasic.Bytecode;
+namespace ArcadeBasic.Bytecode;
 
 /// <summary>
 /// A single executable chunk of bytecode: an opcode buffer, the constants pool

@@ -1,7 +1,7 @@
 using System.Text;
 using Singulink.Numerics;
 
-namespace FullBasic.Bytecode;
+namespace ArcadeBasic.Bytecode;
 
 /// <summary>
 /// Binary serializer for compiled <see cref="Program"/> instances. Used by

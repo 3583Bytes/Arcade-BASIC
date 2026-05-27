@@ -1,9 +1,9 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Lexer;
+namespace ArcadeBasic.Lexer;
 
 /// <summary>
-/// Lexer for ISO/IEC 10279 Full BASIC. Produces a flat token stream including
+/// Lexer for ISO/IEC 10279 Arcade BASIC. Produces a flat token stream including
 /// explicit Newline tokens (so the parser can use line breaks as statement
 /// terminators) and a final EndOfFile token.
 /// </summary>
@@ -108,7 +108,7 @@ public sealed class BasicLexer
                 continue;
             }
 
-            // `!` introduces an end-of-line comment (Full BASIC shorthand).
+            // `!` introduces an end-of-line comment (Arcade BASIC shorthand).
             if (c == '!')
             {
                 ConsumeToEol();

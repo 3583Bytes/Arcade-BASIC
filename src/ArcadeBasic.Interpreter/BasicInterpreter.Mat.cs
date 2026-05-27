@@ -1,10 +1,10 @@
 using System.Globalization;
-using FullBasic.Parser.Ast;
-using FullBasic.Runtime;
-using FullBasic.Sema;
+using ArcadeBasic.Parser.Ast;
+using ArcadeBasic.Runtime;
+using ArcadeBasic.Sema;
 using Singulink.Numerics;
 
-namespace FullBasic.Interpreter;
+namespace ArcadeBasic.Interpreter;
 
 /// <summary>
 /// MAT statement execution. Per Q10:

@@ -1,4 +1,4 @@
-# Full BASIC for Unity
+# Arcade BASIC for Unity
 
 Embed a complete ISO/IEC 10279:1991 BASIC interpreter in your Unity game.
 
@@ -18,16 +18,16 @@ https://github.com/OWNER/REPO.git?path=unity#v0.1.0
 
 ### Via downloaded ZIP
 
-Grab `full-basic-unity-<version>.zip` from the [releases](https://github.com/OWNER/REPO/releases) page, extract under `Packages/com.fullbasic.interpreter/` in your Unity project.
+Grab `arcade-basic-unity-<version>.zip` from the [releases](https://github.com/OWNER/REPO/releases) page, extract under `Packages/com.arcadebasic.interpreter/` in your Unity project.
 
 ## Quickstart
 
 ```csharp
-using FullBasic;
+using ArcadeBasic;
 using System.IO;
 using UnityEngine;
 
-public class HelloFullBasic : MonoBehaviour
+public class HelloArcadeBasic : MonoBehaviour
 {
     void Start()
     {
@@ -62,7 +62,7 @@ Output appears in the Unity console:
 ## API
 
 ```csharp
-using FullBasic;
+using ArcadeBasic;
 
 // One-call, output captured to a string.
 BasicEngine.Result Run(
@@ -83,7 +83,7 @@ BasicEngine.Result Run(
 
 `Result.ExitCode` is `0` on success, `1` on parse/sema/runtime failure. `Result.Diagnostics` is the rendered text of every compile-time warning and error.
 
-For finer control (custom diagnostics handling, embedding the lexer/parser/sema/interpreter individually), reference `FullBasic.Lexer`, `FullBasic.Parser`, `FullBasic.Sema`, `FullBasic.Interpreter` directly — the public types are intentionally small but complete.
+For finer control (custom diagnostics handling, embedding the lexer/parser/sema/interpreter individually), reference `ArcadeBasic.Lexer`, `ArcadeBasic.Parser`, `ArcadeBasic.Sema`, `ArcadeBasic.Interpreter` directly — the public types are intentionally small but complete.
 
 ## What's supported
 
@@ -106,17 +106,19 @@ Per the upstream [`docs/conformance.md`](https://github.com/OWNER/REPO/blob/main
 
 Installing the package activates a small Unity editor extension:
 
-- **`Window → Full BASIC → Console`** — interactive REPL-ish window with a source pane, output pane, and run button. `Ctrl/Cmd + Enter` runs. Source persists across editor sessions via `EditorPrefs`.
-- **`Assets → Create → Full BASIC`** — templates for new `.bas` files: Empty Program, Hello World, FOR Loop Demo, Function Demo.
+- **`Window → Arcade BASIC → Console`** — interactive REPL-ish window with a source pane, output pane, and run button. `Ctrl/Cmd + Enter` runs. Source persists across editor sessions via `EditorPrefs`.
+- **`Assets → Create → Arcade BASIC`** — templates for new `.bas` files: Empty Program, Hello World, FOR Loop Demo, Function Demo.
 - **`.bas` files in the Project window** are imported as `TextAsset`s via a `ScriptedImporter`. Selecting one shows a custom inspector with a source preview and a green **▶ Run** button.
-- **`Assets → Run Full BASIC Program`** (context menu) — right-click any selected `.bas` to open it in the console.
-- **`Window → Full BASIC → Documentation / Conformance notes / About`** — link straight to the project's docs and the spec-deviation list.
+- **`Assets → Run Arcade BASIC Program`** (context menu) — right-click any selected `.bas` to open it in the console.
+- **`Window → Arcade BASIC → Documentation / Conformance notes / About`** — link straight to the project's docs and the spec-deviation list.
 
 All of the above is in `Editor/` of the package and only compiled when Unity is in Editor mode, so the runtime build stays clean.
 
 ## Sample
 
-Open the **InGameConsole** sample via **Package Manager → Full BASIC Interpreter → Samples → Import**. Drop the imported `FullBasicRunner.cs` script onto a GameObject and the program runs in `Start()`.
+Open the **InGameConsole** sample via **Package Manager → Arcade BASIC Interpreter → Samples → Import**. Then run **Window → Arcade BASIC → Samples → Create REPL Scene** to generate a ready-to-play scene with a TMP input field, scrollable transcript, and Run button — press Play and type your first BASIC program.
+
+See [`Samples~/InGameConsole/README.md`](Samples~/InGameConsole/README.md) for the layout and manual-wiring instructions.
 
 ## Performance notes
 
@@ -132,7 +134,7 @@ If you imported a package built *before this fix*, Unity's strict plugin-referen
 
 The fix is to ship `.meta` files for every plugin DLL with `validateReferences: 0`, which the package now does. To recover:
 
-1. Delete `Packages/com.fullbasic.interpreter/` from your project (or whatever folder you extracted into).
+1. Delete `Packages/com.arcadebasic.interpreter/` from your project (or whatever folder you extracted into).
 2. Re-install from the **`v0.1.0` or later** release zip, or re-pull the UPM git URL.
 3. Re-open Unity. The DLLs should now load cleanly.
 

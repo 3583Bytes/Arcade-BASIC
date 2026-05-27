@@ -1,4 +1,4 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// Phase-3 stand-in for the spec's exception machinery. Phase 6 will replace

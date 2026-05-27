@@ -1,12 +1,12 @@
-using FullBasic.Bytecode;
-using FullBasic.Cli;
-using FullBasic.Compiler;
-using FullBasic.Core;
-using FullBasic.Interpreter;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
-using FullBasic.Vm;
+using ArcadeBasic.Bytecode;
+using ArcadeBasic.Cli;
+using ArcadeBasic.Compiler;
+using ArcadeBasic.Core;
+using ArcadeBasic.Interpreter;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
+using ArcadeBasic.Vm;
 using Singulink.Numerics;
 
 // Phase 10: if this binary has a bundled bytecode payload, run it directly
@@ -62,14 +62,14 @@ static int Run(string[] args)
 
 static int PrintVersion()
 {
-    Console.WriteLine("full-basic 0.0.0 (Phase 1)");
+    Console.WriteLine("arcade-basic 0.0.0 (Phase 1)");
     return 0;
 }
 
 static int PrintUsage()
 {
     Console.WriteLine("""
-        usage: full-basic <command> [args]
+        usage: arcade-basic <command> [args]
 
         commands:
           lex <file>            Run the lexer over <file> and print the token stream.
@@ -78,7 +78,7 @@ static int PrintUsage()
           run <file>            Lex + parse + analyze + run the program (tree-walker).
           vm <file>             Lex + parse + analyze + compile + run on bytecode VM.
           build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
-          repl                  Start an interactive Full BASIC session.
+          repl                  Start an interactive Arcade BASIC session.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
           --help                Print this help.
@@ -97,7 +97,7 @@ static int RunLex(ReadOnlySpan<string> args)
 {
     if (args.Length != 1)
     {
-        Console.Error.WriteLine("usage: full-basic lex <file>");
+        Console.Error.WriteLine("usage: arcade-basic lex <file>");
         return 2;
     }
 
@@ -136,7 +136,7 @@ static int RunParse(ReadOnlySpan<string> args)
 {
     if (args.Length != 1)
     {
-        Console.Error.WriteLine("usage: full-basic parse <file>");
+        Console.Error.WriteLine("usage: arcade-basic parse <file>");
         return 2;
     }
 
@@ -172,11 +172,11 @@ static int RunBuild(ReadOnlySpan<string> args)
     {
         if (args[i] == "-o" && i + 1 < args.Length) { output = args[i + 1]; i++; }
         else if (source is null) source = args[i];
-        else { Console.Error.WriteLine("usage: full-basic build <source> [-o <output>]"); return 2; }
+        else { Console.Error.WriteLine("usage: arcade-basic build <source> [-o <output>]"); return 2; }
     }
     if (source is null)
     {
-        Console.Error.WriteLine("usage: full-basic build <source> [-o <output>]");
+        Console.Error.WriteLine("usage: arcade-basic build <source> [-o <output>]");
         return 2;
     }
     if (!File.Exists(source))
@@ -200,7 +200,7 @@ static int RunBuild(ReadOnlySpan<string> args)
     foreach (var diag in diags.All) Console.Error.Write(diag.Render(useColor));
     if (diags.HasErrors) return 1;
 
-    FullBasic.Bytecode.Program compiled;
+    ArcadeBasic.Bytecode.Program compiled;
     try
     {
         compiled = BasicCompiler.Compile(program, info);
@@ -258,7 +258,7 @@ static int RunVm(ReadOnlySpan<string> args)
 {
     if (args.Length != 1)
     {
-        Console.Error.WriteLine("usage: full-basic vm <file>");
+        Console.Error.WriteLine("usage: arcade-basic vm <file>");
         return 2;
     }
     var path = args[0];
@@ -282,7 +282,7 @@ static int RunVm(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
-    FullBasic.Bytecode.Program compiled;
+    ArcadeBasic.Bytecode.Program compiled;
     try
     {
         compiled = BasicCompiler.Compile(program, info);
@@ -290,7 +290,7 @@ static int RunVm(ReadOnlySpan<string> args)
     catch (BasicCompiler.UnsupportedFeatureException ex)
     {
         Console.Error.WriteLine($"VM compile error: {ex.Message}");
-        Console.Error.WriteLine("(use `full-basic run` for full feature support)");
+        Console.Error.WriteLine("(use `arcade-basic run` for full feature support)");
         return 1;
     }
 
@@ -302,7 +302,7 @@ static int RunAnalyze(ReadOnlySpan<string> args)
 {
     if (args.Length != 1)
     {
-        Console.Error.WriteLine("usage: full-basic analyze <file>");
+        Console.Error.WriteLine("usage: arcade-basic analyze <file>");
         return 2;
     }
 
@@ -354,7 +354,7 @@ static int RunProgram(ReadOnlySpan<string> args)
 {
     if (args.Length < 1)
     {
-        Console.Error.WriteLine("usage: full-basic run <main-file> [module-file ...]");
+        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...]");
         return 2;
     }
 
@@ -372,9 +372,9 @@ static int RunProgram(ReadOnlySpan<string> args)
     // body runs (declarations don't execute, so this only affects ordering
     // of any future module-level init we add).
     var diags = new DiagnosticBag();
-    var allStatements = new List<FullBasic.Parser.Ast.Stmt>();
+    var allStatements = new List<ArcadeBasic.Parser.Ast.Stmt>();
     SourceFile? mainFile = null;
-    var moduleFiles = new List<FullBasic.Parser.Ast.Program>();
+    var moduleFiles = new List<ArcadeBasic.Parser.Ast.Program>();
 
     var mainPath = args[0];
     foreach (var path in args)
@@ -404,7 +404,7 @@ static int RunProgram(ReadOnlySpan<string> args)
     var mainProgram = new BasicParser(mainTokens, mainFileObj, diags).ParseProgram();
     allStatements.AddRange(mainProgram.Statements);
 
-    var combined = new FullBasic.Parser.Ast.Program(mainProgram.Span, allStatements);
+    var combined = new ArcadeBasic.Parser.Ast.Program(mainProgram.Span, allStatements);
     var info = Analyzer.Analyze(combined, diags);
 
     var useColor = !Console.IsErrorRedirected;

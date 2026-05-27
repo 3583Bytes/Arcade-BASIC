@@ -1,6 +1,6 @@
 # Architecture
 
-Full BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, organised as a classic compiler-and-interpreter pipeline plus a stack-based bytecode VM. This document is the orientation map: if you have ten minutes and want to understand how a `.bas` file becomes program output, read this first.
+Arcade BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, organised as a classic compiler-and-interpreter pipeline plus a stack-based bytecode VM. This document is the orientation map: if you have ten minutes and want to understand how a `.bas` file becomes program output, read this first.
 
 ## The pipeline
 
@@ -11,16 +11,16 @@ Full BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, 
                                              │
                                              ▼
                        ┌─────────────────────────────────────────┐
-   FullBasic.Lexer ──► │ Tokens (TokenKind + Text + SourceSpan)  │
+   ArcadeBasic.Lexer ──► │ Tokens (TokenKind + Text + SourceSpan)  │
                        └────────────────────┬────────────────────┘
                                             ▼
                        ┌─────────────────────────────────────────┐
-   FullBasic.Parser ─► │ Program (immutable AST: record class    │
+   ArcadeBasic.Parser ─► │ Program (immutable AST: record class    │
                        │ hierarchy under Stmt / Expr / PrintItem)│
                        └────────────────────┬────────────────────┘
                                             ▼
                        ┌─────────────────────────────────────────┐
-   FullBasic.Sema ───► │ SemanticInfo: Scope tree + Resolutions  │
+   ArcadeBasic.Sema ───► │ SemanticInfo: Scope tree + Resolutions  │
                        │ + ExpressionTypes + LineLabels +        │
                        │ DataPool + CallTargets                  │
                        └────────────────────┬────────────────────┘
@@ -28,7 +28,7 @@ Full BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, 
                 ┌───────────────────────────┴───────────────────────────┐
                 ▼                                                       ▼
    ┌─────────────────────────────────┐         ┌─────────────────────────────────┐
-   │ FullBasic.Interpreter           │         │ FullBasic.Compiler              │
+   │ ArcadeBasic.Interpreter           │         │ ArcadeBasic.Compiler              │
    │ Tree-walking interpreter        │         │ AST → Bytecode                  │
    │ FlowControl-typed returns       │         │ (compiles a subset of the       │
    │ Full-feature support            │         │  interpreter's surface)         │
@@ -36,13 +36,13 @@ Full BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, 
                     │                                           │
                     │                                           ▼
                     │                          ┌─────────────────────────────────┐
-                    │                          │ FullBasic.Vm                    │
+                    │                          │ ArcadeBasic.Vm                    │
                     │                          │ Stack VM over a Chunk           │
                     │                          └────────────────┬────────────────┘
                     │                                           │
                     │                                           ▼
                     │                          ┌─────────────────────────────────┐
-                    │                          │ FullBasic.Cli `build`           │
+                    │                          │ ArcadeBasic.Cli `build`           │
                     │                          │ Stub + appended payload =       │
                     │                          │ self-extracting native binary   │
                     │                          └─────────────────────────────────┘
@@ -56,45 +56,45 @@ Three paths come out of the analyzer:
 
 - **`run` path:** tree-walking interpreter, the most feature-complete. Supports the full surface — arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
 - **`vm`/`build` path:** AST → bytecode → stack VM. Currently a strict subset of the tree-walker (no arrays, MAT, files, exceptions, modules, `PRINT USING`, or `INPUT`). The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
-- **`repl` path:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/FullBasic.Cli/BasicRepl.cs`.
+- **`repl` path:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/ArcadeBasic.Cli/BasicRepl.cs`.
 
 ## Project graph
 
 ```
-FullBasic.Core   ◄── used by everything
+ArcadeBasic.Core   ◄── used by everything
      ▲
      │ SourceFile, SourceSpan, DiagnosticBag
      │
-FullBasic.Lexer
+ArcadeBasic.Lexer
      ▲
      │ TokenKind, Token
      │
-FullBasic.Parser
+ArcadeBasic.Parser
      ▲ ▲
      │ │ Stmt / Expr / Program AST + AstPrinter
      │ │
-     │ FullBasic.Sema
+     │ ArcadeBasic.Sema
      │      ▲
      │      │ SemanticInfo, Scope, Symbol, ResolvedRef
      │      │
-     │      ├─► FullBasic.Interpreter ──► FullBasic.Runtime
+     │      ├─► ArcadeBasic.Interpreter ──► ArcadeBasic.Runtime
      │      │                              (Value, ActivationRecord,
      │      │                               BuiltinImpls, FlowControl,
      │      │                               BasicFile, PictureFormat)
      │      │
-     │      └─► FullBasic.Compiler ──► FullBasic.Bytecode (Chunk, Opcode, Serializer)
+     │      └─► ArcadeBasic.Compiler ──► ArcadeBasic.Bytecode (Chunk, Opcode, Serializer)
      │                                 │
      │                                 ▼
-     │                                 FullBasic.Vm
+     │                                 ArcadeBasic.Vm
      │
-     └─► FullBasic.Cli (top-level orchestration, AOT self-extracting stub)
+     └─► ArcadeBasic.Cli (top-level orchestration, AOT self-extracting stub)
 ```
 
-`FullBasic.Cli` depends on every other project; everything else avoids cyclic references by sitting under one of the upstream projects.
+`ArcadeBasic.Cli` depends on every other project; everything else avoids cyclic references by sitting under one of the upstream projects.
 
 ## Stages, one by one
 
-### FullBasic.Lexer
+### ArcadeBasic.Lexer
 
 Hand-rolled, character-by-character tokenizer. Produces `Token` records carrying a `TokenKind`, the original text, and a `SourceSpan`. A few notable quirks:
 
@@ -103,7 +103,7 @@ Hand-rolled, character-by-character tokenizer. Produces `Token` records carrying
 - **`!` and `REM` both start comments.** `!` runs to end-of-line; `REM` keeps the rest of the token text so the parser can preserve the comment payload.
 - **Keywords are case-insensitive** (matched via a hashtable in `Keywords.cs`); identifiers are stored case-preserving but compared case-insensitively in sema.
 
-### FullBasic.Parser
+### ArcadeBasic.Parser
 
 Recursive descent. Each statement family has its own `Parse*` method dispatched from `ParseStatement` based on the leading token kind. The output is a `Program` containing an ordered list of `Stmt`s, each potentially carrying:
 
@@ -118,7 +118,7 @@ Highlights:
 - **`:`-separated multi-statements** are parsed at the program/block level; `ParseLabeledStatement` consumes a label and a single statement, then peeks for `:` to continue on the same logical line.
 - **Block terminators** (`NEXT`, `END IF`, `LOOP`, `END SELECT`) may carry a leading label, which `ParseStatementBlock` consumes and discards — labels on block terminators don't survive into the AST. Place GOSUB/GOTO targets on a normal statement, not on the terminator.
 
-### FullBasic.Sema
+### ArcadeBasic.Sema
 
 Two-pass analyzer. Output: `SemanticInfo`, which is a bag of:
 
@@ -143,7 +143,7 @@ Two-pass analyzer. Output: `SemanticInfo`, which is a bag of:
 
 For `SUB` / `FUNCTION` / `DEF FN`, the symbol also holds a `BodyScope` and a back-pointer to the declaring `Stmt`.
 
-### FullBasic.Runtime
+### ArcadeBasic.Runtime
 
 Domain types shared by both the interpreter and the VM:
 
@@ -154,7 +154,7 @@ Domain types shared by both the interpreter and the VM:
 - **`BasicFile`** — abstraction over a `Stream` for DISPLAY/INTERNAL/BYTE mode files.
 - **`PictureFormat`** — parser and applier for `PRINT USING` picture strings.
 
-### FullBasic.Interpreter
+### ArcadeBasic.Interpreter
 
 Tree-walking interpreter. The main loop is `ExecuteStatementList(stmts, frame)`: build a label map, walk a pc cursor, dispatch each statement to `ExecStmt`, and react to the returned `FlowControl`:
 
@@ -166,7 +166,7 @@ Tree-walking interpreter. The main loop is `ExecuteStatementList(stmts, frame)`:
 
 `ExecFor`, `ExecDo`, `ExecSelect`, `ExecWhen`, etc., are recursive — they call back into `ExecuteStatementList` for their bodies. The same `ActivationRecord` flows through all of them, so the FOR loop counter is reachable from inside any nested block or DEF FN body via static-link resolution.
 
-### FullBasic.Compiler + FullBasic.Bytecode + FullBasic.Vm
+### ArcadeBasic.Compiler + ArcadeBasic.Bytecode + ArcadeBasic.Vm
 
 The non-interpreter path. `BasicCompiler.Compile(program, info)` walks the AST and emits a `Chunk` per program-level body, SUB, FUNCTION, and DEF. Each `Chunk` carries:
 
@@ -178,7 +178,7 @@ Opcodes are listed in `Opcode.cs`. They split into stack manipulation, constants
 
 `BasicVm.Run()` is a switch dispatch over the opcode stream. The runtime uses the same `Value` types and `ActivationRecord` as the tree-walker. The VM intentionally rejects features it doesn't support yet (`BasicCompiler.UnsupportedFeatureException`); the CLI's `vm` and `build` commands report this and direct the user to `run` for full support.
 
-### FullBasic.Cli + Phase-10 self-extracting binary
+### ArcadeBasic.Cli + Phase-10 self-extracting binary
 
 `Program.cs` dispatches sub-commands. The `build` command is the interesting bit:
 
@@ -229,7 +229,7 @@ The parser collects up to a configurable number of errors per file before giving
 
 ## Target frameworks
 
-The library projects (`FullBasic.Core` through `FullBasic.Vm` — everything except the CLI) **multi-target** `net9.0` and `netstandard2.1`. The CLI stays single-target `net9.0` because it uses `Environment.ProcessPath`, `File.SetUnixFileMode`, and AOT publishing — none of which exist on netstandard.
+The library projects (`ArcadeBasic.Core` through `ArcadeBasic.Vm` — everything except the CLI) **multi-target** `net9.0` and `netstandard2.1`. The CLI stays single-target `net9.0` because it uses `Environment.ProcessPath`, `File.SetUnixFileMode`, and AOT publishing — none of which exist on netstandard.
 
 A small `Polyfill.cs` file at the repo root is conditionally compiled into every non-`net5.0+` build (see `Directory.Build.props`) and supplies:
 
@@ -243,6 +243,6 @@ The libs are deliberately framework-thin: no `System.Text.Rune` (rewritten as su
 
 ## Where to look next
 
-- **Code entry points:** `src/FullBasic.Lexer/Lexer.cs` for tokenizing, `src/FullBasic.Parser/BasicParser.cs` for `ParseStatement` dispatch, `src/FullBasic.Sema/Analyzer.cs` for the two-pass analyzer, `src/FullBasic.Interpreter/BasicInterpreter.cs` for the `ExecuteStatementList` loop.
+- **Code entry points:** `src/ArcadeBasic.Lexer/Lexer.cs` for tokenizing, `src/ArcadeBasic.Parser/BasicParser.cs` for `ParseStatement` dispatch, `src/ArcadeBasic.Sema/Analyzer.cs` for the two-pass analyzer, `src/ArcadeBasic.Interpreter/BasicInterpreter.cs` for the `ExecuteStatementList` loop.
 - **Adding things:** see [`CONTRIBUTING.md`](../CONTRIBUTING.md) for "how to add a builtin / statement / opcode" recipes.
 - **What's spec-compliant vs implementation-defined:** see [`conformance.md`](conformance.md).

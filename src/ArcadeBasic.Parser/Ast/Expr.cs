@@ -1,6 +1,6 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Parser.Ast;
+namespace ArcadeBasic.Parser.Ast;
 
 /// <summary>Base for all expression AST nodes.</summary>
 public abstract record class Expr(SourceSpan Span);

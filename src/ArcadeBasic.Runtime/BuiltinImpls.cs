@@ -1,11 +1,11 @@
 using System.Text;
 using Singulink.Numerics;
 
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// Concrete implementations of the supplied functions registered in
-/// FullBasic.Sema/Builtins. Phase-3 keeps it simple: trig/exp/log evaluate
+/// ArcadeBasic.Sema/Builtins. Phase-3 keeps it simple: trig/exp/log evaluate
 /// in double precision (per ISO 10279, accuracy of supplied functions is
 /// implementation-defined; the standard recommends 6 significant decimal
 /// digits, and double yields ~15). Strict big-decimal versions can be

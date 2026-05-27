@@ -1,6 +1,6 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Parser.Ast;
+namespace ArcadeBasic.Parser.Ast;
 
 /// <summary>
 /// WHEN EXCEPTION IN ... USE ... END WHEN, with USE either an inline statement

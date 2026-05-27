@@ -1,5 +1,5 @@
 ! Number-guessing game. Stdin form: pipe in your guesses, one per line.
-! Example:   echo "50\n25\n12\n6\n" | full-basic run guess.bas
+! Example:   echo "50\n25\n12\n6\n" | arcade-basic run guess.bas
 LET TARGET = 7
 LET TRIES = 0
 PRINT "guess the number from 1 to 10:"

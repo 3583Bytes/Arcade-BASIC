@@ -49,7 +49,7 @@ jobs:
       - name: Publish AOT
         shell: bash
         run: |
-          dotnet publish src/FullBasic.Cli \
+          dotnet publish src/ArcadeBasic.Cli \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             /p:PublishAot=true \
@@ -58,15 +58,15 @@ jobs:
       - name: Smoke-test the binary
         shell: bash
         run: |
-          ./publish/aot/FullBasic.Cli${{ matrix.ext }} --version
-          ./publish/aot/FullBasic.Cli${{ matrix.ext }} run examples/hello.bas
+          ./publish/aot/ArcadeBasic.Cli${{ matrix.ext }} --version
+          ./publish/aot/ArcadeBasic.Cli${{ matrix.ext }} run examples/hello.bas
 
       - name: Stage artifact
         shell: bash
         run: |
           mkdir -p artifacts
-          cp publish/aot/FullBasic.Cli${{ matrix.ext }} \
-             artifacts/full-basic-${{ matrix.rid }}${{ matrix.ext }}
+          cp publish/aot/ArcadeBasic.Cli${{ matrix.ext }} \
+             artifacts/arcade-basic-${{ matrix.rid }}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -91,7 +91,7 @@ jobs:
 
       - name: Publish framework-dependent
         run: |
-          dotnet publish src/FullBasic.Cli \
+          dotnet publish src/ArcadeBasic.Cli \
             --configuration Release \
             --no-self-contained \
             --output publish/fw
@@ -100,7 +100,7 @@ jobs:
         run: |
           mkdir -p artifacts
           cd publish/fw
-          zip -r ../../artifacts/full-basic-framework-dependent.zip .
+          zip -r ../../artifacts/arcade-basic-framework-dependent.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -142,7 +142,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          zip -r "artifacts/full-basic-unity-${{ steps.ver.outputs.name }}.zip" unity \
+          zip -r "artifacts/arcade-basic-unity-${{ steps.ver.outputs.name }}.zip" unity \
             -x 'unity/scripts/*' \
             -x '*.DS_Store' \
             -x '*.pdb'

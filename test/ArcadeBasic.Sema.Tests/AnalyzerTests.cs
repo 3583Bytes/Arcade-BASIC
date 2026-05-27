@@ -1,11 +1,11 @@
 using FluentAssertions;
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Parser.Ast;
-using FullBasic.Sema;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Parser.Ast;
+using ArcadeBasic.Sema;
 
-namespace FullBasic.Sema.Tests;
+namespace ArcadeBasic.Sema.Tests;
 
 public class AnalyzerTests
 {

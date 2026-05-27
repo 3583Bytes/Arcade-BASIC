@@ -1,12 +1,12 @@
 using FluentAssertions;
-using FullBasic.Compiler;
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
-using FullBasic.Vm;
+using ArcadeBasic.Compiler;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
+using ArcadeBasic.Vm;
 
-namespace FullBasic.Vm.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>
 /// Phase-9 VM tests. Covers the supported subset (no arrays, no MAT, no I/O
@@ -23,7 +23,7 @@ public class VmTests
         var program = new BasicParser(tokens, file, diags).ParseProgram();
         var info = Analyzer.Analyze(program, diags);
         if (diags.HasErrors) return (string.Join("\n", diags.All.Select(d => d.Render(false))), 1);
-        FullBasic.Bytecode.Program compiled;
+        ArcadeBasic.Bytecode.Program compiled;
         try
         {
             compiled = BasicCompiler.Compile(program, info);

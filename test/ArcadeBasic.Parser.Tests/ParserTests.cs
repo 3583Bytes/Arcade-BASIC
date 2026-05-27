@@ -1,10 +1,10 @@
 using FluentAssertions;
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Parser.Tests;
+namespace ArcadeBasic.Parser.Tests;
 
 public class ParserTests
 {

@@ -1,4 +1,4 @@
-namespace FullBasic.Core;
+namespace ArcadeBasic.Core;
 
 /// <summary>Accumulator for diagnostics during compile-time passes.</summary>
 public sealed class DiagnosticBag

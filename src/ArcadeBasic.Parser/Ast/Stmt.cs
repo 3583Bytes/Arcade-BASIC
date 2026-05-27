@@ -1,6 +1,6 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Parser.Ast;
+namespace ArcadeBasic.Parser.Ast;
 
 /// <summary>
 /// Base for all statement AST nodes. Carries the source span and an optional

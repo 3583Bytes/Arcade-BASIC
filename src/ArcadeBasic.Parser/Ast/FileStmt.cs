@@ -1,6 +1,6 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Parser.Ast;
+namespace ArcadeBasic.Parser.Ast;
 
 /// <summary>OPEN #ch: NAME f$, ACCESS ?, ORGANIZATION ?, CREATE ?
 /// (RECSIZE/RECTYPE/KEY are deferred to a follow-up).</summary>

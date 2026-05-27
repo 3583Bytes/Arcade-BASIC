@@ -1,16 +1,16 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using FullBasic.Compiler;
-using FullBasic.Core;
-using FullBasic.Interpreter;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
+using ArcadeBasic.Compiler;
+using ArcadeBasic.Core;
+using ArcadeBasic.Interpreter;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
 
-namespace FullBasic.Cli;
+namespace ArcadeBasic.Cli;
 
 /// <summary>
-/// Interactive Full BASIC REPL.
+/// Interactive Arcade BASIC REPL.
 ///
 /// Strategy: accumulate every accepted line into a single session source string.
 /// On each new fragment (single statement or multi-line block) we re-lex / parse /
@@ -31,7 +31,7 @@ internal sealed class BasicRepl
 
     public int Run()
     {
-        Console.WriteLine("Full BASIC REPL — type .help for commands, .exit to quit.");
+        Console.WriteLine("Arcade BASIC REPL — type .help for commands, .exit to quit.");
 
         var buffer = new StringBuilder();
         var depth = 0;
@@ -88,7 +88,7 @@ internal sealed class BasicRepl
                 Console.WriteLine("  - Multi-line blocks (FOR/DO/IF.../SUB...) are accepted; the prompt");
                 Console.WriteLine("    becomes '... ' until the block is closed.");
                 Console.WriteLine("  - INPUT and RANDOMIZE don't round-trip cleanly through the REPL's");
-                Console.WriteLine("    re-execute-each-turn model. Use a .bas file with `full-basic run`");
+                Console.WriteLine("    re-execute-each-turn model. Use a .bas file with `arcade-basic run`");
                 Console.WriteLine("    for programs that need them.");
                 return false;
 

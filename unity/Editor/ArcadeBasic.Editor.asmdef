@@ -1,8 +1,8 @@
 {
-    "name": "FullBasic.Editor",
-    "rootNamespace": "FullBasic.Editor",
+    "name": "ArcadeBasic.Editor",
+    "rootNamespace": "ArcadeBasic.Editor",
     "references": [
-        "FullBasic"
+        "ArcadeBasic"
     ],
     "includePlatforms": [
         "Editor"

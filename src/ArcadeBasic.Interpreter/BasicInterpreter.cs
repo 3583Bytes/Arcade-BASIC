@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text;
-using FullBasic.Parser.Ast;
-using FullBasic.Runtime;
-using FullBasic.Sema;
+using ArcadeBasic.Parser.Ast;
+using ArcadeBasic.Runtime;
+using ArcadeBasic.Sema;
 using Singulink.Numerics;
 
-namespace FullBasic.Interpreter;
+namespace ArcadeBasic.Interpreter;
 
 /// <summary>
 /// Tree-walking interpreter for the Phase-3 interpreter-core subset of Full

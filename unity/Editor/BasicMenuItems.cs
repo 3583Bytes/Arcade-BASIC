@@ -3,35 +3,35 @@ using UnityEditor;
 using UnityEditor.ProjectWindowCallback;
 using UnityEngine;
 
-namespace FullBasic.Editor
+namespace ArcadeBasic.Editor
 {
     /// <summary>
-    /// Menu entries that surface Full BASIC in the editor:
+    /// Menu entries that surface Arcade BASIC in the editor:
     /// <list type="bullet">
-    /// <item><c>Assets/Create/Full BASIC/...</c> — templates for new <c>.bas</c> files.</item>
-    /// <item><c>Assets/Run Full BASIC Program</c> — context action on selected <c>.bas</c>.</item>
-    /// <item><c>Window/Full BASIC/...</c> — console window, docs, conformance.</item>
+    /// <item><c>Assets/Create/Arcade BASIC/...</c> — templates for new <c>.bas</c> files.</item>
+    /// <item><c>Assets/Run Arcade BASIC Program</c> — context action on selected <c>.bas</c>.</item>
+    /// <item><c>Window/Arcade BASIC/...</c> — console window, docs, conformance.</item>
     /// </list>
     /// </summary>
     public static class BasicMenuItems
     {
         // --- Asset templates ----------------------------------------------
 
-        [MenuItem("Assets/Create/Full BASIC/Empty Program", priority = 81)]
+        [MenuItem("Assets/Create/Arcade BASIC/Empty Program", priority = 81)]
         public static void CreateEmptyProgram()
         {
             CreateAsset("NewProgram.bas",
-                "REM Full BASIC program\nPRINT \"hello\"\n");
+                "REM Arcade BASIC program\nPRINT \"hello\"\n");
         }
 
-        [MenuItem("Assets/Create/Full BASIC/Hello World", priority = 82)]
+        [MenuItem("Assets/Create/Arcade BASIC/Hello World", priority = 82)]
         public static void CreateHelloWorld()
         {
             CreateAsset("HelloWorld.bas",
                 "REM Classic hello-world\nPRINT \"hello, BASIC world\"\n");
         }
 
-        [MenuItem("Assets/Create/Full BASIC/FOR Loop Demo", priority = 83)]
+        [MenuItem("Assets/Create/Arcade BASIC/FOR Loop Demo", priority = 83)]
         public static void CreateForLoopDemo()
         {
             CreateAsset("ForLoopDemo.bas",
@@ -41,7 +41,7 @@ namespace FullBasic.Editor
                 "NEXT I\n");
         }
 
-        [MenuItem("Assets/Create/Full BASIC/Function Demo", priority = 84)]
+        [MenuItem("Assets/Create/Arcade BASIC/Function Demo", priority = 84)]
         public static void CreateFunctionDemo()
         {
             CreateAsset("FunctionDemo.bas",
@@ -61,7 +61,7 @@ namespace FullBasic.Editor
 
         // --- Context menu on a selected .bas asset ------------------------
 
-        [MenuItem("Assets/Run Full BASIC Program", priority = 30)]
+        [MenuItem("Assets/Run Arcade BASIC Program", priority = 30)]
         public static void RunSelectedProgram()
         {
             var ta = Selection.activeObject as TextAsset;
@@ -75,14 +75,14 @@ namespace FullBasic.Editor
             }
             catch (System.Exception ex)
             {
-                Debug.LogError($"[FullBasic] cannot read {path}: {ex.Message}");
+                Debug.LogError($"[ArcadeBasic] cannot read {path}: {ex.Message}");
                 return;
             }
 
             BasicConsoleWindow.OpenWithSource(source);
         }
 
-        [MenuItem("Assets/Run Full BASIC Program", isValidateFunction: true)]
+        [MenuItem("Assets/Run Arcade BASIC Program", isValidateFunction: true)]
         public static bool ValidateRunSelectedProgram()
         {
             return Selection.activeObject is TextAsset
@@ -92,29 +92,29 @@ namespace FullBasic.Editor
 
         // --- Window menu --------------------------------------------------
 
-        [MenuItem("Window/Full BASIC/Documentation", priority = 100)]
+        [MenuItem("Window/Arcade BASIC/Documentation", priority = 100)]
         public static void OpenDocumentation()
         {
             Application.OpenURL("https://github.com/OWNER/REPO");
         }
 
-        [MenuItem("Window/Full BASIC/Conformance notes", priority = 101)]
+        [MenuItem("Window/Arcade BASIC/Conformance notes", priority = 101)]
         public static void OpenConformance()
         {
             Application.OpenURL("https://github.com/OWNER/REPO/blob/main/docs/conformance.md");
         }
 
-        [MenuItem("Window/Full BASIC/About", priority = 200)]
+        [MenuItem("Window/Arcade BASIC/About", priority = 200)]
         public static void OpenAbout()
         {
             EditorUtility.DisplayDialog(
-                "Full BASIC",
-                "Full BASIC (ISO/IEC 10279:1991) interpreter for Unity.\n\n" +
-                "• Window → Full BASIC → Console: interactive editor + runner.\n" +
-                "• Assets → Create → Full BASIC: new program templates.\n" +
+                "Arcade BASIC",
+                "Arcade BASIC (ISO/IEC 10279:1991) interpreter for Unity.\n\n" +
+                "• Window → Arcade BASIC → Console: interactive editor + runner.\n" +
+                "• Assets → Create → Arcade BASIC: new program templates.\n" +
                 "• Select a .bas asset and click Run in the Inspector.\n\n" +
                 "Embed from code:\n" +
-                "    var result = FullBasic.BasicEngine.Run(source, out var output);\n" +
+                "    var result = ArcadeBasic.BasicEngine.Run(source, out var output);\n" +
                 "    Debug.Log(output);",
                 "OK");
         }

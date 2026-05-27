@@ -31,4 +31,4 @@ The PDFs and OCR text are not redistributed in this repo; download them from arc
 
 ## Notes on coverage
 
-The NBS suite tests **Minimal BASIC (X3.60-1978)** only. It exercises the subset of Full BASIC inherited from Minimal BASIC. Full BASIC features outside the suite — `MAT`, `SELECT CASE`, structured `SUB`/`FUNCTION`, `WHEN EXCEPTION`, modules, file I/O, picture/graphics — are validated against our own spec-derived test corpus, not against NBS.
+The NBS suite tests **Minimal BASIC (X3.60-1978)** only. It exercises the subset of Arcade BASIC inherited from Minimal BASIC. Arcade BASIC features outside the suite — `MAT`, `SELECT CASE`, structured `SUB`/`FUNCTION`, `WHEN EXCEPTION`, modules, file I/O, picture/graphics — are validated against our own spec-derived test corpus, not against NBS.

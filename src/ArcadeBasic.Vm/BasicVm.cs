@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text;
-using FullBasic.Bytecode;
-using FullBasic.Runtime;
+using ArcadeBasic.Bytecode;
+using ArcadeBasic.Runtime;
 using Singulink.Numerics;
-using BcProgram = FullBasic.Bytecode.Program;
+using BcProgram = ArcadeBasic.Bytecode.Program;
 
-namespace FullBasic.Vm;
+namespace ArcadeBasic.Vm;
 
 /// <summary>
 /// Phase-9 stack-based bytecode VM. Same Value record types and activation-

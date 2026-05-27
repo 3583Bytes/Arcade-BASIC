@@ -1,11 +1,11 @@
 using FluentAssertions;
-using FullBasic.Core;
-using FullBasic.Interpreter;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
+using ArcadeBasic.Core;
+using ArcadeBasic.Interpreter;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
 
-namespace FullBasic.Interpreter.Tests;
+namespace ArcadeBasic.Interpreter.Tests;
 
 public class InterpreterTests
 {

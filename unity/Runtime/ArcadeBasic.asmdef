@@ -1,6 +1,6 @@
 {
-    "name": "FullBasic",
-    "rootNamespace": "FullBasic",
+    "name": "ArcadeBasic",
+    "rootNamespace": "ArcadeBasic",
     "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],

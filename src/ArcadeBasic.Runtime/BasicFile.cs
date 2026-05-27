@@ -1,7 +1,7 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Abstraction over a Full BASIC file channel. Phase-5 ships only the DISPLAY
+/// Abstraction over a Arcade BASIC file channel. Phase-5 ships only the DISPLAY
 /// mode (text I/O); INTERNAL and BYTE modes are deferred. Each file has a
 /// configured access type (Input / Output / OutIn) which gates read/write
 /// operations.

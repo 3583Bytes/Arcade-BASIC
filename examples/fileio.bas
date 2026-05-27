@@ -1,5 +1,5 @@
 ! File I/O round-trip: write three lines, read them back.
-LET PATH$ = "/tmp/full-basic-example.txt"
+LET PATH$ = "/tmp/arcade-basic-example.txt"
 
 OPEN #1: NAME PATH$, ACCESS OUTPUT
 PRINT #1: "line one"

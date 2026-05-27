@@ -8,7 +8,7 @@
     <AnalysisLevel>latest</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
-    <RootNamespace>FullBasic.$(MSBuildProjectName.Replace('FullBasic.', ''))</RootNamespace>
+    <RootNamespace>ArcadeBasic.$(MSBuildProjectName.Replace('ArcadeBasic.', ''))</RootNamespace>
     <IsTestProject>false</IsTestProject>
     <IsTestProject Condition="$(MSBuildProjectName.EndsWith('.Tests'))">true</IsTestProject>
     <IsPackable>false</IsPackable>
@@ -23,7 +23,7 @@
     <PackageReference Include="FluentAssertions" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(IsTestProject)' != 'true' AND '$(MSBuildProjectName)' != 'FullBasic.Cli'">
+  <ItemGroup Condition="'$(IsTestProject)' != 'true' AND '$(MSBuildProjectName)' != 'ArcadeBasic.Cli'">
     <InternalsVisibleTo Include="$(MSBuildProjectName).Tests" />
   </ItemGroup>
 

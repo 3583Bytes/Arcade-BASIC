@@ -1,4 +1,4 @@
-namespace FullBasic.Core;
+namespace ArcadeBasic.Core;
 
 /// <summary>A single point in a source file: byte offset relative to file start.</summary>
 public readonly record struct Position(SourceFile File, int Offset)

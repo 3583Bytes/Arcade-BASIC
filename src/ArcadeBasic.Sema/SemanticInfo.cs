@@ -1,6 +1,6 @@
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Sema;
+namespace ArcadeBasic.Sema;
 
 /// <summary>Result of running the analyzer over a Program. Consumed by later phases.</summary>
 public sealed class SemanticInfo

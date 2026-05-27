@@ -1,8 +1,8 @@
 using FluentAssertions;
-using FullBasic.Core;
-using FullBasic.Lexer;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
 
-namespace FullBasic.Lexer.Tests;
+namespace ArcadeBasic.Lexer.Tests;
 
 public class LexerTests
 {

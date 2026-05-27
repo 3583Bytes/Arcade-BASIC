@@ -1,7 +1,7 @@
 using System.Text;
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Parser;
+namespace ArcadeBasic.Parser;
 
 /// <summary>
 /// Pretty-prints an AST as an indented tree. Used by the CLI's `parse` command

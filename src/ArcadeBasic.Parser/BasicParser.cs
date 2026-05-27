@@ -1,11 +1,11 @@
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Parser;
+namespace ArcadeBasic.Parser;
 
 /// <summary>
-/// Recursive-descent parser for ISO/IEC 10279 Full BASIC. Consumes a token
+/// Recursive-descent parser for ISO/IEC 10279 Arcade BASIC. Consumes a token
 /// stream from <see cref="BasicLexer"/> and produces a <see cref="Program"/>
 /// AST plus diagnostics.
 ///

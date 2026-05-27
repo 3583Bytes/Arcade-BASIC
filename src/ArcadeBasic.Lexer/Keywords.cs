@@ -1,4 +1,4 @@
-namespace FullBasic.Lexer;
+namespace ArcadeBasic.Lexer;
 
 /// <summary>
 /// Reserved-word table. Per ISO 10279 keywords are case-insensitive; we lower-case

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace FullBasic.Core;
+namespace ArcadeBasic.Core;
 
 public enum DiagnosticSeverity
 {

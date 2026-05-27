@@ -1,7 +1,7 @@
-namespace FullBasic.Lexer;
+namespace ArcadeBasic.Lexer;
 
 /// <summary>
-/// All token kinds emitted by the lexer for ISO/IEC 10279 Full BASIC. One value
+/// All token kinds emitted by the lexer for ISO/IEC 10279 Arcade BASIC. One value
 /// per reserved word so the parser can pattern-match on TokenKind directly.
 /// Keyword values use the Kw prefix; symbol punctuation/operators use no prefix.
 /// </summary>

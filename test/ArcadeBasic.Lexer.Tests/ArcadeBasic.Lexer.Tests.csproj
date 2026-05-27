@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FullBasic.Lexer\FullBasic.Lexer.csproj" />
+    <ProjectReference Include="..\..\src\ArcadeBasic.Lexer\ArcadeBasic.Lexer.csproj" />
   </ItemGroup>
 
 </Project>

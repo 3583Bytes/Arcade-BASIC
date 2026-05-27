@@ -1,7 +1,7 @@
-using FullBasic.Lexer;
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Parser;
+namespace ArcadeBasic.Parser;
 
 /// <summary>
 /// Phase-7 module parsing. MODULE name ... END MODULE; PUBLIC prefix on

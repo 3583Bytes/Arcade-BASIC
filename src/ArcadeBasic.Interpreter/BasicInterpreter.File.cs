@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Text;
-using FullBasic.Parser.Ast;
-using FullBasic.Runtime;
+using ArcadeBasic.Parser.Ast;
+using ArcadeBasic.Runtime;
 using Singulink.Numerics;
 
-namespace FullBasic.Interpreter;
+namespace ArcadeBasic.Interpreter;
 
 /// <summary>
 /// File-I/O statement execution. Phase-5 scope: DISPLAY mode SEQUENTIAL/STREAM,

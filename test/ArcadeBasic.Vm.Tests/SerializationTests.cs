@@ -1,18 +1,18 @@
 using FluentAssertions;
-using FullBasic.Bytecode;
-using FullBasic.Compiler;
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
-using FullBasic.Vm;
+using ArcadeBasic.Bytecode;
+using ArcadeBasic.Compiler;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
+using ArcadeBasic.Vm;
 
-namespace FullBasic.Vm.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>Phase-10 bytecode serialization round-trip tests.</summary>
 public class SerializationTests
 {
-    private static FullBasic.Bytecode.Program Compile(string source)
+    private static ArcadeBasic.Bytecode.Program Compile(string source)
     {
         var file = new SourceFile("test.bas", source);
         var diags = new DiagnosticBag();
@@ -22,7 +22,7 @@ public class SerializationTests
         return BasicCompiler.Compile(program, info);
     }
 
-    private static string RunCompiled(FullBasic.Bytecode.Program p)
+    private static string RunCompiled(ArcadeBasic.Bytecode.Program p)
     {
         var sw = new StringWriter();
         new BasicVm(p, sw, new StringReader("")).Run();

@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\FullBasic.Core\FullBasic.Core.csproj" />
-    <ProjectReference Include="..\FullBasic.Parser\FullBasic.Parser.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Core\ArcadeBasic.Core.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Parser\ArcadeBasic.Parser.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

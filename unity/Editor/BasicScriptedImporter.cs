@@ -2,7 +2,7 @@ using System.IO;
 using UnityEditor.AssetImporters;
 using UnityEngine;
 
-namespace FullBasic.Editor
+namespace ArcadeBasic.Editor
 {
     /// <summary>
     /// Imports <c>.bas</c> files as <see cref="TextAsset"/>s so they can be

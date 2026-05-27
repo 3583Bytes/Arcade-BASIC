@@ -1,4 +1,4 @@
-namespace FullBasic.Bytecode;
+namespace ArcadeBasic.Bytecode;
 
 /// <summary>
 /// Phase-9 stack-based bytecode opcodes. Each instruction is one byte plus

@@ -1,4 +1,4 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// A BASIC-level exception (the value the spec exposes via EXTYPE/EXLINE/EXTEXT$).

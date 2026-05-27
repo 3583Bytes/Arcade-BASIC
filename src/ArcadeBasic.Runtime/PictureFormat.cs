@@ -1,7 +1,7 @@
 using System.Text;
 using Singulink.Numerics;
 
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// Picture-string formatter for Phase-8a "editing" module — implements the

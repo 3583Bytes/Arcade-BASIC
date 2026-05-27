@@ -1,4 +1,4 @@
-# Full BASIC
+# Arcade BASIC
 
 [![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/OWNER/REPO?label=release)](https://github.com/OWNER/REPO/releases/latest)
@@ -7,7 +7,7 @@
 
 > Replace `OWNER/REPO` in the badges above with your GitHub `owner/repo` once the project is pushed.
 
-A Full BASIC (ISO/IEC 10279:1991, ANSI X3.113-1987) interpreter and compiler in C#.
+Arcade BASIC is an interpreter and compiler for the **Full BASIC** language (ISO/IEC 10279:1991, ANSI X3.113-1987), written in C#.
 
 ## Documentation
 
@@ -22,24 +22,24 @@ Library assemblies (lexer through VM) multi-target **`net9.0`** and **`netstanda
 
 ### Unity
 
-The [`unity/`](unity/) folder is a ready-to-use UPM (Unity Package Manager) package — `package.json`, `FullBasic.asmdef`, and an `InGameConsole` sample MonoBehaviour. Once installed, embedding a BASIC program is one call:
+The [`unity/`](unity/) folder is a ready-to-use UPM (Unity Package Manager) package — `package.json`, `ArcadeBasic.asmdef`, and an `InGameConsole` sample with a one-click scene builder that drops an in-game REPL (TMP input + scrollable transcript + Run button) into your project. Once installed, embedding a BASIC program is one call:
 
 ```csharp
-using FullBasic;
+using ArcadeBasic;
 
 var result = BasicEngine.Run("PRINT 6 * 7", out string output);
 Debug.Log(output);   // " 42 "
 ```
 
-See [`unity/README.md`](unity/README.md) for install instructions (UPM via git URL, or extract the release ZIP into `Packages/`). The release CI builds the netstandard2.1 DLLs and bundles them into a `full-basic-unity-<version>.zip` artifact attached to every tagged release.
+See [`unity/README.md`](unity/README.md) for install instructions (UPM via git URL, or extract the release ZIP into `Packages/`). The release CI builds the netstandard2.1 DLLs and bundles them into a `arcade-basic-unity-<version>.zip` artifact attached to every tagged release.
 
 ## Status
 
-Three execution paths land a Full BASIC program in different forms:
+Three execution paths land an Arcade BASIC program in different forms:
 
-- **`full-basic run <file>`** — tree-walking interpreter. The most complete front end: arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
-- **`full-basic vm <file>`** — compile to stack bytecode and run on the VM. Currently a subset of the tree-walker (no arrays/MAT, no file I/O, no exceptions, no modules, no `PRINT USING`, no `INPUT`).
-- **`full-basic build <file> [-o out]`** — bundle the VM and the compiled program into a single self-contained native binary (Phase 10, Path E). Same feature subset as `vm`.
+- **`arcade-basic run <file>`** — tree-walking interpreter. The most complete front end: arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
+- **`arcade-basic vm <file>`** — compile to stack bytecode and run on the VM. Currently a subset of the tree-walker (no arrays/MAT, no file I/O, no exceptions, no modules, no `PRINT USING`, no `INPUT`).
+- **`arcade-basic build <file> [-o out]`** — bundle the VM and the compiled program into a single self-contained native binary (Phase 10, Path E). Same feature subset as `vm`.
 
 Pipeline phases 0–10 are all merged. Optional Phase 8 modules are partial: `PRINT USING` (8a) is done; graphics + picture (SVG backend) and fixed-decimal are not.
 
@@ -52,17 +52,17 @@ Requires .NET 9 SDK.
 ```sh
 dotnet build                                       # debug build
 dotnet test                                        # all unit + integration tests
-dotnet run --project src/FullBasic.Cli -- run <f>  # invoke the CLI
+dotnet run --project src/ArcadeBasic.Cli -- run <f>  # invoke the CLI
 
 # AOT-publish a standalone CLI for the current platform
-dotnet publish src/FullBasic.Cli -c Release /p:PublishAot=true
-# → ./publish/aot/FullBasic.Cli
+dotnet publish src/ArcadeBasic.Cli -c Release /p:PublishAot=true
+# → ./publish/aot/ArcadeBasic.Cli
 ```
 
 ## CLI
 
 ```
-full-basic <command> [args]
+arcade-basic <command> [args]
 
   lex <file>              tokenize and print the token stream
   parse <file>            lex + parse, pretty-print the AST
@@ -70,7 +70,7 @@ full-basic <command> [args]
   run <file> [mod ...]    tree-walking interpreter (most complete)
   vm <file>               compile to bytecode and run on the VM (subset)
   build <file> [-o out]   produce a self-contained native binary
-  repl                    interactive Full BASIC session
+  repl                    interactive Arcade BASIC session
   --version
   --bigdecimal-spike      BigDecimal AOT smoke test
 ```
@@ -78,11 +78,11 @@ full-basic <command> [args]
 ## Try the REPL
 
 ```sh
-dotnet run --project src/FullBasic.Cli -- repl
+dotnet run --project src/ArcadeBasic.Cli -- repl
 ```
 
 ```
-Full BASIC REPL — type .help for commands, .exit to quit.
+Arcade BASIC REPL — type .help for commands, .exit to quit.
 > LET X = 42
 > PRINT X * 2
  84
@@ -101,7 +101,7 @@ bye.
 
 The REPL accumulates each accepted line into the session; variables persist, multi-line blocks (`FOR`/`DO`/`IF`/`SELECT`/`SUB`/`FUNCTION`/`DEF`/`MODULE`/`WHEN`) are detected and the prompt switches to `... ` until the block closes. Bad input doesn't pollute the session. `.list` shows the accumulated source, `.clear` resets it.
 
-`INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, run a `.bas` file with `full-basic run`.
+`INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, run a `.bas` file with `arcade-basic run`.
 
 ## Running the example programs
 
@@ -109,39 +109,39 @@ The 13 sample programs in [`examples/`](examples/) exercise different parts of t
 
 ```sh
 # Tree-walking interpreter — supports every example
-dotnet run --project src/FullBasic.Cli -- run examples/hello.bas
-dotnet run --project src/FullBasic.Cli -- run examples/factorial.bas
-dotnet run --project src/FullBasic.Cli -- run examples/matrix.bas
-dotnet run --project src/FullBasic.Cli -- run examples/exception.bas
-dotnet run --project src/FullBasic.Cli -- run examples/modules.bas
-dotnet run --project src/FullBasic.Cli -- run examples/guess.bas    # reads from stdin
-dotnet run --project src/FullBasic.Cli -- run examples/startrek.bas # Super Star Trek (Ahl 1978)
-dotnet run --project src/FullBasic.Cli -- run examples/lunar.bas    # Lunar Lander (Storer 1969)
+dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/factorial.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/matrix.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/exception.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/modules.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/guess.bas    # reads from stdin
+dotnet run --project src/ArcadeBasic.Cli -- run examples/startrek.bas # Super Star Trek (Ahl 1978)
+dotnet run --project src/ArcadeBasic.Cli -- run examples/lunar.bas    # Lunar Lander (Storer 1969)
 
 # Bytecode VM — only the examples marked ✓ in examples/README.md
-dotnet run --project src/FullBasic.Cli -- vm examples/hello.bas
-dotnet run --project src/FullBasic.Cli -- vm examples/factorial.bas
-dotnet run --project src/FullBasic.Cli -- vm examples/strings.bas
-dotnet run --project src/FullBasic.Cli -- vm examples/pi.bas
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/hello.bas
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/factorial.bas
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/strings.bas
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/pi.bas
 ```
 
 Inspect intermediate stages of any program:
 
 ```sh
-dotnet run --project src/FullBasic.Cli -- lex     examples/factorial.bas
-dotnet run --project src/FullBasic.Cli -- parse   examples/factorial.bas
-dotnet run --project src/FullBasic.Cli -- analyze examples/factorial.bas
+dotnet run --project src/ArcadeBasic.Cli -- lex     examples/factorial.bas
+dotnet run --project src/ArcadeBasic.Cli -- parse   examples/factorial.bas
+dotnet run --project src/ArcadeBasic.Cli -- analyze examples/factorial.bas
 ```
 
 After an AOT publish, use the native CLI directly (much faster startup) and produce a standalone binary for any VM-compatible example:
 
 ```sh
-dotnet publish src/FullBasic.Cli -c Release /p:PublishAot=true
+dotnet publish src/ArcadeBasic.Cli -c Release /p:PublishAot=true
 
-./publish/aot/FullBasic.Cli run examples/primes.bas
-./publish/aot/FullBasic.Cli vm  examples/pi.bas
+./publish/aot/ArcadeBasic.Cli run examples/primes.bas
+./publish/aot/ArcadeBasic.Cli vm  examples/pi.bas
 
-./publish/aot/FullBasic.Cli build examples/factorial.bas -o factorial
+./publish/aot/ArcadeBasic.Cli build examples/factorial.bas -o factorial
 ./factorial
 ```
 
@@ -149,16 +149,16 @@ dotnet publish src/FullBasic.Cli -c Release /p:PublishAot=true
 
 | Project | Purpose |
 |---|---|
-| `FullBasic.Core` | source files, positions, diagnostics |
-| `FullBasic.Lexer` | tokenizer |
-| `FullBasic.Parser` | recursive-descent parser → immutable AST (`abstract record class`) |
-| `FullBasic.Sema` | two-pass analyzer; symbol/scope resolution attached as a side table |
-| `FullBasic.Runtime` | numeric/string/array values (Singulink `BigDecimal`), builtins, picture-string formatter, file I/O |
-| `FullBasic.Interpreter` | tree-walking interpreter with explicit handler stack and `FlowControl` returns |
-| `FullBasic.Bytecode` | opcode enum, chunk format, serializer |
-| `FullBasic.Compiler` | AST → bytecode lowering |
-| `FullBasic.Vm` | stack-based VM |
-| `FullBasic.Cli` | command dispatcher + Phase-10 self-extracting stub |
+| `ArcadeBasic.Core` | source files, positions, diagnostics |
+| `ArcadeBasic.Lexer` | tokenizer |
+| `ArcadeBasic.Parser` | recursive-descent parser → immutable AST (`abstract record class`) |
+| `ArcadeBasic.Sema` | two-pass analyzer; symbol/scope resolution attached as a side table |
+| `ArcadeBasic.Runtime` | numeric/string/array values (Singulink `BigDecimal`), builtins, picture-string formatter, file I/O |
+| `ArcadeBasic.Interpreter` | tree-walking interpreter with explicit handler stack and `FlowControl` returns |
+| `ArcadeBasic.Bytecode` | opcode enum, chunk format, serializer |
+| `ArcadeBasic.Compiler` | AST → bytecode lowering |
+| `ArcadeBasic.Vm` | stack-based VM |
+| `ArcadeBasic.Cli` | command dispatcher + Phase-10 self-extracting stub |
 
 Locked architectural decisions (decimal library, value hierarchy, handler-stack design, MAT semantics, etc.) live alongside the code; behavioural deviations from the spec will be tracked in `docs/conformance.md`.
 

@@ -15,15 +15,15 @@ For local Unity development against this repo, run the helper script from the re
 DLLs that land here:
 
 ```
-FullBasic.Core.dll
-FullBasic.Lexer.dll
-FullBasic.Parser.dll
-FullBasic.Sema.dll
-FullBasic.Runtime.dll
-FullBasic.Interpreter.dll
-FullBasic.Bytecode.dll
-FullBasic.Compiler.dll
-FullBasic.Vm.dll
+ArcadeBasic.Core.dll
+ArcadeBasic.Lexer.dll
+ArcadeBasic.Parser.dll
+ArcadeBasic.Sema.dll
+ArcadeBasic.Runtime.dll
+ArcadeBasic.Interpreter.dll
+ArcadeBasic.Bytecode.dll
+ArcadeBasic.Compiler.dll
+ArcadeBasic.Vm.dll
 Singulink.Numerics.BigDecimal.dll
 Singulink.Numerics.BigIntegerExtensions.dll
 ```

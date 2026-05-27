@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
 
-namespace FullBasic;
+namespace ArcadeBasic;
 
 /// <summary>
 /// One-call embedding entry point for hosts (Unity, web playgrounds, custom
@@ -16,7 +16,7 @@ namespace FullBasic;
 ///
 /// <example>
 /// <code>
-/// using FullBasic;
+/// using ArcadeBasic;
 ///
 /// var sb = new System.Text.StringBuilder();
 /// using var stdout = new System.IO.StringWriter(sb);
@@ -41,7 +41,7 @@ public static class BasicEngine
     /// <summary>
     /// Lex / parse / analyze / run <paramref name="source"/> in one call.
     /// </summary>
-    /// <param name="source">The Full BASIC program text.</param>
+    /// <param name="source">The Arcade BASIC program text.</param>
     /// <param name="stdout">Where PRINT / PRINT USING / MAT PRINT output goes. Cannot be null.</param>
     /// <param name="stdin">Optional source for INPUT / LINE INPUT. Defaults to <see cref="TextReader.Null"/>.</param>
     /// <param name="filename">Filename to attribute in diagnostics. Defaults to "&lt;embedded&gt;".</param>
@@ -68,7 +68,7 @@ public static class BasicEngine
             return new Result(1, RenderDiagnostics(diags));
         }
 
-        var interp = new FullBasic.Interpreter.BasicInterpreter(program, info, stdout, stdin ?? TextReader.Null);
+        var interp = new ArcadeBasic.Interpreter.BasicInterpreter(program, info, stdout, stdin ?? TextReader.Null);
         int exitCode;
         try
         {

@@ -1,11 +1,11 @@
 using FluentAssertions;
-using FullBasic.Core;
-using FullBasic.Interpreter;
-using FullBasic.Lexer;
-using FullBasic.Parser;
-using FullBasic.Sema;
+using ArcadeBasic.Core;
+using ArcadeBasic.Interpreter;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
 
-namespace FullBasic.Interpreter.Tests;
+namespace ArcadeBasic.Interpreter.Tests;
 
 /// <summary>Phase-7 module tests. Single-file MODULE blocks plus multi-file linkage.</summary>
 public class ModuleTests
@@ -13,8 +13,8 @@ public class ModuleTests
     private static (string Output, int Exit, DiagnosticBag Diagnostics) RunMulti(params string[] sources)
     {
         var diags = new DiagnosticBag();
-        var allStmts = new List<FullBasic.Parser.Ast.Stmt>();
-        FullBasic.Parser.Ast.Program? mainProg = null;
+        var allStmts = new List<ArcadeBasic.Parser.Ast.Stmt>();
+        ArcadeBasic.Parser.Ast.Program? mainProg = null;
         // Sources arrive in order: modules then main. We mirror the CLI: parse
         // each, concatenate, and analyze once.
         for (var i = 0; i < sources.Length; i++)
@@ -25,7 +25,7 @@ public class ModuleTests
             allStmts.AddRange(prog.Statements);
             if (i == sources.Length - 1) mainProg = prog;
         }
-        var combined = new FullBasic.Parser.Ast.Program(mainProg!.Span, allStmts);
+        var combined = new ArcadeBasic.Parser.Ast.Program(mainProg!.Span, allStmts);
         var info = Analyzer.Analyze(combined, diags);
         if (diags.HasErrors)
         {

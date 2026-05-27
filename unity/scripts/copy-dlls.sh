@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the netstandard2.1 target of the Full BASIC libs and copy the resulting
+# Build the netstandard2.1 target of the Arcade BASIC libs and copy the resulting
 # DLLs into unity/Runtime/Plugins so Unity can pick them up.
 #
 # Usage:   ./unity/scripts/copy-dlls.sh
@@ -13,8 +13,8 @@ TARGET_DIR="$REPO_ROOT/unity/Runtime/Plugins"
 
 trap 'rm -rf "$PUBLISH_DIR"' EXIT
 
-echo "::> publishing FullBasic.Interpreter (netstandard2.1) ..."
-dotnet publish "$REPO_ROOT/src/FullBasic.Interpreter" \
+echo "::> publishing ArcadeBasic.Interpreter (netstandard2.1) ..."
+dotnet publish "$REPO_ROOT/src/ArcadeBasic.Interpreter" \
     --configuration Release \
     --framework netstandard2.1 \
     --output "$PUBLISH_DIR" \
@@ -22,14 +22,14 @@ dotnet publish "$REPO_ROOT/src/FullBasic.Interpreter" \
     --verbosity quiet
 
 # Also publish the VM-side libs so users of the bytecode path can reference them.
-echo "::> publishing FullBasic.Vm + FullBasic.Compiler (netstandard2.1) ..."
-dotnet publish "$REPO_ROOT/src/FullBasic.Vm" \
+echo "::> publishing ArcadeBasic.Vm + ArcadeBasic.Compiler (netstandard2.1) ..."
+dotnet publish "$REPO_ROOT/src/ArcadeBasic.Vm" \
     --configuration Release \
     --framework netstandard2.1 \
     --output "$PUBLISH_DIR" \
     --nologo \
     --verbosity quiet
-dotnet publish "$REPO_ROOT/src/FullBasic.Compiler" \
+dotnet publish "$REPO_ROOT/src/ArcadeBasic.Compiler" \
     --configuration Release \
     --framework netstandard2.1 \
     --output "$PUBLISH_DIR" \

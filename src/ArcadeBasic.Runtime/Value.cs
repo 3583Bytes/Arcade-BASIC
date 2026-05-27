@@ -1,6 +1,6 @@
 using Singulink.Numerics;
 
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// Base for all runtime values. Sealed record class hierarchy per Q7. Pattern

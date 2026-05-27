@@ -1,10 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\FullBasic.Core\FullBasic.Core.csproj" />
-    <ProjectReference Include="..\FullBasic.Parser\FullBasic.Parser.csproj" />
-    <ProjectReference Include="..\FullBasic.Sema\FullBasic.Sema.csproj" />
-    <ProjectReference Include="..\FullBasic.Runtime\FullBasic.Runtime.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Core\ArcadeBasic.Core.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Parser\ArcadeBasic.Parser.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Sema\ArcadeBasic.Sema.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Runtime\ArcadeBasic.Runtime.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

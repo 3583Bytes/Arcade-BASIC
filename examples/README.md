@@ -1,11 +1,11 @@
-# Example Full BASIC programs
+# Example Arcade BASIC programs
 
 Run any of these with the interpreter:
 
 ```sh
-dotnet run --project src/FullBasic.Cli -- run examples/<file>.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 # or, after `dotnet publish ... /p:PublishAot=true`:
-./publish/aot/FullBasic.Cli run examples/<file>.bas
+./publish/aot/ArcadeBasic.Cli run examples/<file>.bas
 ```
 
 | File             | Demonstrates                                    | Tree-walker | Bytecode VM |
@@ -26,7 +26,7 @@ dotnet run --project src/FullBasic.Cli -- run examples/<file>.bas
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | —           |
 
 A ✓ in the **Bytecode VM** column means the example also runs via
-`full-basic vm <file>`. The VM doesn't yet support arrays, MAT, file I/O,
+`arcade-basic vm <file>`. The VM doesn't yet support arrays, MAT, file I/O,
 exception handling, modules, PRINT USING, or INPUT — those programs run
 on the tree-walker only.
 
@@ -34,18 +34,18 @@ To produce a self-contained native binary for any example that the VM
 supports:
 
 ```sh
-./publish/aot/FullBasic.Cli build examples/factorial.bas -o factorial
+./publish/aot/ArcadeBasic.Cli build examples/factorial.bas -o factorial
 ./factorial
 ```
 
 ## `startrek.bas` — Super Star Trek
 
 The full Mike Mayfield / Bob Leedom / Dave Ahl Super Star Trek (Microsoft 8K
-BASIC, March 1978), ported to Full BASIC. Recognisable commands:
+BASIC, March 1978), ported to Arcade BASIC. Recognisable commands:
 `NAV`, `SRS`, `LRS`, `PHA`, `TOR`, `SHE`, `DAM`, `COM`, `XXX`.
 
 ```sh
-dotnet run --project src/FullBasic.Cli -- run examples/startrek.bas
+dotnet run --project src/ArcadeBasic.Cli -- run examples/startrek.bas
 ```
 
 Translation notes (preserved at the top of the source file):
@@ -53,7 +53,7 @@ Translation notes (preserved at the top of the source file):
   the 1978 listing.
 - `ON i GOTO L1,L2,...` expanded into explicit `IF i=k THEN GOTO Lk` chains.
 - `IF cond THEN <line>` rewritten as `IF cond THEN GOTO <line>`.
-- Inline `FOR ... NEXT` collapsed onto multiple lines (Full BASIC requires a
+- Inline `FOR ... NEXT` collapsed onto multiple lines (Arcade BASIC requires a
   newline after the FOR header).
 - String concat `+` → `&` and the scalar/array name `N` renamed where it
   collided.

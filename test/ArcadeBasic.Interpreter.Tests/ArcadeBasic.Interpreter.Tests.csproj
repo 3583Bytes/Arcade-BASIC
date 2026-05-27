@@ -19,10 +19,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FullBasic.Interpreter\FullBasic.Interpreter.csproj" />
-    <ProjectReference Include="..\..\src\FullBasic.Lexer\FullBasic.Lexer.csproj" />
-    <ProjectReference Include="..\..\src\FullBasic.Parser\FullBasic.Parser.csproj" />
-    <ProjectReference Include="..\..\src\FullBasic.Sema\FullBasic.Sema.csproj" />
+    <ProjectReference Include="..\..\src\ArcadeBasic.Interpreter\ArcadeBasic.Interpreter.csproj" />
+    <ProjectReference Include="..\..\src\ArcadeBasic.Lexer\ArcadeBasic.Lexer.csproj" />
+    <ProjectReference Include="..\..\src\ArcadeBasic.Parser\ArcadeBasic.Parser.csproj" />
+    <ProjectReference Include="..\..\src\ArcadeBasic.Sema\ArcadeBasic.Sema.csproj" />
   </ItemGroup>
 
 </Project>

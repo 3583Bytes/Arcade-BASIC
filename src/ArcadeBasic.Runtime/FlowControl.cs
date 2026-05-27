@@ -1,4 +1,4 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// Non-local control flow signal returned by every statement. The interpreter's

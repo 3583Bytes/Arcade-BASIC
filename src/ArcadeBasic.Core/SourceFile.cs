@@ -1,4 +1,4 @@
-namespace FullBasic.Core;
+namespace ArcadeBasic.Core;
 
 /// <summary>
 /// A source file: filename, text content, and a precomputed line-start table

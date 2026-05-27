@@ -1,4 +1,4 @@
-namespace FullBasic.Sema;
+namespace ArcadeBasic.Sema;
 
 /// <summary>
 /// A lexical scope with a parent chain. Each scope manages a numeric slot

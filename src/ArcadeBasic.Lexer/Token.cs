@@ -1,6 +1,6 @@
-using FullBasic.Core;
+using ArcadeBasic.Core;
 
-namespace FullBasic.Lexer;
+namespace ArcadeBasic.Lexer;
 
 /// <summary>
 /// A single lexed token. Carries its kind, the source span it occupies, and the

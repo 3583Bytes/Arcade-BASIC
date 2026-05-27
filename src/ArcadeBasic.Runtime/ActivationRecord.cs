@@ -1,4 +1,4 @@
-namespace FullBasic.Runtime;
+namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// One frame of variable storage. Slots are indexed by the integers handed out

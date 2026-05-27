@@ -1,11 +1,11 @@
-using FullBasic.Bytecode;
-using FullBasic.Parser.Ast;
-using FullBasic.Sema;
+using ArcadeBasic.Bytecode;
+using ArcadeBasic.Parser.Ast;
+using ArcadeBasic.Sema;
 using Singulink.Numerics;
-using AstProgram = FullBasic.Parser.Ast.Program;
-using BcProgram = FullBasic.Bytecode.Program;
+using AstProgram = ArcadeBasic.Parser.Ast.Program;
+using BcProgram = ArcadeBasic.Bytecode.Program;
 
-namespace FullBasic.Compiler;
+namespace ArcadeBasic.Compiler;
 
 /// <summary>
 /// Phase-9 AST → bytecode compiler. Supported subset:

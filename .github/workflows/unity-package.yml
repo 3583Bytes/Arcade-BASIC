@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          zip -r "artifacts/full-basic-unity-${{ steps.ver.outputs.label }}.zip" unity \
+          zip -r "artifacts/arcade-basic-unity-${{ steps.ver.outputs.label }}.zip" unity \
             -x 'unity/scripts/*' \
             -x '*.DS_Store' \
             -x '*.pdb'
@@ -69,7 +69,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: full-basic-unity-${{ steps.ver.outputs.label }}
+          name: arcade-basic-unity-${{ steps.ver.outputs.label }}
           path: artifacts/
           # Artifacts expire after 90 days by default; bump explicitly for the
           # "I want this preview build around for a while" case.

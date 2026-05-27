@@ -1,8 +1,8 @@
-using FullBasic.Core;
-using FullBasic.Lexer;
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Core;
+using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Parser;
+namespace ArcadeBasic.Parser;
 
 /// <summary>
 /// MAT-statement parsing. Five forms after the MAT keyword:

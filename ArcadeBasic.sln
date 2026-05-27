@@ -5,39 +5,39 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Core", "src\FullBasic.Core\FullBasic.Core.csproj", "{262BB828-AC48-43A2-A1A1-6956F2673F3A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Core", "src\ArcadeBasic.Core\ArcadeBasic.Core.csproj", "{262BB828-AC48-43A2-A1A1-6956F2673F3A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Lexer", "src\FullBasic.Lexer\FullBasic.Lexer.csproj", "{A0CFAB27-07ED-43F5-82D4-F56D351DFBAC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Lexer", "src\ArcadeBasic.Lexer\ArcadeBasic.Lexer.csproj", "{A0CFAB27-07ED-43F5-82D4-F56D351DFBAC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Parser", "src\FullBasic.Parser\FullBasic.Parser.csproj", "{D0BD0674-2F3D-48D9-8964-5688DCDE6745}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Parser", "src\ArcadeBasic.Parser\ArcadeBasic.Parser.csproj", "{D0BD0674-2F3D-48D9-8964-5688DCDE6745}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Sema", "src\FullBasic.Sema\FullBasic.Sema.csproj", "{3198E9F7-2133-45F2-835C-F0D00EA045E9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Sema", "src\ArcadeBasic.Sema\ArcadeBasic.Sema.csproj", "{3198E9F7-2133-45F2-835C-F0D00EA045E9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Runtime", "src\FullBasic.Runtime\FullBasic.Runtime.csproj", "{26EE4263-13DC-46D6-87C9-11A16AFBCE2E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Runtime", "src\ArcadeBasic.Runtime\ArcadeBasic.Runtime.csproj", "{26EE4263-13DC-46D6-87C9-11A16AFBCE2E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Interpreter", "src\FullBasic.Interpreter\FullBasic.Interpreter.csproj", "{717E58F0-4ED7-435C-BD40-17DACDAB4017}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Interpreter", "src\ArcadeBasic.Interpreter\ArcadeBasic.Interpreter.csproj", "{717E58F0-4ED7-435C-BD40-17DACDAB4017}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Bytecode", "src\FullBasic.Bytecode\FullBasic.Bytecode.csproj", "{3E82CC60-F9A8-4461-8106-B44C5936EDC8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Bytecode", "src\ArcadeBasic.Bytecode\ArcadeBasic.Bytecode.csproj", "{3E82CC60-F9A8-4461-8106-B44C5936EDC8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Vm", "src\FullBasic.Vm\FullBasic.Vm.csproj", "{5C5DB470-E9FC-455A-A593-74D5D7FC8D55}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Vm", "src\ArcadeBasic.Vm\ArcadeBasic.Vm.csproj", "{5C5DB470-E9FC-455A-A593-74D5D7FC8D55}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Compiler", "src\FullBasic.Compiler\FullBasic.Compiler.csproj", "{EBF404E1-EB0F-4EFB-B172-381BFF829D8D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Compiler", "src\ArcadeBasic.Compiler\ArcadeBasic.Compiler.csproj", "{EBF404E1-EB0F-4EFB-B172-381BFF829D8D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Cli", "src\FullBasic.Cli\FullBasic.Cli.csproj", "{2A187491-50EE-4964-B191-5BA2E508EE40}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Cli", "src\ArcadeBasic.Cli\ArcadeBasic.Cli.csproj", "{2A187491-50EE-4964-B191-5BA2E508EE40}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Lexer.Tests", "test\FullBasic.Lexer.Tests\FullBasic.Lexer.Tests.csproj", "{5406FE38-985B-4168-A1D0-32630AEC014F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Lexer.Tests", "test\ArcadeBasic.Lexer.Tests\ArcadeBasic.Lexer.Tests.csproj", "{5406FE38-985B-4168-A1D0-32630AEC014F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Parser.Tests", "test\FullBasic.Parser.Tests\FullBasic.Parser.Tests.csproj", "{E782C9CF-48FC-4E1E-A7C2-26AC7F33108C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Parser.Tests", "test\ArcadeBasic.Parser.Tests\ArcadeBasic.Parser.Tests.csproj", "{E782C9CF-48FC-4E1E-A7C2-26AC7F33108C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Sema.Tests", "test\FullBasic.Sema.Tests\FullBasic.Sema.Tests.csproj", "{D32AA72A-86F4-47C4-83AB-B9AC51CFD6CF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Sema.Tests", "test\ArcadeBasic.Sema.Tests\ArcadeBasic.Sema.Tests.csproj", "{D32AA72A-86F4-47C4-83AB-B9AC51CFD6CF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Runtime.Tests", "test\FullBasic.Runtime.Tests\FullBasic.Runtime.Tests.csproj", "{F4B6C159-9F82-480D-B541-C78D9B4CE633}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Runtime.Tests", "test\ArcadeBasic.Runtime.Tests\ArcadeBasic.Runtime.Tests.csproj", "{F4B6C159-9F82-480D-B541-C78D9B4CE633}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Interpreter.Tests", "test\FullBasic.Interpreter.Tests\FullBasic.Interpreter.Tests.csproj", "{BD3739AE-6AAC-4B1F-9FFC-C8D4F5CAA0F0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Interpreter.Tests", "test\ArcadeBasic.Interpreter.Tests\ArcadeBasic.Interpreter.Tests.csproj", "{BD3739AE-6AAC-4B1F-9FFC-C8D4F5CAA0F0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Vm.Tests", "test\FullBasic.Vm.Tests\FullBasic.Vm.Tests.csproj", "{24A9431C-BB76-409E-881F-A5DFF46ECD14}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Vm.Tests", "test\ArcadeBasic.Vm.Tests\ArcadeBasic.Vm.Tests.csproj", "{24A9431C-BB76-409E-881F-A5DFF46ECD14}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FullBasic.Conformance.Tests", "test\FullBasic.Conformance.Tests\FullBasic.Conformance.Tests.csproj", "{53B6AD4C-E3C8-45E7-A906-6AAC54714843}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Conformance.Tests", "test\ArcadeBasic.Conformance.Tests\ArcadeBasic.Conformance.Tests.csproj", "{53B6AD4C-E3C8-45E7-A906-6AAC54714843}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

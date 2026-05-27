@@ -1,7 +1,7 @@
-using FullBasic.Core;
-using FullBasic.Parser.Ast;
+using ArcadeBasic.Core;
+using ArcadeBasic.Parser.Ast;
 
-namespace FullBasic.Sema;
+namespace ArcadeBasic.Sema;
 
 /// <summary>
 /// Sealed hierarchy of symbol kinds. Each AST name reference resolves to one

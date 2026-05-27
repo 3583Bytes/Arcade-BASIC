@@ -13,6 +13,7 @@ publish/
 .idea/
 *.swp
 *~
+!unity/Samples~/
 .DS_Store
 
 ## Test outputs

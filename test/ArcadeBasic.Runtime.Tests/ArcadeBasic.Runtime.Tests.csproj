@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FullBasic.Runtime\FullBasic.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\ArcadeBasic.Runtime\ArcadeBasic.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

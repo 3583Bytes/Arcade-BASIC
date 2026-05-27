@@ -1,6 +1,6 @@
 # Conformance to ISO/IEC 10279:1991
 
-The implementation targets **ISO/IEC 10279:1991** (Full BASIC). ANSI X3.113-1987 is the historical predecessor and is used as a fallback reference when 10279 is ambiguous. The standard permits a number of implementation-defined choices; this document records the choices we made and the deviations we know about.
+The implementation targets **ISO/IEC 10279:1991** (Full BASIC — the standard's official language name). ANSI X3.113-1987 is the historical predecessor and is used as a fallback reference when 10279 is ambiguous. The standard permits a number of implementation-defined choices; this document records the choices we made and the deviations we know about.
 
 The spec uses "shall" for normative requirements and "should" for recommendations. Where we deviate from a "shall", it's called out as a **DEVIATION**. Where we make a permitted implementation-defined choice, it's called out as an **IMPLEMENTATION-DEFINED**.
 
@@ -115,7 +115,7 @@ This is on the list to fix; the parser change is small but the AST node + sema r
 
 ## Built-in functions
 
-Implemented per `src/FullBasic.Sema/Builtins.cs` (registration) and `src/FullBasic.Runtime/BuiltinImpls.cs` (semantics):
+Implemented per `src/ArcadeBasic.Sema/Builtins.cs` (registration) and `src/ArcadeBasic.Runtime/BuiltinImpls.cs` (semantics):
 
 ```
 Numeric → numeric:   ABS SGN INT TRUNCATE CEIL ROUND
@@ -217,7 +217,7 @@ Open an issue with:
 
 - The minimal `.bas` snippet.
 - The ISO 10279 section (or ANSI X3.113 section) the program relies on.
-- Observed output from `dotnet run --project src/FullBasic.Cli -- run <file>`.
+- Observed output from `dotnet run --project src/ArcadeBasic.Cli -- run <file>`.
 - Expected output per the spec, ideally with the relevant sentence quoted.
 
-Conformance fixes that change observable behaviour land with both a regression test under `test/FullBasic.Interpreter.Tests/` and an update to this document if a new deviation is introduced or an old one resolved.
+Conformance fixes that change observable behaviour land with both a regression test under `test/ArcadeBasic.Interpreter.Tests/` and an update to this document if a new deviation is introduced or an old one resolved.

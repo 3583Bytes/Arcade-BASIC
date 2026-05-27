@@ -1,18 +1,18 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace FullBasic.Editor
+namespace ArcadeBasic.Editor
 {
     /// <summary>
-    /// Interactive Full BASIC console as a Unity EditorWindow. Edit source on
+    /// Interactive Arcade BASIC console as a Unity EditorWindow. Edit source on
     /// the top, click Run (or press Ctrl/Cmd + Enter), see output below.
     /// Source persists across editor sessions via <see cref="EditorPrefs"/>.
     /// </summary>
     public sealed class BasicConsoleWindow : EditorWindow
     {
-        private const string PrefKeySource = "FullBasic.Console.Source";
+        private const string PrefKeySource = "ArcadeBasic.Console.Source";
         private const string DefaultSource =
-            "REM Full BASIC — Unity console\n" +
+            "REM Arcade BASIC — Unity console\n" +
             "PRINT \"hello from BASIC\"\n" +
             "FOR I = 1 TO 5\n" +
             "  PRINT I, I * I, I ^ 3\n" +
@@ -26,10 +26,10 @@ namespace FullBasic.Editor
 
         // --- Menu entry / opening helpers ---------------------------------
 
-        [MenuItem("Window/Full BASIC/Console", priority = 1)]
+        [MenuItem("Window/Arcade BASIC/Console", priority = 1)]
         public static void Open()
         {
-            var window = GetWindow<BasicConsoleWindow>("Full BASIC");
+            var window = GetWindow<BasicConsoleWindow>("Arcade BASIC");
             window.minSize = new Vector2(420, 360);
             window.Show();
         }
@@ -41,7 +41,7 @@ namespace FullBasic.Editor
         /// </summary>
         public static void OpenWithSource(string source)
         {
-            var window = GetWindow<BasicConsoleWindow>("Full BASIC");
+            var window = GetWindow<BasicConsoleWindow>("Arcade BASIC");
             window.minSize = new Vector2(420, 360);
             window._source = source ?? string.Empty;
             window._output = string.Empty;
