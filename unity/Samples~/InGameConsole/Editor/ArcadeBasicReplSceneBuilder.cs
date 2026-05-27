@@ -97,9 +97,10 @@ namespace ArcadeBasic.Samples.EditorTools
 
             var viewport = NewUI("Viewport", scrollGo.transform);
             Stretch(viewport.GetComponent<RectTransform>(), 0, 0, 0, 0);
-            var viewportImg = viewport.AddComponent<Image>();
-            viewportImg.color = new Color(0, 0, 0, 0.001f); // need an image for masking
-            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            // RectMask2D is a hard rect clip — unlike UI.Mask it doesn't
+            // require a Graphic and doesn't alpha-multiply children, so
+            // transcripts render at full opacity inside the scroll area.
+            viewport.AddComponent<RectMask2D>();
 
             var content = NewUI("Content", viewport.transform);
             var contentRT = content.GetComponent<RectTransform>();
