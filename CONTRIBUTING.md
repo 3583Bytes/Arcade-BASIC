@@ -25,6 +25,9 @@ dotnet test test/FullBasic.Parser.Tests
 # Invoke the CLI on a source file.
 dotnet run --project src/FullBasic.Cli -- run examples/hello.bas
 
+# Interactive REPL — fastest loop for trying out a one-liner.
+dotnet run --project src/FullBasic.Cli -- repl
+
 # Inspect intermediate stages.
 dotnet run --project src/FullBasic.Cli -- lex     examples/factorial.bas
 dotnet run --project src/FullBasic.Cli -- parse   examples/factorial.bas
@@ -64,6 +67,17 @@ docs/
 ```
 
 `Directory.Build.props` sets `Nullable=enable`, `LangVersion=13`, `AnalysisLevel=latest`, and `InternalsVisibleTo` from each source project to its sibling test project. So sema/interpreter internals are visible from tests without having to make them `public`.
+
+### Target frameworks
+
+The library projects multi-target `net9.0;netstandard2.1`. The CLI is single-target `net9.0` (it uses APIs that only exist on .NET 6+). Test projects are single-target `net9.0`.
+
+When adding code to a library project, prefer APIs that exist on both targets. If you need a `net9.0`-only API, either:
+
+- Wrap the call in `#if NET5_0_OR_GREATER` (or a more specific version guard) with a netstandard fallback, **or**
+- Push the call out into `FullBasic.Cli`, where it's free to use anything.
+
+The repo-root `Polyfill.cs` is included automatically into any non-`net5.0+` build (see `Directory.Build.props`). It supplies `IsExternalInit`, `RequiredMemberAttribute`, `CompilerFeatureRequiredAttribute`, `SetsRequiredMembersAttribute`, and `ReferenceEqualityComparer`. Add to it if you find another `required`/`init`/record-related feature that doesn't compile on netstandard.
 
 ## Common recipes
 
@@ -128,6 +142,7 @@ Programs must work via `full-basic run`. If they also work on the VM, mark them 
 - `lex <file>` prints the token stream — useful when a parser error doesn't match what you typed.
 - `parse <file>` pretty-prints the AST — useful when sema or the interpreter does something surprising.
 - `analyze <file>` shows the program-scope symbol table, DATA pool, and line label map.
+- `repl` is the fastest loop for trying a one-line conjecture without touching disk. Multi-line blocks (FOR/DO/IF/SUB/...) are accepted; `.list` shows the accumulated session, `.clear` resets it.
 - All diagnostics carry a stable code (`FB0xxx`). Grep `src/FullBasic.Sema/Analyzer.cs` for the code to find where it's raised.
 - For interpreter behaviour, sprinkle `Console.Error.WriteLine(...)` in `ExecStmtImpl` or the relevant `Exec*` helper. Interpreter output goes to a configurable `TextWriter`, but stderr is separate and won't pollute test goldens.
 - Most tests use `Run(source)` helpers that pipe stdin and capture stdout — see `InterpreterTests.cs` for the pattern.

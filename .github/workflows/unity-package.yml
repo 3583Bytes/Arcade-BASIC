@@ -1,0 +1,76 @@
+name: Unity package (preview)
+
+# Builds the Unity asset zip as a downloadable workflow artifact, without
+# cutting a GitHub release. Use this to share a preview build with testers,
+# verify a Unity-side change in a feature branch, or grab DLLs without
+# waiting for a tagged release.
+#
+# Triggers:
+#   - workflow_dispatch (manual): run from the Actions tab; optionally pass
+#     a `version` input to tag the zip filename.
+#   - push to main: produces an artifact on every push. Comment out the
+#     `push:` block if this is too noisy for your project.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version label baked into the zip filename (default: dev-<sha>).'
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'unity/**'
+      - '.github/workflows/unity-package.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Unity package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Resolve version label
+        id: ver
+        shell: bash
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            label="${{ inputs.version }}"
+          else
+            label="dev-${GITHUB_SHA::7}"
+          fi
+          echo "label=$label" >> "$GITHUB_OUTPUT"
+          echo "Building Unity package labelled '$label'"
+
+      - name: Populate unity/Runtime/Plugins with netstandard2.1 DLLs
+        shell: bash
+        run: ./unity/scripts/copy-dlls.sh
+
+      - name: Zip package
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          zip -r "artifacts/full-basic-unity-${{ steps.ver.outputs.label }}.zip" unity \
+            -x 'unity/scripts/*' \
+            -x '*.DS_Store' \
+            -x '*.pdb'
+          ls -la artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-basic-unity-${{ steps.ver.outputs.label }}
+          path: artifacts/
+          # Artifacts expire after 90 days by default; bump explicitly for the
+          # "I want this preview build around for a while" case.
+          retention-days: 30

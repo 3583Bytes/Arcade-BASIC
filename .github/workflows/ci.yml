@@ -43,3 +43,25 @@ jobs:
             dotnet run --project src/FullBasic.Cli --configuration Release --no-build -- run examples/${ex}.bas
             echo "::endgroup::"
           done
+
+      - name: REPL smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual=$(printf 'LET X = 6\nPRINT X * 7\n.exit\n' \
+            | dotnet run --project src/FullBasic.Cli --configuration Release --no-build -- repl)
+          echo "$actual"
+          echo "$actual" | grep -q '42' || { echo "REPL did not print 42"; exit 1; }
+          echo "$actual" | grep -q 'bye\.' || { echo "REPL did not exit cleanly"; exit 1; }
+
+      - name: Unity DLL bundle (netstandard2.1 publish smoke)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./unity/scripts/copy-dlls.sh
+          # Sanity: the directory has at least the FullBasic core libs + BigDecimal.
+          for required in FullBasic.Core.dll FullBasic.Interpreter.dll Singulink.Numerics.BigDecimal.dll; do
+            test -f "unity/Runtime/Plugins/$required" \
+              || { echo "Unity bundle missing $required"; exit 1; }
+          done

@@ -37,11 +37,13 @@ public sealed class DisplayFile : BasicFile
         _stream = new FileStream(path, mode, access, FileShare.Read);
         if ((access & FileAccess.Read) != 0)
         {
-            _reader = new StreamReader(_stream, System.Text.Encoding.UTF8, leaveOpen: true);
+            _reader = new StreamReader(_stream, System.Text.Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true);
         }
         if ((access & FileAccess.Write) != 0)
         {
-            _writer = new StreamWriter(_stream, System.Text.Encoding.UTF8, leaveOpen: true);
+            _writer = new StreamWriter(_stream, System.Text.Encoding.UTF8,
+                bufferSize: 1024, leaveOpen: true);
         }
     }
 

@@ -217,7 +217,7 @@ public static class EmbeddedPayload
             // Read trailer (last 12 bytes).
             var trailer = new byte[12];
             fs.Seek(totalLen - 12, SeekOrigin.Begin);
-            fs.ReadExactly(trailer);
+            ReadExact(fs, trailer);
 
             // Magic is the last 8 bytes.
             for (var i = 0; i < 8; i++)
@@ -234,12 +234,27 @@ public static class EmbeddedPayload
 
             var payload = new byte[(int)len];
             fs.Seek(totalLen - 12 - len, SeekOrigin.Begin);
-            fs.ReadExactly(payload);
+            ReadExact(fs, payload);
             return payload;
         }
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Read exactly <c>buffer.Length</c> bytes from <paramref name="stream"/> or throw.
+    /// Stream.ReadExactly is .NET 7+; this helper works on both net9 and netstandard2.1.
+    /// </summary>
+    private static void ReadExact(Stream stream, byte[] buffer)
+    {
+        var offset = 0;
+        while (offset < buffer.Length)
+        {
+            var read = stream.Read(buffer, offset, buffer.Length - offset);
+            if (read == 0) throw new EndOfStreamException();
+            offset += read;
         }
     }
 }

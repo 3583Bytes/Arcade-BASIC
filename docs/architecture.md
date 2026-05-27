@@ -52,10 +52,11 @@ Full BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, 
    └─────────────────────────────────┘
 ```
 
-Two paths come out of the analyzer:
+Three paths come out of the analyzer:
 
 - **`run` path:** tree-walking interpreter, the most feature-complete. Supports the full surface — arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
 - **`vm`/`build` path:** AST → bytecode → stack VM. Currently a strict subset of the tree-walker (no arrays, MAT, files, exceptions, modules, `PRINT USING`, or `INPUT`). The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
+- **`repl` path:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/FullBasic.Cli/BasicRepl.cs`.
 
 ## Project graph
 
@@ -225,6 +226,20 @@ This buys us:
 Everything goes through `DiagnosticBag`. Errors carry a stable code (`FB0001`, `FB0002`, ...) and produce Rust-style snippets with a caret on the offending span. Color is enabled if stderr is a TTY.
 
 The parser collects up to a configurable number of errors per file before giving up; `--strict` would upgrade warnings to errors (not yet wired into the CLI).
+
+## Target frameworks
+
+The library projects (`FullBasic.Core` through `FullBasic.Vm` — everything except the CLI) **multi-target** `net9.0` and `netstandard2.1`. The CLI stays single-target `net9.0` because it uses `Environment.ProcessPath`, `File.SetUnixFileMode`, and AOT publishing — none of which exist on netstandard.
+
+A small `Polyfill.cs` file at the repo root is conditionally compiled into every non-`net5.0+` build (see `Directory.Build.props`) and supplies:
+
+- `System.Runtime.CompilerServices.IsExternalInit` — required for `record` types and `init` accessors
+- `System.Runtime.CompilerServices.RequiredMemberAttribute` + `CompilerFeatureRequiredAttribute` and `System.Diagnostics.CodeAnalysis.SetsRequiredMembersAttribute` — required for the `required` keyword
+- `System.Collections.Generic.ReferenceEqualityComparer` — used by the analyzer's reference-keyed side tables
+
+The libs are deliberately framework-thin: no `System.Text.Rune` (rewritten as surrogate-pair iteration over `string`), no `Stream.ReadExactly` (replaced by a small loop), no `Math.Log2` (uses `Math.Log(x, 2)`), no `MemoryExtensions.Contains` (uses `IndexOf` over `ReadOnlySpan`). This lets the same DLLs ship to Unity (Mono/IL2CPP), Xamarin, older .NET Framework hosts, and any other netstandard2.1 consumer.
+
+`Singulink.Numerics.BigDecimal` (v3) ships netstandard2.1 targets, so the BigDecimal-heavy runtime works unchanged.
 
 ## Where to look next
 

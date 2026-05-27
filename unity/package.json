@@ -1,0 +1,30 @@
+{
+  "name": "com.fullbasic.interpreter",
+  "version": "0.1.0",
+  "displayName": "Full BASIC Interpreter",
+  "description": "Full BASIC (ISO/IEC 10279:1991) interpreter for Unity. Run BASIC programs from C# for in-game scripting, dialogue, modding, education, or demos.\n\nFeatures: arrays, MAT operations, file I/O, exception handling (WHEN/USE/HANDLER), modules, PRINT USING, INPUT, codepoint-aware strings, arbitrary-precision decimal arithmetic.\n\nSee README.md inside the package for quickstart and the InGameConsole sample for a working scene wiring.",
+  "unity": "2021.3",
+  "documentationUrl": "https://github.com/OWNER/REPO",
+  "changelogUrl": "https://github.com/OWNER/REPO/blob/main/unity/CHANGELOG.md",
+  "licensesUrl": "https://github.com/OWNER/REPO/blob/main/LICENSE",
+  "keywords": [
+    "basic",
+    "interpreter",
+    "scripting",
+    "language",
+    "iso10279",
+    "modding",
+    "education"
+  ],
+  "author": {
+    "name": "Full BASIC contributors",
+    "url": "https://github.com/OWNER/REPO"
+  },
+  "samples": [
+    {
+      "displayName": "In-game BASIC runner",
+      "description": "MonoBehaviour that runs a Full BASIC program from an inspector field and prints output to the Unity console.",
+      "path": "Samples~/InGameConsole"
+    }
+  ]
+}

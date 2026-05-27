@@ -53,7 +53,7 @@ public static class BuiltinImpls
         {
             var x = ToDouble(args[0]);
             if (x <= 0) throw new BasicRuntimeException(2001, "LOG2 requires positive argument");
-            return Num(FromDouble(Math.Log2(x)));
+            return Num(FromDouble(Math.Log(x, 2)));
         };
         t["LOG10"] = args =>
         {
@@ -128,8 +128,8 @@ public static class BuiltinImpls
         {
             var s = S(args[0]);
             if (s.Length == 0) throw new BasicRuntimeException(3002, "ORD: string is empty");
-            var rune = s.EnumerateRunes().First();
-            return Num(BigDecimal.Parse(rune.Value.ToString()));
+            var cp = char.ConvertToUtf32(s, 0);
+            return Num(BigDecimal.Parse(cp.ToString()));
         };
         t["POS"] = args =>
         {
@@ -150,7 +150,7 @@ public static class BuiltinImpls
             var cp = (int)N(args[0]);
             if (cp < 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
                 throw new BasicRuntimeException(3003, $"CHR: codepoint {cp} out of range");
-            return Str(new System.Text.Rune(cp).ToString());
+            return Str(char.ConvertFromUtf32(cp));
         };
         t["REPEAT"] = args =>
         {
@@ -253,7 +253,11 @@ public static class BuiltinImpls
     private static int CountRunes(string s)
     {
         var n = 0;
-        foreach (var _ in s.EnumerateRunes()) n++;
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1])) i++;
+            n++;
+        }
         return n;
     }
 
@@ -287,10 +291,13 @@ public static class BuiltinImpls
         if (lenCp <= 0) return string.Empty;
         var sb = new StringBuilder();
         var cp = 0;
-        foreach (var rune in s.EnumerateRunes())
+        var i = 0;
+        while (i < s.Length)
         {
-            if (cp >= startCp && cp < startCp + lenCp) sb.Append(rune.ToString());
+            var width = char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]) ? 2 : 1;
+            if (cp >= startCp && cp < startCp + lenCp) sb.Append(s, i, width);
             cp++;
+            i += width;
             if (cp >= startCp + lenCp) break;
         }
         return sb.ToString();

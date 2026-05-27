@@ -109,11 +109,56 @@ jobs:
           path: artifacts/
 
   # -------------------------------------------------------------------------
+  # Unity asset package — bundle the netstandard2.1 DLLs into unity/ and
+  # zip the whole package for distribution via UPM (git URL) or manual
+  # extract into a project's Packages folder.
+  # -------------------------------------------------------------------------
+  unity:
+    name: Unity package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Populate unity/Runtime/Plugins with netstandard2.1 DLLs
+        shell: bash
+        run: ./unity/scripts/copy-dlls.sh
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Zip package
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          zip -r "artifacts/full-basic-unity-${{ steps.ver.outputs.name }}.zip" unity \
+            -x 'unity/scripts/*' \
+            -x '*.DS_Store' \
+            -x '*.pdb'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-package
+          path: artifacts/
+
+  # -------------------------------------------------------------------------
   # Collect every artifact and attach to a GitHub release.
   # -------------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [aot, framework-dependent]
+    needs: [aot, framework-dependent, unity]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

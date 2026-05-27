@@ -1,4 +1,5 @@
 using FullBasic.Bytecode;
+using FullBasic.Cli;
 using FullBasic.Compiler;
 using FullBasic.Core;
 using FullBasic.Interpreter;
@@ -53,6 +54,7 @@ static int Run(string[] args)
         "run" => RunProgram(args.AsSpan(1)),
         "vm" => RunVm(args.AsSpan(1)),
         "build" => RunBuild(args.AsSpan(1)),
+        "repl" => new BasicRepl().Run(),
         "--help" or "-h" => PrintUsage(),
         _ => UnknownCommand(args[0]),
     };
@@ -76,6 +78,7 @@ static int PrintUsage()
           run <file>            Lex + parse + analyze + run the program (tree-walker).
           vm <file>             Lex + parse + analyze + compile + run on bytecode VM.
           build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
+          repl                  Start an interactive Full BASIC session.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
           --help                Print this help.

@@ -1178,7 +1178,7 @@ public sealed partial class BasicParser
         // raw includes the surrounding quotes; strip them and resolve "" escapes.
         if (raw.Length < 2) return string.Empty;
         var inner = raw.AsSpan(1, raw.Length - 2);
-        if (!inner.Contains('"')) return inner.ToString();
+        if (inner.IndexOf('"') < 0) return inner.ToString();
         return inner.ToString().Replace("\"\"", "\"", StringComparison.Ordinal);
     }
 

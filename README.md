@@ -11,10 +11,27 @@ A Full BASIC (ISO/IEC 10279:1991, ANSI X3.113-1987) interpreter and compiler in 
 
 ## Documentation
 
-- [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures.
+- [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures, target-framework strategy.
 - [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
 - [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
 - [**Examples**](examples/README.md) — sample programs with a feature matrix across tree-walker and bytecode VM.
+
+## Targets
+
+Library assemblies (lexer through VM) multi-target **`net9.0`** and **`netstandard2.1`**, so they're embeddable in Unity (Mono/IL2CPP), Xamarin, .NET Framework, and any other netstandard2.1 host. The CLI stays single-target `net9.0` for AOT publishing and host-specific APIs.
+
+### Unity
+
+The [`unity/`](unity/) folder is a ready-to-use UPM (Unity Package Manager) package — `package.json`, `FullBasic.asmdef`, and an `InGameConsole` sample MonoBehaviour. Once installed, embedding a BASIC program is one call:
+
+```csharp
+using FullBasic;
+
+var result = BasicEngine.Run("PRINT 6 * 7", out string output);
+Debug.Log(output);   // " 42 "
+```
+
+See [`unity/README.md`](unity/README.md) for install instructions (UPM via git URL, or extract the release ZIP into `Packages/`). The release CI builds the netstandard2.1 DLLs and bundles them into a `full-basic-unity-<version>.zip` artifact attached to every tagged release.
 
 ## Status
 
@@ -53,9 +70,38 @@ full-basic <command> [args]
   run <file> [mod ...]    tree-walking interpreter (most complete)
   vm <file>               compile to bytecode and run on the VM (subset)
   build <file> [-o out]   produce a self-contained native binary
+  repl                    interactive Full BASIC session
   --version
   --bigdecimal-spike      BigDecimal AOT smoke test
 ```
+
+## Try the REPL
+
+```sh
+dotnet run --project src/FullBasic.Cli -- repl
+```
+
+```
+Full BASIC REPL — type .help for commands, .exit to quit.
+> LET X = 42
+> PRINT X * 2
+ 84
+> FOR I = 1 TO 4
+...   PRINT I, I * I
+... NEXT I
+ 1               1
+ 2               4
+ 3               9
+ 4               16
+> PRINT SIN(PI / 2)
+ 1
+> .exit
+bye.
+```
+
+The REPL accumulates each accepted line into the session; variables persist, multi-line blocks (`FOR`/`DO`/`IF`/`SELECT`/`SUB`/`FUNCTION`/`DEF`/`MODULE`/`WHEN`) are detected and the prompt switches to `... ` until the block closes. Bad input doesn't pollute the session. `.list` shows the accumulated source, `.clear` resets it.
+
+`INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, run a `.bas` file with `full-basic run`.
 
 ## Running the example programs
 

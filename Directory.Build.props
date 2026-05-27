@@ -1,7 +1,7 @@
 <Project>
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- Per-project: libs multi-target net9.0;netstandard2.1; CLI/tests use TargetFramework=net9.0. -->
     <LangVersion>13</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -25,6 +25,13 @@
 
   <ItemGroup Condition="'$(IsTestProject)' != 'true' AND '$(MSBuildProjectName)' != 'FullBasic.Cli'">
     <InternalsVisibleTo Include="$(MSBuildProjectName).Tests" />
+  </ItemGroup>
+
+  <!-- Compiler-feature polyfills (IsExternalInit, RequiredMember, etc.) on
+       any non-.NET-5+ target. Only kicks in when a project actually
+       multi-targets to netstandard / netframework. -->
+  <ItemGroup Condition="$(TargetFramework.StartsWith('netstandard')) OR $(TargetFramework.StartsWith('netcoreapp1')) OR $(TargetFramework.StartsWith('net4'))">
+    <Compile Include="$(MSBuildThisFileDirectory)Polyfill.cs" Link="Polyfill.cs" />
   </ItemGroup>
 
 </Project>
