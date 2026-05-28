@@ -386,6 +386,7 @@ public sealed partial class BasicInterpreter
 
         while (true)
         {
+            _cancel.ThrowIfCancellationRequested();
             var current = ((NumericValue)ReadSlot(frame, resolved.Symbol.OwnerScope!,
                 resolved.Symbol.Slot, false)).V;
             if (step > BigDecimal.Zero && current > to) break;
@@ -408,6 +409,7 @@ public sealed partial class BasicInterpreter
     {
         while (true)
         {
+            _cancel.ThrowIfCancellationRequested();
             if (d.Pre is not null)
             {
                 var c = Truthy(EvalExpr(d.Pre.Condition, frame));

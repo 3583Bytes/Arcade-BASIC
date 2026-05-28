@@ -24,18 +24,20 @@ public sealed partial class BasicInterpreter
     private readonly SemanticInfo _info;
     private readonly TextWriter _out;
     private readonly TextReader _in;
+    private readonly CancellationToken _cancel;
 
     private ActivationRecord _programFrame;
     private int _dataCursor;
     private int _optionBase;
     private readonly ChannelTable _channels = new();
 
-    public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in)
+    public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in, CancellationToken cancel = default)
     {
         _program = program;
         _info = info;
         _out = @out;
         _in = @in;
+        _cancel = cancel;
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
     }
 
@@ -88,6 +90,7 @@ public sealed partial class BasicInterpreter
         var pc = 0;
         while (pc < stmts.Count)
         {
+            _cancel.ThrowIfCancellationRequested();
             var stmt = stmts[pc];
             var fc = ExecStmt(stmt, frame);
             switch (fc)
@@ -143,6 +146,7 @@ public sealed partial class BasicInterpreter
         var pc = startPc;
         while (pc < stmts.Count)
         {
+            _cancel.ThrowIfCancellationRequested();
             var fc = ExecStmt(stmts[pc], frame);
             switch (fc)
             {

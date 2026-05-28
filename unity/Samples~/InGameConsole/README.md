@@ -1,75 +1,92 @@
-# In-game REPL console sample
+# In-game code editor sample
 
-A drop-in Unity scene that gives your game an interactive Arcade BASIC console: type a program, click **Run**, see the output scroll in. Uses TextMeshPro for both the input field and the transcript.
+A drop-in Unity scene that gives your game a syntax-highlighted Arcade BASIC editor and a live output pane. Each Run executes the editor's full source fresh — no hidden session state.
 
 ```
-┌─────────────────────────────────────────────┐
-│ Arcade BASIC REPL ready. Type a program...  │
-│ > PRINT 6 * 7                               │
-│  42                                         │
-│ > FOR I = 1 TO 3                            │
-│    PRINT I, I*I                             │
-│   NEXT I                                    │
-│  1   1                                      │
-│  2   4                                      │
-│  3   9                                      │
-│                                             │  ← transcript (scrollable)
-├─────────────────────────────────────────────┤
-│ ┌───────────────────────────┐  ┌─────────┐  │
-│ │ PRINT "type here"         │  │ Run ▶   │  │
-│ └───────────────────────────┘  └─────────┘  │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ File  Run                                                                │  Menu bar
+├────────┬────────┬────────────────────────────────────────────────────────┤
+│ Source │ Output │                                                        │  Tab bar
+├────────┴────────┴────────────────────────────────────────────────────────┤
+│ 1│ FOR I = 1 TO 5                                                        │
+│ 2│   PRINT "square of "; I; " = "; I * I                                 │
+│ 3│ NEXT I                                                                │  Active tab
+│ 4│ END                                                                   │  (everything left over)
+│ 5│ |                                                                     │
+│  │                                                                       │
+├──┴───────────────────────────────────────────────────────────────────────┤
+│ Ready                                                                    │  Footer (status)
+└──────────────────────────────────────────────────────────────────────────┘
 ```
+
+Two menus at the top — **File** (Open, Save, Save As) and **Run** (Run, Stop, Clear Output) — pop out small panels when clicked, and a fullscreen click-blocker dismisses them when you click anywhere else. Two tabs below swap which pane fills the content area: **Source** (gutter + syntax-highlighted editor) or **Output** (scrollable transcript). Clicking **Run** auto-switches to Output so you watch the program execute live. The footer is just a status line: `Ready`, `Saved foo.bas`, `Running...`, `Cancelled`, error text. Keywords are blue, strings orange, numbers green, line labels gray, colored by the project's own `BasicLexer` so the highlighting always matches what the interpreter will parse.
 
 ## One-click setup
 
 1. **Import the sample**: Window → Package Manager → Arcade BASIC Interpreter → Samples → **Import** next to "In-game REPL console".
-2. **Build the scene**: Window → Arcade BASIC → Samples → **Create REPL Scene**. This generates `Assets/Samples/ArcadeBasic_REPL.unity` with the Canvas, EventSystem, ScrollRect, input field, and Run button all wired to the `ArcadeBasicReplConsole` controller.
-3. **Press Play**, type `PRINT 6 * 7`, click **Run**.
+2. **Build the scene**: Window → Arcade BASIC → Samples → **Create REPL Scene**. Generates `Assets/Samples/ArcadeBasic_Editor.unity` with everything wired up.
+3. **Press Play**, click **Run** (or **Ctrl/Cmd + Enter**).
 
-That's the whole thing.
+> **TextMeshPro Essentials.** If text appears as pink boxes, Unity prompted you to import TMP Essentials but you skipped it. Re-run **Window → TextMeshPro → Import TMP Essential Resources**, then reopen the scene.
 
-> **TextMeshPro Essentials.** If the text appears as a pink placeholder, Unity prompted you to import TMP Essentials but you skipped it. Re-run **Window → TextMeshPro → Import TMP Essential Resources**, then re-open the scene.
+## How it works
 
-## Manual setup (if you'd rather wire it yourself)
+| Piece | What it does |
+|---|---|
+| **Editor pane** | A `TMP_InputField` whose own text component is rendered fully transparent. A sibling `TMP_Text` "highlight overlay" — same font/size/position — displays the colored version. The caret tracks the invisible field; the user sees the colored overlay. |
+| **Line number gutter** | A `TMP_Text` to the left of the editor, updated on every `onValueChanged` to reflect the current line count. Top-right aligned, monospace. |
+| **Syntax highlighting** | `BasicSyntaxHighlighter.Highlight(string)` runs `BasicLexer` on the source and emits TMP rich text with `<color>` tags per token kind. Token text is wrapped in `<noparse>` so a literal `<` in a string can't break parsing. |
+| **Live streaming output** | The interpreter runs on a background `Task` writing into a thread-safe buffer; the main thread drains it in `Update` and appends to the output transcript. Long-running `FOR` loops feel responsive, not frozen. |
+| **Stop button** | A `CancellationToken` is checked between BASIC statements and at the top of every `FOR`/`DO`/`GOSUB` iteration. Clicking Stop signals it; `BasicEngine.Run` returns `ExitCode = 2` and the output shows `[cancelled]`. Hidden when no program is running. |
+| **Open dropdown** | First entry is **📂 Browse...** → opens the native OS open dialog (Editor only) so you can load any `.bas` file from anywhere on disk. Subsequent entries (📦) are the bundled examples in `Resources/ArcadeBasicSamples/`. |
+| **Filename field** | Single-line display of the current file (filename without extension). Auto-fills when you load via Browse or pick an example. Editable; on Player builds it doubles as the save-as target. |
+| **Save button** | If the editor's content came from a file on disk, writes back to that same path. If it's a fresh/example program with no path, opens the native **Save As** dialog (Editor) or writes to `<persistentDataPath>/ArcadeBasicSaved/<filename>.bas` using the filename field (Player). Overwrites without warning if a same-named file already exists. |
+| **Clear button** | Wipes the output pane only. The editor source is untouched. |
 
-The `ArcadeBasicReplConsole` MonoBehaviour just needs three references in the inspector:
+## Performance notes
 
-| Field | Type | What it is |
+- **Syntax highlighting** runs on every keystroke. The lexer is O(n) over source length; for typical BASIC programs (~100 lines) it's sub-millisecond and unnoticeable. For pasting in Lunar Lander (300+ lines) it's still <5 ms.
+- **Numeric arithmetic** is arbitrary-precision (`Singulink.Numerics.BigDecimal`) — great for spec conformance, slow for tight loops. Use BASIC for high-level game scripting, not per-frame physics.
+
+## Manual setup
+
+If you don't want to use the scene builder, drop `ArcadeBasicCodeEditor` on any GameObject and fill these fields:
+
+| Required | Field | Type |
 |---|---|---|
-| `inputField` | `TMP_InputField` | Multi-line input (`LineType = MultiLineNewline`). |
-| `outputText` | `TMP_Text` | Transcript label inside a `ScrollRect → Viewport → Content` hierarchy. |
-| `runButton` | `Button` | (Optional.) Click handler is wired automatically on `Awake`. |
-| `scrollRect` | `ScrollRect` | (Optional.) Auto-scrolls to bottom after each run. |
+| ✓ | `inputField` | `TMP_InputField` (multi-line) |
+| ✓ | `highlightOverlay` | `TMP_Text` (sibling of inputField's text component, same font/size, `richText = true`) |
+| ✓ | `outputText` | `TMP_Text` |
+|   | `gutterText` | `TMP_Text` to the left of the editor |
+|   | `outputScroll` | `ScrollRect` enclosing `outputText` (enables auto-scroll on output) |
+|   | `runButton`, `stopButton`, `clearOutputButton`, `saveButton` | `Button`s |
+|   | `filenameField` | `TMP_InputField` (single-line) — current document name + save-as target |
+|   | `exampleDropdown` | `TMP_Dropdown` (renamed mentally to "Open", but the field name kept for back-compat) |
+|   | `statusText` | `TMP_Text` (Ready / Running... / Saved name / Loaded name / Cancelled / Error) |
 
-Drop the component on any GameObject, hit the inspector references, you're done. The auto-scene builder is convenience, not magic.
+The key invariant for the highlight overlay: it must be a sibling of the input field's text component (typically inside the input's `Text Area`) with **identical font, font size, character spacing, line spacing, and margins**. Any mismatch and the caret drifts off the visible characters. If you're hand-wiring this, copy the field values from each other after creation.
 
-## What happens on each Run
+## Loading and saving files
 
-Every click of **Run** is an independent program — each call spins up a fresh `BasicEngine`, so `LET X = 42` in one submission won't be visible in the next. If you want stateful REPL semantics (variables persist across turns), batch user input into a growing source buffer and re-run from the top each time. A simple approach:
+The sample uses the **native OS file dialogs** when running inside the Unity Editor — `EditorUtility.OpenFilePanel` / `EditorUtility.SaveFilePanel`. You get a real Finder/Explorer/Files window, can navigate anywhere on disk, and can save to any folder you can write to. Click **Open ▾ → 📂 Browse...** to load; click **Save** on a freshly-typed program to get the Save As dialog.
 
-```csharp
-public TMP_InputField inputField;
-StringBuilder session = new();
+Once you've loaded a file, the path sticks. Subsequent **Save** clicks write back to that same file without prompting — like every text editor you've used. The filename field reflects the current document (without the extension). Pick another example or Browse... to switch documents.
 
-public void RunCurrent()
-{
-    session.AppendLine(inputField.text);
-    BasicEngine.Run(session.ToString(), out string output);
-    // ...
-}
-```
+In a **built Player**, `UnityEditor.*` isn't available, so the buttons fall back gracefully:
+- **Open ▾ → Browse...** shows "Browse only available in Editor".
+- **Save** on an untitled program writes to `Application.persistentDataPath/ArcadeBasicSaved/<filename>.bas`, using whatever you've typed in the filename field. Sanitized to `[A-Za-z0-9_.\-]`.
 
-## Feeding INPUT statements from C#
+`persistentDataPath` depends on the platform — on macOS it's `~/Library/Application Support/<company>/<product>/`, on Windows `%userprofile%\AppData\LocalLow\<company>\<product>\`. For real player-facing file I/O on desktop, drop in a plugin like [StandaloneFileBrowser](https://github.com/gkngkc/UnityStandaloneFileBrowser) and replace the `#if UNITY_EDITOR` branch — it's a single-file MIT-licensed wrapper around the native dialogs.
 
-The console as shipped does not wire stdin. If your BASIC program uses `INPUT`, pass a `TextReader` as the third argument to `BasicEngine.Run` — for example, a `StringReader` of pre-canned answers (handy for testing), or a custom reader backed by a UI prompt.
+## Adding bundled examples
+
+Drop `.bas` files into `Assets/Samples/Arcade BASIC Interpreter/<version>/In-game REPL console/Resources/ArcadeBasicSamples/`. Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Use a sort-prefix (`01_Hello.bas`, `02_Pi.bas`, ...) for deterministic ordering.
+
+## Feeding `INPUT` from C#
+
+The sample doesn't wire stdin. To support `INPUT` statements, pass a `TextReader` as the third argument to `BasicEngine.Run` — e.g. a `StringReader` of pre-canned lines for testing, or a custom reader backed by a UI prompt for real interaction.
 
 ```csharp
 using var stdin = new StringReader("42\nhello\n");
-using var stdout = new StringWriter();
-BasicEngine.Run(source, stdout, stdin);
+BasicEngine.Run(source, stdout, stdin: stdin, cancel: token);
 ```
-
-## Performance
-
-Each `Run` lex/parse/analyzes from scratch — fine for human-paced REPL usage, not what you want in a per-frame `Update`. For inner-loop scripting, compile to bytecode once (see `arcade-basic vm` in the main README) and execute the chunk many times.
