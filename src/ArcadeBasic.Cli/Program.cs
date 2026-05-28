@@ -62,7 +62,7 @@ static int Run(string[] args)
 
 static int PrintVersion()
 {
-    Console.WriteLine("arcade-basic 0.0.0 (Phase 1)");
+    Console.WriteLine("arcade-basic 1.0.0");
     return 0;
 }
 
