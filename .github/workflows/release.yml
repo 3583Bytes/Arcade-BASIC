@@ -52,7 +52,7 @@ jobs:
           dotnet publish src/ArcadeBasic.Cli \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
-            /p:PublishAot=true \
+            -p:PublishAot=true \
             --output publish/aot
 
       - name: Smoke-test the binary
@@ -147,8 +147,8 @@ jobs:
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained \
-            /p:PublishSingleFile=true \
-            /p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
             --output publish/tui
 
       - name: Smoke-test the binary

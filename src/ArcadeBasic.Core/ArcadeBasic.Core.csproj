@@ -6,6 +6,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- AOT is meaningless for the netstandard2.1 build (Unity target); refuse
+       the global property if it propagates from the AOT'd CLI publish. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <PublishAot>false</PublishAot>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Singulink.Numerics.BigDecimal" />
   </ItemGroup>
