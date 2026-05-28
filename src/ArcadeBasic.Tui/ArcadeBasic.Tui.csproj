@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ArcadeBasic.Tui</RootNamespace>
+    <AssemblyName>arcade-basic-tui</AssemblyName>
+    <!-- Terminal.Gui v2 still leans on reflection in places; don't AOT this binary. -->
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ArcadeBasic.Core\ArcadeBasic.Core.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Lexer\ArcadeBasic.Lexer.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Parser\ArcadeBasic.Parser.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Sema\ArcadeBasic.Sema.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Compiler\ArcadeBasic.Compiler.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Interpreter\ArcadeBasic.Interpreter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Terminal.Gui" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\examples\*.bas" LinkBase="Examples" />
+  </ItemGroup>
+
+</Project>

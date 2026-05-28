@@ -109,6 +109,100 @@ jobs:
           path: artifacts/
 
   # -------------------------------------------------------------------------
+  # Terminal TUI front-end — Terminal.Gui v1 isn't AOT-clean, so we ship
+  # self-contained per-RID binaries (with the .NET runtime bundled) plus a
+  # small framework-dependent zip for users who already have .NET 9.
+  # -------------------------------------------------------------------------
+  tui:
+    name: TUI (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            ext: ''
+          - os: macos-latest
+            rid: osx-arm64
+            ext: ''
+          - os: macos-13
+            rid: osx-x64
+            ext: ''
+          - os: windows-latest
+            rid: win-x64
+            ext: '.exe'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Publish self-contained
+        shell: bash
+        run: |
+          dotnet publish src/ArcadeBasic.Tui \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained \
+            /p:PublishSingleFile=true \
+            /p:IncludeNativeLibrariesForSelfExtract=true \
+            --output publish/tui
+
+      - name: Smoke-test the binary
+        shell: bash
+        run: |
+          ./publish/tui/arcade-basic-tui${{ matrix.ext }} --version
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp publish/tui/arcade-basic-tui${{ matrix.ext }} \
+             artifacts/arcade-basic-tui-${{ matrix.rid }}${{ matrix.ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-${{ matrix.rid }}
+          path: artifacts/
+
+  tui-framework-dependent:
+    name: TUI (framework-dependent)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Publish framework-dependent
+        run: |
+          dotnet publish src/ArcadeBasic.Tui \
+            --configuration Release \
+            --no-self-contained \
+            --output publish/tui-fw
+
+      - name: Smoke-test
+        run: ./publish/tui-fw/arcade-basic-tui --version
+
+      - name: Package
+        run: |
+          mkdir -p artifacts
+          cd publish/tui-fw
+          zip -r ../../artifacts/arcade-basic-tui-framework-dependent.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-framework-dependent
+          path: artifacts/
+
+  # -------------------------------------------------------------------------
   # Unity asset package — bundle the netstandard2.1 DLLs into unity/ and
   # zip the whole package for distribution via UPM (git URL) or manual
   # extract into a project's Packages folder.
@@ -158,7 +252,7 @@ jobs:
   # -------------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [aot, framework-dependent, unity]
+    needs: [aot, framework-dependent, tui, tui-framework-dependent, unity]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

@@ -39,6 +39,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Vm.Tests", "tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Conformance.Tests", "test\ArcadeBasic.Conformance.Tests\ArcadeBasic.Conformance.Tests.csproj", "{53B6AD4C-E3C8-45E7-A906-6AAC54714843}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArcadeBasic.Tui", "src\ArcadeBasic.Tui\ArcadeBasic.Tui.csproj", "{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -253,6 +255,18 @@ Global
 		{53B6AD4C-E3C8-45E7-A906-6AAC54714843}.Release|x64.Build.0 = Release|Any CPU
 		{53B6AD4C-E3C8-45E7-A906-6AAC54714843}.Release|x86.ActiveCfg = Release|Any CPU
 		{53B6AD4C-E3C8-45E7-A906-6AAC54714843}.Release|x86.Build.0 = Release|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Debug|x64.Build.0 = Debug|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Debug|x86.Build.0 = Debug|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Release|x64.ActiveCfg = Release|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Release|x64.Build.0 = Release|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Release|x86.ActiveCfg = Release|Any CPU
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -275,5 +289,6 @@ Global
 		{BD3739AE-6AAC-4B1F-9FFC-C8D4F5CAA0F0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{24A9431C-BB76-409E-881F-A5DFF46ECD14} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{53B6AD4C-E3C8-45E7-A906-6AAC54714843} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{CCDEEEE9-3EBA-48F0-B391-8F932A33B583} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
