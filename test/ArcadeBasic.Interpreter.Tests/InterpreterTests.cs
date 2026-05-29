@@ -19,7 +19,7 @@ public class InterpreterTests
 
         if (diags.HasErrors) return ("", 1, diags);
 
-        var output = new StringWriter();
+        var output = new StringWriter { NewLine = "\n" };
         var input = new StringReader(stdin);
         var interp = new BasicInterpreter(program, info, output, input);
         var exit = interp.Run();

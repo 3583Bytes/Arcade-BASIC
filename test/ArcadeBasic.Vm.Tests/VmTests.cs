@@ -32,7 +32,10 @@ public class VmTests
         {
             return (ex.Message, 1);
         }
-        var sw = new StringWriter();
+        // Force LF newlines so tests pin platform-independent output —
+        // StringWriter's default NewLine is "\r\n" on Windows, which would
+        // break every assertion that contains an embedded "\n".
+        var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
         var exit = new BasicVm(compiled, sw, sr).Run();
         return (sw.ToString(), exit);

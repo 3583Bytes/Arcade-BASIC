@@ -24,7 +24,7 @@ public class SerializationTests
 
     private static string RunCompiled(ArcadeBasic.Bytecode.Program p)
     {
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         new BasicVm(p, sw, new StringReader("")).Run();
         return sw.ToString();
     }

@@ -1,84 +1,103 @@
 # Arcade BASIC
 
+<!-- Badges below point at OWNER/REPO placeholders. Swap to the real
+     owner/repo slug once the project is pushed to GitHub. -->
 [![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/OWNER/REPO?label=release)](https://github.com/OWNER/REPO/releases/latest)
 [![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
 [![Spec: ISO 10279](https://img.shields.io/badge/spec-ISO%2010279%3A1991-blue)](https://www.iso.org/standard/18305.html)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> Replace `OWNER/REPO` in the badges above with your GitHub `owner/repo` once the project is pushed.
+> A modern interpreter, compiler, and IDE for **Full BASIC** (ISO/IEC 10279:1991, ANSI X3.113-1987). Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity game, or ship a `.bas` file as a self-contained native binary.
 
-Arcade BASIC is an interpreter and compiler for the **Full BASIC** language (ISO/IEC 10279:1991, ANSI X3.113-1987), written in C#.
+![Arcade BASIC IDE — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicIDEScreenshot.png)
 
-## Documentation
+## In one minute
 
-- [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures, target-framework strategy.
-- [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
-- [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
-- [**Examples**](examples/README.md) — sample programs with a feature matrix across tree-walker and bytecode VM.
+A tiny BASIC program:
 
-## Targets
+```basic
+PRINT "Hello, Arcade BASIC!"
+FOR I = 1 TO 3
+  PRINT "  squared:"; I; "->"; I * I
+NEXT I
+```
 
-Library assemblies (lexer through VM) multi-target **`net9.0`** and **`netstandard2.1`**, so they're embeddable in Unity (Mono/IL2CPP), Xamarin, .NET Framework, and any other netstandard2.1 host. The CLI stays single-target `net9.0` for AOT publishing and host-specific APIs.
+Run it on the interpreter:
 
-### Unity
+```sh
+$ arcade-basic run hello.bas
+Hello, Arcade BASIC!
+  squared: 1 -> 1
+  squared: 2 -> 4
+  squared: 3 -> 9
+```
 
-The [`unity/`](unity/) folder is a ready-to-use UPM (Unity Package Manager) package — `package.json`, `ArcadeBasic.asmdef`, and an `InGameConsole` sample with a one-click scene builder that drops an in-game REPL (TMP input + scrollable transcript + Run button) into your project. Once installed, embedding a BASIC program is one call:
+Same program, compiled to a self-contained native binary that runs anywhere — no .NET install required:
+
+```sh
+$ arcade-basic build hello.bas -o hello
+$ ./hello
+Hello, Arcade BASIC!
+  squared: 1 -> 1 ...
+```
+
+Or embed it in your C# / Unity / Xamarin app:
 
 ```csharp
 using ArcadeBasic;
 
-var result = BasicEngine.Run("PRINT 6 * 7", out string output);
-Debug.Log(output);   // " 42 "
+BasicEngine.Run("PRINT 6 * 7", out var output);
+Console.WriteLine(output);   //  42
 ```
 
-See [`unity/README.md`](unity/README.md) for install instructions (UPM via git URL, or extract the release ZIP into `Packages/`). The release CI builds the netstandard2.1 DLLs and bundles them into a `arcade-basic-unity-<version>.zip` artifact attached to every tagged release.
+## What you can do with it
 
-## Status
+- **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
+- **Edit and run BASIC in a TUI IDE.** `arcade-basic-ide` opens a full-screen Terminal.Gui editor with line numbers, syntax classification, a problems pane, and one-key Run/Stop. See [Try the IDE](#try-the-ide).
+- **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
+- **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into Unity (Mono and IL2CPP), Xamarin, .NET Framework, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.
+- **Learn how a language gets implemented.** Clean separation of lexer → parser → semantic analyzer → tree-walking interpreter and bytecode VM, all in one C# solution with extensive tests.
 
-Three execution paths land an Arcade BASIC program in different forms — they're feature-equivalent (every program the tree-walker accepts also runs on the VM):
+## Three ways to run a program
 
-- **`arcade-basic run <file>`** — tree-walking interpreter. The reference implementation.
-- **`arcade-basic vm <file>`** — compile to stack bytecode and run on the VM. Byte-identical output to the tree-walker on every example program in the repo. (`startrek.bas` uses non-deterministic `RND`, so the two engines agree structurally rather than literally.)
-- **`arcade-basic build <file> [-o out]`** — bundle the VM and the compiled program into a single self-contained native binary (Phase 10, Path E). Any program that runs under `run` also builds.
+| | Command | Best for |
+|---|---|---|
+| **Tree-walking interpreter** | `arcade-basic run foo.bas` | The reference implementation. Fast to iterate on. |
+| **Bytecode VM** | `arcade-basic vm foo.bas` | Stack-based VM over compact bytecode. Output is byte-identical to the interpreter. |
+| **Native binary** | `arcade-basic build foo.bas -o foo` | Bundles the VM and your compiled program into a single self-contained executable — no .NET needed on the target. |
 
-Pipeline phases 0–10 are all merged. Optional Phase 8 modules are partial: `PRINT USING` (8a) is done; graphics + picture (SVG backend) and fixed-decimal are not.
+All three execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules with `PUBLIC` re-export, exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers. Every example program runs the same on all three.
 
-See [`examples/README.md`](examples/README.md) for the per-example feature breakdown.
+## Try the IDE
 
-## Build
-
-Requires .NET 9 SDK.
+**Arcade BASIC IDE** is a full-screen terminal IDE: a source pane with a line-number gutter, an output pane, a bottom input line for `INPUT`, examples bundled into the **File ▸ Examples** menu, and one-key Run/Stop.
 
 ```sh
-dotnet build                                       # debug build
-dotnet test                                        # all unit + integration tests
-dotnet run --project src/ArcadeBasic.Cli -- run <f>  # invoke the CLI
+# From source:
+dotnet run --project src/ArcadeBasic.Ide                       # empty buffer
+dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
 
-# AOT-publish a standalone CLI for the current platform
-dotnet publish src/ArcadeBasic.Cli -c Release /p:PublishAot=true
-# → ./publish/aot/ArcadeBasic.Cli
+# From a published binary (no .NET required):
+arcade-basic-ide examples/startrek.bas
 ```
 
-## CLI
+| Key    | Action                          |
+| ------ | ------------------------------- |
+| F5     | Run the current source          |
+| Esc    | Stop a running program          |
+| Ctrl-N | New buffer                      |
+| Ctrl-O | Open a `.bas` file              |
+| Ctrl-S | Save                            |
+| Ctrl-L | Clear the output pane           |
+| Ctrl-Q | Quit                            |
 
-```
-arcade-basic <command> [args]
-
-  lex <file>              tokenize and print the token stream
-  parse <file>            lex + parse, pretty-print the AST
-  analyze <file>          lex + parse + sema, print symbol/DATA summary
-  run <file> [mod ...]    tree-walking interpreter
-  vm <file>               compile to bytecode and run on the VM
-  build <file> [-o out]   produce a self-contained native binary
-  repl                    interactive Arcade BASIC session
-  --version
-  --bigdecimal-spike      BigDecimal AOT smoke test
-```
+Tagged releases ship the IDE as a self-contained single-file binary for `linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64`. The .NET runtime is bundled inside the executable. See [`src/ArcadeBasic.Ide/README.md`](src/ArcadeBasic.Ide/README.md) for implementation notes.
 
 ## Try the REPL
 
 ```sh
-dotnet run --project src/ArcadeBasic.Cli -- repl
+arcade-basic repl
 ```
 
 ```
@@ -99,95 +118,120 @@ Arcade BASIC REPL — type .help for commands, .exit to quit.
 bye.
 ```
 
-The REPL accumulates each accepted line into the session; variables persist, multi-line blocks (`FOR`/`DO`/`IF`/`SELECT`/`SUB`/`FUNCTION`/`DEF`/`MODULE`/`WHEN`) are detected and the prompt switches to `... ` until the block closes. Bad input doesn't pollute the session. `.list` shows the accumulated source, `.clear` resets it.
+Each accepted line is appended to a growing session source. Multi-line blocks (`FOR`, `DO`, `IF`, `SELECT`, `SUB`, `FUNCTION`, `DEF`, `MODULE`, `WHEN`) auto-detect and the prompt switches to `... ` until the block closes. Bad input doesn't pollute the session. `.list` shows the accumulated source; `.clear` resets it.
 
-`INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, run a `.bas` file with `arcade-basic run`.
+`INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, save your code to a `.bas` file and use `arcade-basic run`.
 
-## Try the IDE
+## Example programs
 
-**Arcade BASIC IDE** is a full-screen Terminal.Gui editor + runner that lives in [`src/ArcadeBasic.Ide`](src/ArcadeBasic.Ide). It pairs a source pane (line-number gutter, syntax classification) with an output pane and a bottom input line for `INPUT`, and runs the current buffer through `BasicEngine` on F5.
+13 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port and a Lunar Lander physics sim. Highlights:
 
-![Arcade BASIC IDE — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicIDEScreenshot.png)
+| Program | What it shows |
+|---|---|
+| [`hello.bas`](examples/hello.bas) | `PRINT`, `IF`/`THEN`/`ELSE`, `FOR`, `^` |
+| [`matrix.bas`](examples/matrix.bas) | `MAT` operations — `+`, `*`, `TRN`, `INV`, `IDN`, `MAT PRINT` |
+| [`exception.bas`](examples/exception.bas) | `WHEN`/`USE`/`END WHEN`, `CAUSE`, `EXLINE`, `EXTYPE`, `RETRY` |
+| [`modules.bas`](examples/modules.bas) | `MODULE` blocks, `PUBLIC` vs private declarations |
+| [`fileio.bas`](examples/fileio.bas) | `OPEN` / `PRINT #` / `LINE INPUT #` / `CLOSE` |
+| [`formatted.bas`](examples/formatted.bas) | `PRINT USING` with picture strings |
+| [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
+| [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 
-```sh
-dotnet run --project src/ArcadeBasic.Ide                       # empty buffer
-dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
+See [`examples/README.md`](examples/README.md) for the full list with a tree-walker vs VM compatibility matrix.
+
+## Embedding in .NET, Unity, Xamarin
+
+The library projects (lexer through VM) multi-target **`net9.0`** *and* **`netstandard2.1`**, so they drop into anything from a modern ASP.NET host to a Unity game. The smallest possible embed:
+
+```csharp
+using ArcadeBasic;
+
+var result = BasicEngine.Run("LET X = 6 * 7 \n PRINT X", out string output);
+Console.WriteLine(output);  //  42
 ```
 
-| Key    | Action                          |
-| ------ | ------------------------------- |
-| F5     | Run the current source          |
-| Esc    | Stop a running program          |
-| Ctrl-N | New (empty) buffer              |
-| Ctrl-O | Open a `.bas` file              |
-| Ctrl-S | Save                            |
-| Ctrl-L | Clear the output pane           |
-| Ctrl-Q | Quit                            |
+For Unity, the [`unity/`](unity/) folder is a ready-to-use UPM package — `package.json`, `ArcadeBasic.asmdef`, and an `InGameConsole` sample with a one-click scene builder that drops an in-game REPL (TextMeshPro input + scrollable transcript + Run button) into your project. Install via UPM git URL or unzip a tagged release ZIP into your project's `Packages/` folder. See [`unity/README.md`](unity/README.md).
 
-Every program in [`examples/`](examples/) is bundled into the binary and listed under **File ▸ Examples**. Tagged releases publish self-contained `arcade-basic-ide` binaries for `linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64` — the .NET runtime is baked in, so no install is required on the target machine. See [`src/ArcadeBasic.Ide/README.md`](src/ArcadeBasic.Ide/README.md) for implementation notes.
+## Quick build from source
 
-## Running the example programs
-
-The 13 sample programs in [`examples/`](examples/) exercise different parts of the language. Pick one and run it through any of the three execution paths:
+Requires the .NET 9 SDK.
 
 ```sh
-# Tree-walking interpreter — supports every example
+git clone https://github.com/OWNER/REPO.git arcade-basic
+cd arcade-basic
+
+dotnet build                                                    # debug build
+dotnet test                                                     # all tests (~380, all green)
 dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
-dotnet run --project src/ArcadeBasic.Cli -- run examples/factorial.bas
-dotnet run --project src/ArcadeBasic.Cli -- run examples/matrix.bas
-dotnet run --project src/ArcadeBasic.Cli -- run examples/exception.bas
-dotnet run --project src/ArcadeBasic.Cli -- run examples/modules.bas
-dotnet run --project src/ArcadeBasic.Cli -- run examples/guess.bas    # reads from stdin
-dotnet run --project src/ArcadeBasic.Cli -- run examples/startrek.bas # Super Star Trek (Ahl 1978)
-dotnet run --project src/ArcadeBasic.Cli -- run examples/lunar.bas    # Lunar Lander (Storer 1969)
 
-# Bytecode VM — every example runs here too (output byte-identical to run)
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/matrix.bas
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/exception.bas
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/modules.bas
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/pi.bas
-```
-
-Inspect intermediate stages of any program:
-
-```sh
-dotnet run --project src/ArcadeBasic.Cli -- lex     examples/factorial.bas
-dotnet run --project src/ArcadeBasic.Cli -- parse   examples/factorial.bas
-dotnet run --project src/ArcadeBasic.Cli -- analyze examples/factorial.bas
-```
-
-After an AOT publish, use the native CLI directly (much faster startup) and produce a standalone binary for any example:
-
-```sh
+# Produce an AOT-compiled standalone CLI for the current platform
 dotnet publish src/ArcadeBasic.Cli -c Release /p:PublishAot=true
-
-./publish/aot/ArcadeBasic.Cli run examples/primes.bas
-./publish/aot/ArcadeBasic.Cli vm  examples/pi.bas
-
-./publish/aot/ArcadeBasic.Cli build examples/factorial.bas -o factorial
-./factorial
+# → ./publish/aot/ArcadeBasic.Cli
 ```
 
-## Architecture
+Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are attached to each tagged GitHub release — both `arcade-basic` (the CLI) and `arcade-basic-ide` (the IDE), plus the Unity package zip. No .NET install needed on the target machine.
+
+## CLI reference
+
+```
+arcade-basic <command> [args]
+
+  run <file>              tree-walking interpreter (the reference path)
+  vm <file>               compile to bytecode and run on the VM
+  build <file> [-o out]   produce a self-contained native binary
+  repl                    interactive Arcade BASIC session
+  lex <file>              tokenize and print the token stream
+  parse <file>            lex + parse, pretty-print the AST
+  analyze <file>          lex + parse + sema, print symbol/DATA summary
+  --version
+```
+
+Inspect intermediate stages of a program:
+
+```sh
+arcade-basic lex     examples/factorial.bas
+arcade-basic parse   examples/factorial.bas
+arcade-basic analyze examples/factorial.bas
+```
+
+## Documentation
+
+- [**Keywords**](docs/keywords.md) — every reserved word with a description and a commented example. Start here if you're learning the language.
+- [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures, target-framework strategy.
+- [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
+- [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
+- [**Examples**](examples/README.md) — sample programs with a feature matrix across tree-walker and bytecode VM.
+
+## How it's built
+
+A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assembly so you can pull in only what you need:
+
+```
+   Source file
+        │
+        ▼
+  Lexer ──► Parser ──► Sema ──┬─► Tree-walking interpreter ──► output
+                              │
+                              └─► Compiler ──► Bytecode VM ──► output
+                                                  │
+                                                  └──► self-extracting native binary
+```
 
 | Project | Purpose |
 |---|---|
 | `ArcadeBasic.Core` | source files, positions, diagnostics |
 | `ArcadeBasic.Lexer` | tokenizer |
-| `ArcadeBasic.Parser` | recursive-descent parser → immutable AST (`abstract record class`) |
-| `ArcadeBasic.Sema` | two-pass analyzer; symbol/scope resolution attached as a side table |
-| `ArcadeBasic.Runtime` | numeric/string/array values (Singulink `BigDecimal`), builtins, picture-string formatter, file I/O |
-| `ArcadeBasic.Interpreter` | tree-walking interpreter with explicit handler stack and `FlowControl` returns |
+| `ArcadeBasic.Parser` | recursive-descent parser → immutable AST |
+| `ArcadeBasic.Sema` | two-pass analyzer; symbol/scope resolution as a side table |
+| `ArcadeBasic.Runtime` | `BigDecimal`-backed values, builtins, picture-string formatter, channels |
+| `ArcadeBasic.Interpreter` | tree-walking interpreter with explicit handler stack |
 | `ArcadeBasic.Bytecode` | opcode enum, chunk format, serializer |
 | `ArcadeBasic.Compiler` | AST → bytecode lowering |
-| `ArcadeBasic.Vm` | stack-based VM |
-| `ArcadeBasic.Cli` | command dispatcher + Phase-10 self-extracting stub |
+| `ArcadeBasic.Vm` | stack-based bytecode VM |
+| `ArcadeBasic.Cli` | command dispatcher + self-extracting AOT stub |
+| `ArcadeBasic.Ide` | full-screen Terminal.Gui editor + runner |
 
-Locked architectural decisions (decimal library, value hierarchy, handler-stack design, MAT semantics, etc.) live alongside the code; behavioural deviations from the spec will be tracked in `docs/conformance.md`.
-
-## Conformance
-
-Tested against spec-derived programs written from ISO 10279 section numbers. The NBS Minimal BASIC Test Programs corpus (NBSIR 78-1420) was originally planned as the oracle but is **deferred** — the archive.org OCR is too column-shredded for clean programmatic extraction. Revisiting it requires re-OCRing the PDFs or transcribing by hand.
+The interpreter and the VM share the same `Value` hierarchy, `BigDecimal` numerics, `MatOps` math kernels (LU-decomposition inverse, transpose, …), picture-string formatter, and channel table — so any program runs identically on both engines. The full architecture writeup lives in [`docs/architecture.md`](docs/architecture.md).
 
 ## License
 

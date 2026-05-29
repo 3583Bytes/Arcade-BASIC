@@ -23,7 +23,7 @@ public class MatTests
         {
             return string.Join("\n", diags.All.Select(d => d.Render(false)));
         }
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
         new BasicInterpreter(program, info, sw, sr).Run();
         return sw.ToString();
@@ -37,7 +37,7 @@ public class MatTests
         var program = new BasicParser(tokens, file, diags).ParseProgram();
         var info = Analyzer.Analyze(program, diags);
         if (diags.HasErrors) return 1;
-        return new BasicInterpreter(program, info, new StringWriter(), new StringReader(stdin)).Run();
+        return new BasicInterpreter(program, info, new StringWriter { NewLine = "\n" }, new StringReader(stdin)).Run();
     }
 
     // -- Assignment ------------------------------------------------------

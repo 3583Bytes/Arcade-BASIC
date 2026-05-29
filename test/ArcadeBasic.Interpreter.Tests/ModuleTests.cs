@@ -31,7 +31,7 @@ public class ModuleTests
         {
             return (string.Join("\n", diags.All.Select(d => d.Render(false))), 1, diags);
         }
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader("");
         var exit = new BasicInterpreter(combined, info, sw, sr).Run();
         return (sw.ToString(), exit, diags);
@@ -48,7 +48,7 @@ public class ModuleTests
         {
             return (string.Join("\n", diags.All.Select(d => d.Render(false))), 1);
         }
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
         var exit = new BasicInterpreter(program, info, sw, sr).Run();
         return (sw.ToString(), exit);

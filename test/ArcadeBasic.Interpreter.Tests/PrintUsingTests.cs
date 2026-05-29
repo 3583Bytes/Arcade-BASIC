@@ -21,7 +21,7 @@ public class PrintUsingTests
         {
             return string.Join("\n", diags.All.Select(d => d.Render(false)));
         }
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         new BasicInterpreter(program, info, sw, new StringReader("")).Run();
         return sw.ToString();
     }

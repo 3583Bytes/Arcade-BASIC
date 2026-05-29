@@ -22,7 +22,7 @@ public class ExceptionTests
             var msg = string.Join("\n", diags.All.Select(d => d.Render(false)));
             return (msg, 1);
         }
-        var sw = new StringWriter();
+        var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
         var exit = new BasicInterpreter(program, info, sw, sr).Run();
         return (sw.ToString(), exit);
