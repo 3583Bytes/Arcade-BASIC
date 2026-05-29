@@ -1,7 +1,7 @@
 using System.Text;
 using Terminal.Gui;
 
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 /// <summary>
 /// Owns one run of a BASIC program. The interpreter runs on a Task; output
@@ -15,6 +15,7 @@ internal sealed class RunController
     private readonly OutputPane _output;
     private readonly Action<RunState> _onStateChanged;
     private readonly Action<IReadOnlyList<string>> _onDiagnostics;
+    private readonly Action _onInputRequested;
 
     private CancellationTokenSource? _cts;
     private Task<BasicEngine.Result>? _task;
@@ -25,11 +26,13 @@ internal sealed class RunController
     public RunController(
         OutputPane output,
         Action<RunState> onStateChanged,
-        Action<IReadOnlyList<string>> onDiagnostics)
+        Action<IReadOnlyList<string>> onDiagnostics,
+        Action onInputRequested)
     {
         _output = output;
         _onStateChanged = onStateChanged;
         _onDiagnostics = onDiagnostics;
+        _onInputRequested = onInputRequested;
     }
 
     public enum RunState { Idle, Running, Cancelled, Failed, Succeeded }
@@ -53,7 +56,7 @@ internal sealed class RunController
         var token = _cts.Token;
         var writer = _writer;
 
-        var stdin = new InteractiveTextReader(token);
+        var stdin = new InteractiveTextReader(_output, _onInputRequested, token);
 
         _task = Task.Run(() =>
         {

@@ -1,6 +1,6 @@
 using Terminal.Gui;
 
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 /// <summary>
 /// Top-level TUI host. Owns the menu bar, status bar, source pane, output pane,
@@ -22,7 +22,14 @@ internal sealed class TuiShell
     private TuiShell()
     {
         _statusItem = new StatusItem(Key.Null, "Ready", null);
-        _runner = new RunController(_output, OnRunStateChanged, OnDiagnostics);
+        _runner = new RunController(_output, OnRunStateChanged, OnDiagnostics, OnInputRequested);
+        _source.Problems.StatusMessage += SetStatus;
+    }
+
+    private void SetStatus(string message)
+    {
+        _statusItem.Title = message;
+        Application.Top.SetNeedsDisplay();
     }
 
     public static int Run(string? initialFile)
@@ -105,7 +112,7 @@ internal sealed class TuiShell
         }
         else
         {
-            _source.SetText("! Press F5 to run.\n! Open the Run menu or File ▸ Examples for sample programs.\n\nPRINT \"Hello, Arcade BASIC!\"\nEND\n");
+            _source.SetText("! Press F5 to run.\n! Open the Run menu or File ▸ Examples for sample programs.\n\nPRINT \"Arcade BASIC by 3583Bytes.com\"\nEND\n");
         }
 
         // Force a visible terminal cursor and focus the editor so the user
@@ -126,6 +133,7 @@ internal sealed class TuiShell
         {
             new("_File", new MenuItem[]
             {
+                new("_New", string.Empty, NewFile, shortcut: Key.CtrlMask | Key.N),
                 new("_Open...", string.Empty, OpenDialog, shortcut: Key.CtrlMask | Key.O),
                 new("_Save", string.Empty, SaveCurrent, shortcut: Key.CtrlMask | Key.S),
                 new("Save _As...", string.Empty, SaveAs),
@@ -207,6 +215,11 @@ internal sealed class TuiShell
         Application.Driver?.SetCursorVisibility(CursorVisibility.Default);
     }
 
+    private void OnInputRequested()
+    {
+        _tabs.SelectedTab = _outputTab;
+    }
+
     private void OnRunStateChanged(RunController.RunState state)
     {
         _statusItem.Title = state switch
@@ -221,6 +234,45 @@ internal sealed class TuiShell
     }
 
     // ---- File operations ---------------------------------------------------
+
+    private void NewFile()
+    {
+        if (!ConfirmDiscardChanges()) return;
+        _source.SetText(string.Empty);
+        _currentFilePath = null;
+        _source.SetTitle("untitled");
+        _statusItem.Title = "New file";
+        if (_tabs.SelectedTab == _outputTab) _tabs.SelectedTab = _sourceTab;
+        RefocusEditor();
+    }
+
+    /// <summary>
+    /// If the buffer has unsaved changes, prompt the user. Returns true when
+    /// the caller should proceed with the destructive action (user saved or
+    /// chose to discard), false on Cancel / Esc / a cancelled SaveAs.
+    /// </summary>
+    private bool ConfirmDiscardChanges()
+    {
+        if (!_source.IsModified) return true;
+        var choice = MessageBox.Query(
+            60, 7,
+            "Unsaved changes",
+            "The current file has unsaved changes. Save now?",
+            "Save", "Discard", "Cancel");
+        return choice switch
+        {
+            0 => SaveAndCheck(),
+            1 => true,
+            _ => false,
+        };
+
+        bool SaveAndCheck()
+        {
+            SaveCurrent();
+            // If SaveAs was cancelled the buffer is still dirty — treat as cancel.
+            return !_source.IsModified;
+        }
+    }
 
     private void OpenDialog()
     {
@@ -301,6 +353,7 @@ internal sealed class TuiShell
             File.WriteAllText(path, _source.GetText());
             _currentFilePath = path;
             _source.SetTitle(Path.GetFileName(path));
+            _source.MarkClean();
             _statusItem.Title = "Saved " + Path.GetFileName(path);
         }
         catch (Exception ex)
@@ -328,9 +381,10 @@ internal sealed class TuiShell
         try
         {
             MessageBox.Query(
-                60, 11,
+                60, 12,
                 "About",
-                $"arcade-basic-tui {TuiInfo.Version}\n\n" +
+                $"Arcade BASIC by 3583Bytes.com\n" +
+                $"arcade-basic-ide {TuiInfo.Version}\n\n" +
                 "A full-screen editor + runner for Arcade BASIC.\n" +
                 "F5 runs · Esc stops · Ctrl-S saves · Ctrl-Q quits.",
                 "OK");

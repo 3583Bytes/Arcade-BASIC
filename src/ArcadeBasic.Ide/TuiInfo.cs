@@ -1,4 +1,4 @@
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 internal static class TuiInfo
 {

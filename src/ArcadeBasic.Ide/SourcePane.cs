@@ -3,7 +3,7 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
 using Terminal.Gui;
 
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 /// <summary>
 /// Source editor pane: a <see cref="TextView"/> for the program text plus a
@@ -24,11 +24,13 @@ internal sealed class SourcePane : FrameView
     private readonly ProblemsPane _problems;
     private bool _syncingGutter;
     private bool _problemsVisible;
+    private string _baseline = string.Empty;
     private Func<bool>? _pendingHighlightToken;
 
     public TextView Editor => _editor;
     public ProblemsPane Problems => _problems;
     public bool ProblemsVisible => _problemsVisible;
+    public bool IsModified => GetText() != _baseline;
 
     /// <summary>Fires whenever the cursor position changes, so the shell can update its status bar.</summary>
     public event Action<int, int>? CursorMoved;
@@ -100,10 +102,15 @@ internal sealed class SourcePane : FrameView
 
     public void SetText(string text)
     {
+        text ??= string.Empty;
         _editor.Text = text;
+        _baseline = text;
         RecomputeGutter();
         ScheduleHighlight();
     }
+
+    /// <summary>Snapshot the current buffer as the new clean baseline (call after a successful save).</summary>
+    public void MarkClean() => _baseline = GetText();
 
     public void SetTitle(string title)
     {

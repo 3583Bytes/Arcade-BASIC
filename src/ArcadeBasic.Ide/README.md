@@ -1,7 +1,8 @@
-# arcade-basic-tui
+# Arcade BASIC IDE (`arcade-basic-ide`)
 
-A full-screen terminal editor + runner for Arcade BASIC. Same shape as the
-Unity in-game console sample, but for the terminal.
+A full-screen terminal IDE for Arcade BASIC — edit, run, and compile from one
+keyboard-driven shell. Same shape as the Unity in-game console sample, but for
+the terminal.
 
 ```
 +-- File -- Run -- Help ----------------------------+
@@ -20,16 +21,16 @@ Unity in-game console sample, but for the terminal.
 From source:
 
 ```
-dotnet run --project src/ArcadeBasic.Tui -- examples/hello.bas
+dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas
 ```
 
 From a published binary:
 
 ```
-arcade-basic-tui                    # empty buffer
-arcade-basic-tui examples/hello.bas # open a file
-arcade-basic-tui --version          # print version and exit
-arcade-basic-tui --help             # usage
+arcade-basic-ide                    # empty buffer
+arcade-basic-ide examples/hello.bas # open a file
+arcade-basic-ide --version          # print version and exit
+arcade-basic-ide --help             # usage
 ```
 
 The release pipeline publishes self-contained binaries (no .NET install
@@ -42,6 +43,7 @@ framework-dependent zip for users who already have .NET 9.
 | -------------- | ----------------------------------- |
 | F5             | Run the current source              |
 | Esc            | Stop a running program              |
+| Ctrl-N         | New (empty) buffer                  |
 | Ctrl-O         | Open a `.bas` file                  |
 | Ctrl-S         | Save                                |
 | Ctrl-L         | Clear the output pane               |
@@ -57,7 +59,7 @@ Every example in `/examples` is bundled into the binary and listed under
 | `Program.cs`            | Entry point; handles `--version` / `--help` before TUI bootstrap. |
 | `TuiShell.cs`           | Menus, status bar, layout, file ops.                              |
 | `SourcePane.cs`         | TextView + line-number gutter + highlight scheduling.             |
-| `OutputPane.cs`         | Read-only scrollback with a size cap.                             |
+| `OutputPane.cs`         | Read-only scrollback (size-capped) + the bottom input line for INPUT. |
 | `RunController.cs`      | Task-based runner + thread-safe writer + main-loop drain pump.    |
 | `SyntaxColorizer.cs`    | Token-kind → palette mapping (mirrors the Unity sample).          |
 | `ExamplesProvider.cs`   | Enumerates the bundled `.bas` files.                              |
@@ -65,7 +67,7 @@ Every example in `/examples` is bundled into the binary and listed under
 ## Implementation notes
 
 - **Terminal.Gui v1.x** — the v2 line requires net10; sticking to v1 keeps the
-  TUI on net9 like the rest of the solution.
+  IDE on net9 like the rest of the solution.
 - **No AOT** — Terminal.Gui leans on reflection, so this binary isn't
   AOT-published. The CLI still is.
 - **BasicEngine** — every Run kicks off `ArcadeBasic.BasicEngine.Run` against

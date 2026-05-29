@@ -109,12 +109,12 @@ jobs:
           path: artifacts/
 
   # -------------------------------------------------------------------------
-  # Terminal TUI front-end — Terminal.Gui v1 isn't AOT-clean, so we ship
+  # Arcade BASIC IDE — Terminal.Gui v1 isn't AOT-clean, so we ship
   # self-contained per-RID binaries (with the .NET runtime bundled) plus a
   # small framework-dependent zip for users who already have .NET 9.
   # -------------------------------------------------------------------------
-  tui:
-    name: TUI (${{ matrix.rid }})
+  ide:
+    name: IDE (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -143,34 +143,34 @@ jobs:
       - name: Publish self-contained
         shell: bash
         run: |
-          dotnet publish src/ArcadeBasic.Tui \
+          dotnet publish src/ArcadeBasic.Ide \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained \
             -p:PublishSingleFile=true \
             -p:IncludeNativeLibrariesForSelfExtract=true \
-            --output publish/tui
+            --output publish/ide
 
       - name: Smoke-test the binary
         shell: bash
         run: |
-          ./publish/tui/arcade-basic-tui${{ matrix.ext }} --version
+          ./publish/ide/arcade-basic-ide${{ matrix.ext }} --version
 
       - name: Stage artifact
         shell: bash
         run: |
           mkdir -p artifacts
-          cp publish/tui/arcade-basic-tui${{ matrix.ext }} \
-             artifacts/arcade-basic-tui-${{ matrix.rid }}${{ matrix.ext }}
+          cp publish/ide/arcade-basic-ide${{ matrix.ext }} \
+             artifacts/arcade-basic-ide-${{ matrix.rid }}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tui-${{ matrix.rid }}
+          name: ide-${{ matrix.rid }}
           path: artifacts/
 
-  tui-framework-dependent:
-    name: TUI (framework-dependent)
+  ide-framework-dependent:
+    name: IDE (framework-dependent)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,24 +182,24 @@ jobs:
 
       - name: Publish framework-dependent
         run: |
-          dotnet publish src/ArcadeBasic.Tui \
+          dotnet publish src/ArcadeBasic.Ide \
             --configuration Release \
             --no-self-contained \
-            --output publish/tui-fw
+            --output publish/ide-fw
 
       - name: Smoke-test
-        run: ./publish/tui-fw/arcade-basic-tui --version
+        run: ./publish/ide-fw/arcade-basic-ide --version
 
       - name: Package
         run: |
           mkdir -p artifacts
-          cd publish/tui-fw
-          zip -r ../../artifacts/arcade-basic-tui-framework-dependent.zip .
+          cd publish/ide-fw
+          zip -r ../../artifacts/arcade-basic-ide-framework-dependent.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tui-framework-dependent
+          name: ide-framework-dependent
           path: artifacts/
 
   # -------------------------------------------------------------------------
@@ -252,7 +252,7 @@ jobs:
   # -------------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [aot, framework-dependent, tui, tui-framework-dependent, unity]
+    needs: [aot, framework-dependent, ide, ide-framework-dependent, unity]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

@@ -5,8 +5,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>ArcadeBasic.Tui</RootNamespace>
-    <AssemblyName>arcade-basic-tui</AssemblyName>
+    <RootNamespace>ArcadeBasic.Ide</RootNamespace>
+    <AssemblyName>arcade-basic-ide</AssemblyName>
     <!-- Terminal.Gui v2 still leans on reflection in places; don't AOT this binary. -->
     <PublishAot>false</PublishAot>
   </PropertyGroup>

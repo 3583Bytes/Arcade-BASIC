@@ -103,6 +103,27 @@ The REPL accumulates each accepted line into the session; variables persist, mul
 
 `INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, run a `.bas` file with `arcade-basic run`.
 
+## Try the IDE
+
+**Arcade BASIC IDE** is a full-screen Terminal.Gui editor + runner that lives in [`src/ArcadeBasic.Ide`](src/ArcadeBasic.Ide). It pairs a source pane (line-number gutter, syntax classification) with an output pane and a bottom input line for `INPUT`, and runs the current buffer through `BasicEngine` on F5.
+
+```sh
+dotnet run --project src/ArcadeBasic.Ide                       # empty buffer
+dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
+```
+
+| Key    | Action                          |
+| ------ | ------------------------------- |
+| F5     | Run the current source          |
+| Esc    | Stop a running program          |
+| Ctrl-N | New (empty) buffer              |
+| Ctrl-O | Open a `.bas` file              |
+| Ctrl-S | Save                            |
+| Ctrl-L | Clear the output pane           |
+| Ctrl-Q | Quit                            |
+
+Every program in [`examples/`](examples/) is bundled into the binary and listed under **File ▸ Examples**. Release builds publish self-contained binaries (`arcade-basic-ide`) for `linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64` (plus a framework-dependent zip for users with .NET 9 installed). See [`src/ArcadeBasic.Ide/README.md`](src/ArcadeBasic.Ide/README.md) for implementation notes.
+
 ## Running the example programs
 
 The 13 sample programs in [`examples/`](examples/) exercise different parts of the language. Pick one and run it through any of the three execution paths:
@@ -168,4 +189,4 @@ Tested against spec-derived programs written from ISO 10279 section numbers. The
 
 ## License
 
-TBD.
+[MIT](LICENSE) © 2026 Adam.

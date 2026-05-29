@@ -2,7 +2,7 @@ using ArcadeBasic.Lexer;
 using Terminal.Gui;
 using Attribute = Terminal.Gui.Attribute;
 
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 /// <summary>
 /// Walks the lexer's token stream and overlays per-rune <see cref="Attribute"/>

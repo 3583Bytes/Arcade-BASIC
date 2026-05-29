@@ -4,7 +4,7 @@ using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 /// <summary>
 /// Validate-only compile: lex → parse → sema → bytecode-emit, no execution.

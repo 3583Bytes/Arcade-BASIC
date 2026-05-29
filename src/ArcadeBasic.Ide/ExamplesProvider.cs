@@ -1,15 +1,15 @@
 using System.Reflection;
 
-namespace ArcadeBasic.Tui;
+namespace ArcadeBasic.Ide;
 
 /// <summary>
-/// Surfaces the .bas files embedded into the TUI assembly at build time.
+/// Surfaces the .bas files embedded into the IDE assembly at build time.
 /// Files come from /examples in the repo; see the EmbeddedResource glob in
-/// ArcadeBasic.Tui.csproj.
+/// ArcadeBasic.Ide.csproj.
 /// </summary>
 internal static class ExamplesProvider
 {
-    private const string Prefix = "ArcadeBasic.Tui.Examples.";
+    private const string Prefix = "ArcadeBasic.Ide.Examples.";
 
     public static IReadOnlyList<Example> All { get; } = Load();
 
