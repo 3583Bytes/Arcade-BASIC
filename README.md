@@ -1,9 +1,7 @@
 # Arcade BASIC
 
-<!-- Badges below point at OWNER/REPO placeholders. Swap to the real
-     owner/repo slug once the project is pushed to GitHub. -->
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/OWNER/REPO?label=release)](https://github.com/OWNER/REPO/releases/latest)
+[![CI](https://github.com/3583Bytes/Arcade-BASIC/actions/workflows/ci.yml/badge.svg)](https://github.com/3583Bytes/Arcade-BASIC/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/3583Bytes/Arcade-BASIC?label=release)](https://github.com/3583Bytes/Arcade-BASIC/releases/latest)
 [![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
 [![Spec: ISO 10279](https://img.shields.io/badge/spec-ISO%2010279%3A1991-blue)](https://www.iso.org/standard/18305.html)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -157,7 +155,7 @@ For Unity, the [`unity/`](unity/) folder is a ready-to-use UPM package — `pack
 Requires the .NET 9 SDK.
 
 ```sh
-git clone https://github.com/OWNER/REPO.git arcade-basic
+git clone https://github.com/3583Bytes/Arcade-BASIC.git arcade-basic
 cd arcade-basic
 
 dotnet build                                                    # debug build

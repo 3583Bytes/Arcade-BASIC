@@ -1,5 +1,7 @@
 ! File I/O round-trip: write three lines, read them back.
-LET PATH$ = "/tmp/arcade-basic-example.txt"
+! Relative filename so the example runs unchanged on Linux, macOS, and
+! Windows — the file is created in the current working directory.
+LET PATH$ = "arcade-basic-example.txt"
 
 OPEN #1: NAME PATH$, ACCESS OUTPUT
 PRINT #1: "line one"

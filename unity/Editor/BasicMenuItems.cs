@@ -95,13 +95,13 @@ namespace ArcadeBasic.Editor
         [MenuItem("Window/Arcade BASIC/Documentation", priority = 100)]
         public static void OpenDocumentation()
         {
-            Application.OpenURL("https://github.com/OWNER/REPO");
+            Application.OpenURL("https://github.com/3583Bytes/Arcade-BASIC");
         }
 
         [MenuItem("Window/Arcade BASIC/Conformance notes", priority = 101)]
         public static void OpenConformance()
         {
-            Application.OpenURL("https://github.com/OWNER/REPO/blob/main/docs/conformance.md");
+            Application.OpenURL("https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/conformance.md");
         }
 
         [MenuItem("Window/Arcade BASIC/About", priority = 200)]

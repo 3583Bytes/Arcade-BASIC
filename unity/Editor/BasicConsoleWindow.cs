@@ -115,7 +115,7 @@ namespace ArcadeBasic.Editor
 
             if (GUILayout.Button("Docs", EditorStyles.toolbarButton, GUILayout.Width(50)))
             {
-                Application.OpenURL("https://github.com/OWNER/REPO");
+                Application.OpenURL("https://github.com/3583Bytes/Arcade-BASIC");
             }
 
             EditorGUILayout.EndHorizontal();

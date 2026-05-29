@@ -887,11 +887,21 @@ public class VmTests
     public void FileExampleRunsEndToEnd()
     {
         var source = File.ReadAllText("../../../../../examples/fileio.bas");
-        var vm = Run(source);
-        vm.Exit.Should().Be(0);
-        vm.Output.Should().Contain("1: line one");
-        vm.Output.Should().Contain("2: line two");
-        vm.Output.Should().Contain("3: line three");
+        // The example uses a relative filename so the test passes on Linux,
+        // macOS, and Windows. Clean up the file it writes to the cwd.
+        const string scratchFile = "arcade-basic-example.txt";
+        try
+        {
+            var vm = Run(source);
+            vm.Exit.Should().Be(0);
+            vm.Output.Should().Contain("1: line one");
+            vm.Output.Should().Contain("2: line two");
+            vm.Output.Should().Contain("3: line three");
+        }
+        finally
+        {
+            if (File.Exists(scratchFile)) File.Delete(scratchFile);
+        }
     }
 
     // -- Exception handling --------------------------------------------

@@ -11,14 +11,14 @@ The published package ships pre-built `netstandard2.1` DLLs and a clean embeddin
 In Unity, open **Window → Package Manager**, click the **`+`** button, choose **"Add package from git URL"**, and paste:
 
 ```
-https://github.com/OWNER/REPO.git?path=unity#v0.1.0
+https://github.com/3583Bytes/Arcade-BASIC.git?path=unity#v0.1.0
 ```
 
-(Replace `OWNER/REPO` with the upstream repo. Pin to a tagged release rather than `main` so unrelated changes don't break your project.)
+Pin to a tagged release rather than `main` so unrelated changes don't break your project.
 
 ### Via downloaded ZIP
 
-Grab `arcade-basic-unity-<version>.zip` from the [releases](https://github.com/OWNER/REPO/releases) page, extract under `Packages/com.arcadebasic.interpreter/` in your Unity project.
+Grab `arcade-basic-unity-<version>.zip` from the [releases](https://github.com/3583Bytes/Arcade-BASIC/releases) page, extract under `Packages/com.arcadebasic.interpreter/` in your Unity project.
 
 ## Quickstart
 
@@ -87,7 +87,7 @@ For finer control (custom diagnostics handling, embedding the lexer/parser/sema/
 
 ## What's supported
 
-Per the upstream [`docs/conformance.md`](https://github.com/OWNER/REPO/blob/main/docs/conformance.md):
+Per the upstream [`docs/conformance.md`](https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/conformance.md):
 
 | Feature | Status |
 |---|---|
@@ -148,4 +148,4 @@ If you're developing against a local clone, re-run `./unity/scripts/copy-dlls.sh
 
 ## License
 
-See [LICENSE](https://github.com/OWNER/REPO/blob/main/LICENSE) in the upstream repo.
+See [LICENSE](https://github.com/3583Bytes/Arcade-BASIC/blob/main/LICENSE) in the upstream repo.
