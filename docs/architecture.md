@@ -191,6 +191,8 @@ Opcodes are listed in `Opcode.cs`. They split into stack manipulation, constants
 
 When that bundled binary runs, the top of `Main` checks for the trailer via `EmbeddedPayload.TryRead`. If found, it deserialises into a `Program`, hands it to the VM, and bypasses the CLI dispatcher entirely. If not found, it falls through to the normal `Run(args)` path. Same binary, two roles.
 
+See [**standalone-builds.md**](standalone-builds.md) for a deeper write-up: the anatomy of a bundled binary, the build/startup pipelines step-by-step, tradeoffs vs. true native codegen, and comparisons to related approaches (PyInstaller, Electron, AppImage).
+
 ## Cross-cutting design choices
 
 ### Numeric type: `Singulink.Numerics.BigDecimal`

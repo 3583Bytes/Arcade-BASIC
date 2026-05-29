@@ -199,6 +199,7 @@ arcade-basic analyze examples/factorial.bas
 
 - [**Keywords**](docs/keywords.md) — every reserved word with a description and a commented example. Start here if you're learning the language.
 - [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures, target-framework strategy.
+- [**Standalone builds**](docs/standalone-builds.md) — how `arcade-basic build` turns a `.bas` into a single self-contained executable (it's a self-extracting bytecode VM, not a native-codegen pipeline; this doc explains the anatomy of the resulting binary and why the design was chosen).
 - [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
 - [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
 - [**Examples**](examples/README.md) — sample programs with a feature matrix across tree-walker and bytecode VM.

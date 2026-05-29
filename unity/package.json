@@ -19,12 +19,5 @@
   "author": {
     "name": "Arcade BASIC contributors",
     "url": "https://github.com/3583Bytes/Arcade-BASIC"
-  },
-  "samples": [
-    {
-      "displayName": "In-game BASIC runner",
-      "description": "MonoBehaviour that runs an Arcade BASIC program from an inspector field and prints output to the Unity console.",
-      "path": "Samples~/InGameConsole"
-    }
-  ]
+  }
 }

@@ -167,7 +167,7 @@ jobs:
     name: Unity package
     runs-on: ubuntu-latest
     # Wait for every per-RID AOT build to finish — we bundle the resulting
-    # arcade-basic binaries into the Unity package's Samples~ folder so the
+    # arcade-basic binaries into the Unity package's Samples folder so the
     # IDE's Build Standalone feature works without per-user setup.
     needs: [aot]
     steps:
@@ -199,13 +199,13 @@ jobs:
           path: aot-artifacts
           merge-multiple: true
 
-      - name: Stage AOT stubs into Unity Samples~/InGameConsole/Stubs
+      - name: Stage AOT stubs into Unity Samples/ArcadeBasic/Stubs
         shell: bash
         run: |
           # The aot jobs upload binaries named arcade-basic-<version>-<rid>[.exe]
           # (one per RID). The Unity sample expects them as arcade-basic-<rid>
-          # under Samples~/InGameConsole/Stubs/ — strip the version suffix.
-          STUBS="unity/Samples~/InGameConsole/Stubs"
+          # under Samples/ArcadeBasic/Stubs/ — strip the version suffix.
+          STUBS="unity/Samples/ArcadeBasic/Stubs"
           VER="${{ steps.ver.outputs.name }}"
           mkdir -p "$STUBS"
           for rid in linux-x64 osx-arm64 osx-x64; do

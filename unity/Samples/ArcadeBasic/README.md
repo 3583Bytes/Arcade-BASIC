@@ -19,13 +19,16 @@ A drop-in Unity scene that gives your game a syntax-highlighted Arcade BASIC edi
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Two menus at the top — **File** (New, Open, Save, Save As) and **Run** (Run, Compile, Build standalone, Stop, Clear Output) — pop out small panels when clicked, and a fullscreen click-blocker dismisses them when you click anywhere else. Two tabs below swap which pane fills the content area: **Source** (gutter + syntax-highlighted editor) or **Output** (scrollable transcript with a single-line input bar at the bottom that activates whenever the program runs an `INPUT`). Clicking **Run** auto-switches to Output so you watch the program execute live. The footer is just a status line: `Ready`, `Saved foo.bas`, `Running...`, `Cancelled`, error text. Keywords are blue, strings orange, numbers green, line labels gray, colored by the project's own `BasicLexer` so the highlighting always matches what the interpreter will parse.
+Two menus at the top — **File** (New, Open, Save, Save As, Quit) and **Run** (Run, Compile, Build standalone, Stop, Clear Output) — pop out small panels when clicked, and a fullscreen click-blocker dismisses them when you click anywhere else. Two tabs below swap which pane fills the content area: **Source** (gutter + syntax-highlighted editor) or **Output** (scrollable transcript with a single-line input bar at the bottom that activates whenever the program runs an `INPUT`). Clicking **Run** auto-switches to Output so you watch the program execute live. The footer is just a status line: `Ready`, `Saved foo.bas`, `Running...`, `Cancelled`, error text. Keywords are blue, strings orange, numbers green, line labels gray, colored by the project's own `BasicLexer` so the highlighting always matches what the interpreter will parse.
 
 ## One-click setup
 
-1. **Import the sample**: Window → Package Manager → Arcade BASIC Interpreter → Samples → **Import** next to "In-game REPL console".
-2. **Build the scene**: Window → Arcade BASIC → Samples → **Create BASIC IDE Scene**. Generates `Assets/Samples/ArcadeBasic_Editor.unity` with everything wired up.
-3. **Press Play**, click **Run** (or **Ctrl/Cmd + Enter**).
+The ArcadeBasic sample is **imported automatically** with the package — no Package Manager opt-in needed.
+
+1. **Open the scene**: `Samples/ArcadeBasic/Scene/ArcadeBasicIDE.unity`.
+2. **Press Play**, click **Run** (or **Ctrl/Cmd + Enter**).
+
+If you want to start from scratch instead, drop the **ArcadeBasicIDE** prefab (`Samples/ArcadeBasic/Prefab/ArcadeBasicIDE.prefab`) into any Canvas under an empty scene.
 
 > **TextMeshPro Essentials.** If text appears as pink boxes, Unity prompted you to import TMP Essentials but you skipped it. Re-run **Window → TextMeshPro → Import TMP Essential Resources**, then reopen the scene.
 
@@ -39,9 +42,11 @@ Two menus at the top — **File** (New, Open, Save, Save As) and **Run** (Run, C
 | **Live streaming output** | The interpreter runs on a background `Task` writing into a thread-safe buffer; the main thread drains it in `Update` and appends to the output transcript. Long-running `FOR` loops feel responsive, not frozen. |
 | **Stop button** | A `CancellationToken` is checked between BASIC statements and at the top of every `FOR`/`DO`/`GOSUB` iteration. Clicking Stop signals it; `BasicEngine.Run` returns `ExitCode = 2` and the output shows `[cancelled]`. Hidden when no program is running. |
 | **New (File menu)** | Resets the editor to an empty buffer. In the Unity Editor, prompts via `EditorUtility.DisplayDialogComplex` if the current buffer has unsaved changes (Save / Cancel / Discard). In Player builds, falls back to a "click New again to confirm" pattern over the status line. |
+| **Quit (File menu)** | Editor: stops Play mode via `EditorApplication.isPlaying = false`. Player: calls `Application.Quit`. Same unsaved-changes prompt as New (Save / Cancel / Discard in Editor; click-Quit-again-to-confirm in Player). Any in-flight Run is cancelled cleanly so the BASIC task thread doesn't outlive the host. |
 | **Compile (Run menu)** | Lex → parse → semantic-analysis only, no execution. Surfaces compile errors in the output pane and updates the status line — `Compiled OK` / `Compile failed`. Useful for catching typos in a long program before kicking off a slow run. |
 | **Build standalone (Run menu)** | Editor-only. Compiles the current source to bytecode, appends it to a located `arcade-basic` AOT binary (the *stub*), and chmods the result executable — same flow as the CLI's `build` subcommand and the TUI IDE's F7. Stub lookup order: the `buildStubPath` inspector field, then `Stubs/arcade-basic-<host-rid>` inside the imported sample, then anywhere on PATH; if none of those match, a file picker opens so you can point at one. Save dialog picks the output path. The resulting binary runs anywhere — no .NET install needed on the target. |
 | **INPUT bar** | A `TMP_InputField` pinned to the bottom of the Output pane. Hidden while idle. When the BASIC program runs an `INPUT` or `LINE INPUT`, the bar appears + auto-focuses; you type a line, press Enter, the text is echoed into the transcript, and the interpreter resumes. Stop while waiting cancels cleanly (exit code 2, not a 4003 EOF error). |
+| **Problems pane** | A strip at the bottom of the Source pane that auto-opens when compile or runtime diagnostics arrive — same pattern as the TUI IDE's Problems pane. Title shows the count (`Problems (3)`). **Copy** sends every diagnostic line to the system clipboard via `GUIUtility.systemCopyBuffer`. **✕** closes the pane without losing the editor underneath. A clean Run with no diagnostics auto-hides any previously-open pane. |
 | **Open dropdown** | First entry is **📂 Browse...** → opens the native OS open dialog (Editor only) so you can load any `.bas` file from anywhere on disk. Subsequent entries (📦) are the bundled examples in `Resources/ArcadeBasicSamples/`. |
 | **Filename field** | Single-line display of the current file (filename without extension). Auto-fills when you load via Browse or pick an example. Editable; on Player builds it doubles as the save-as target. |
 | **Save button** | If the editor's content came from a file on disk, writes back to that same path. If it's a fresh/example program with no path, opens the native **Save As** dialog (Editor) or writes to `<persistentDataPath>/ArcadeBasicSaved/<filename>.bas` using the filename field (Player). Overwrites without warning if a same-named file already exists. |
@@ -52,7 +57,7 @@ Two menus at the top — **File** (New, Open, Save, Save As) and **Run** (Run, C
 The Build Standalone command needs an `arcade-basic` AOT executable to use
 as the runtime stub. The released package (downloaded via UPM or the
 release zip) ships a pre-built `arcade-basic` for every supported RID
-inside `Samples~/InGameConsole/Stubs/`:
+inside `Samples/ArcadeBasic/Stubs/`:
 
 ```
 Stubs/
@@ -125,7 +130,7 @@ In a **built Player**, `UnityEditor.*` isn't available, so the buttons fall back
 
 ## Adding bundled examples
 
-Drop `.bas` files into `Assets/Samples/Arcade BASIC Interpreter/<version>/In-game REPL console/Resources/ArcadeBasicSamples/`. Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Use a sort-prefix (`01_Hello.bas`, `02_Pi.bas`, ...) for deterministic ordering.
+Drop `.bas` files into `Packages/com.arcadebasic.interpreter/Samples/ArcadeBasic/Resources/ArcadeBasicSamples/` (or the equivalent embedded path if you copied the package into your project). Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Use a sort-prefix (`01_Hello.bas`, `02_Pi.bas`, ...) for deterministic ordering.
 
 ## Feeding `INPUT` from C#
 

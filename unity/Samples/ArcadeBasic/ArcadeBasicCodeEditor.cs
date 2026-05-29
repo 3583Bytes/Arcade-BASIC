@@ -80,6 +80,7 @@ namespace ArcadeBasic.Samples
         public Button fileOpenItem;
         public Button fileSaveItem;
         public Button fileSaveAsItem;
+        public Button fileQuitItem;
         public Button runRunItem;
         public Button runCompileItem;
         public Button runBuildItem;
@@ -95,6 +96,18 @@ namespace ArcadeBasic.Samples
         public TMP_InputField inputLineField;
         [Tooltip("Optional prompt label shown next to the input line (e.g. \"? \"). The label is hidden while no INPUT is pending.")]
         public TMP_Text inputLinePromptLabel;
+
+        [Header("Problems pane (optional)")]
+        [Tooltip("Container anchored to the bottom of the Source pane. Auto-opens when compile or runtime diagnostics are produced; X button hides it, Copy button copies the diagnostic text to the system clipboard.")]
+        public GameObject problemsPanel;
+        [Tooltip("Title label at the top of the Problems pane. Updated to \"Problems (N)\" when diagnostics arrive.")]
+        public TMP_Text problemsTitleLabel;
+        [Tooltip("Body text displaying the diagnostics, one per line.")]
+        public TMP_Text problemsText;
+        [Tooltip("Hides the Problems pane on click.")]
+        public Button problemsCloseButton;
+        [Tooltip("Copies every line in the Problems pane to the system clipboard on click.")]
+        public Button problemsCopyButton;
 
         [Header("Status")]
         public TMP_Text statusText;
@@ -166,6 +179,7 @@ namespace ArcadeBasic.Samples
             if (fileOpenItem != null)   fileOpenItem.onClick.AddListener(()   => { OpenFileDialog(); CloseAllMenus(); });
             if (fileSaveItem != null)   fileSaveItem.onClick.AddListener(()   => { SaveCurrent();    CloseAllMenus(); });
             if (fileSaveAsItem != null) fileSaveAsItem.onClick.AddListener(() => { SaveAs();         CloseAllMenus(); });
+            if (fileQuitItem != null)   fileQuitItem.onClick.AddListener(()   => { Quit();           CloseAllMenus(); });
             if (runRunItem != null)     runRunItem.onClick.AddListener(()     => { Run();            CloseAllMenus(); });
             if (runCompileItem != null) runCompileItem.onClick.AddListener(() => { CompileOnly();    CloseAllMenus(); });
             if (runBuildItem != null)   runBuildItem.onClick.AddListener(()   => { BuildStandalone(); CloseAllMenus(); });
@@ -178,6 +192,10 @@ namespace ArcadeBasic.Samples
                 inputLineField.onSubmit.AddListener(OnInputLineSubmitted);
                 SetInputBarVisible(false);
             }
+
+            if (problemsCloseButton != null) problemsCloseButton.onClick.AddListener(HideProblems);
+            if (problemsCopyButton != null)  problemsCopyButton.onClick.AddListener(CopyProblems);
+            HideProblems();
 
             if (sourceTabButton != null) sourceTabButton.onClick.AddListener(() => SelectTab(0));
             if (outputTabButton != null) outputTabButton.onClick.AddListener(() => SelectTab(1));
@@ -326,7 +344,11 @@ namespace ArcadeBasic.Samples
             _cts = null;
 
             var result = task.Result;
-            foreach (var diag in result.Diagnostics) AppendOutput(diag + "\n");
+            // Diagnostics flow to the Problems pane (auto-opens) rather than
+            // streaming into the output transcript — matches the TUI IDE.
+            // Status markers like [cancelled] / [exit N] still go to output.
+            if (result.Diagnostics != null && result.Diagnostics.Count > 0)
+                SetProblems(result.Diagnostics);
             switch (result.ExitCode)
             {
                 case 0:  SetStatus("Ready"); break;
@@ -395,6 +417,50 @@ namespace ArcadeBasic.Samples
         public bool IsModified =>
             (inputField != null ? inputField.text ?? string.Empty : string.Empty) != _baseline;
 
+        /// <summary>Exit the IDE — stops Play mode inside the Unity Editor,
+        /// or calls <see cref="Application.Quit"/> in a built Player. Prompts
+        /// to save first (same way <see cref="NewFile"/> does) when the
+        /// buffer is dirty.</summary>
+        public void Quit()
+        {
+            if (IsModified)
+            {
+#if UNITY_EDITOR
+                int choice = UnityEditor.EditorUtility.DisplayDialogComplex(
+                    "Unsaved changes",
+                    "The current buffer has unsaved changes. Save before quitting?",
+                    "Save", "Cancel", "Discard");
+                if (choice == 1) return;                        // Cancel
+                if (choice == 0)
+                {
+                    SaveCurrent();
+                    if (IsModified) return;                     // SaveAs cancelled → still dirty
+                }
+                // choice == 2 → Discard, fall through
+#else
+                if (!_quitConfirmArmed)
+                {
+                    _quitConfirmArmed = true;
+                    SetStatus("Unsaved changes — click Quit again to discard");
+                    return;
+                }
+#endif
+            }
+            _quitConfirmArmed = false;
+
+            // Cancel any in-flight run so the BASIC task thread doesn't
+            // outlive the Editor / Player.
+            try { _cts?.Cancel(); } catch { /* race with FinishRun */ }
+            _inputDone.Set();
+
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+        bool _quitConfirmArmed;
+
         /// <summary>Compile-only: lex + parse + sema with no execution. Diagnostics
         /// surface in the output pane and the status text. Faster than Run for
         /// catching syntax/sema errors before kicking off a long-running program.</summary>
@@ -416,13 +482,12 @@ namespace ArcadeBasic.Samples
 
             if (diags.HasErrors)
             {
-                SelectTab(1);
-                AppendOutput("=== Compile errors ===\n");
-                foreach (var d in diags.All) AppendOutput(d.Render(useColor: false) + "\n");
+                SetProblems(diags.All.Select(d => d.Render(useColor: false)).ToList());
                 SetStatus("Compile failed");
             }
             else
             {
+                HideProblems();
                 SetStatus(diags.All.Count > 0 ? "Compiled OK (warnings)" : "Compiled OK");
             }
         }
@@ -455,9 +520,7 @@ namespace ArcadeBasic.Samples
             }
             if (diags.HasErrors || ast == null || info == null)
             {
-                SelectTab(1);
-                AppendOutput("=== Build: compile errors ===\n");
-                foreach (var d in diags.All) AppendOutput(d.Render(useColor: false) + "\n");
+                SetProblems(diags.All.Select(d => d.Render(useColor: false)).ToList());
                 SetStatus("Build failed");
                 return;
             }
@@ -558,8 +621,7 @@ namespace ArcadeBasic.Samples
             catch (Exception ex)
             {
                 Debug.LogError("[ArcadeBasic.Editor] build failed: " + ex);
-                SelectTab(1);
-                AppendOutput("Build failed: " + ex.Message + "\n");
+                SetProblems(new[] { "Build failed: " + ex.Message });
                 SetStatus("Build failed");
             }
 #endif
@@ -576,10 +638,10 @@ namespace ArcadeBasic.Samples
             if (!string.IsNullOrEmpty(buildStubPath) && File.Exists(buildStubPath))
                 return buildStubPath;
 
-            // (2) Bundled sample stub: when the user imports "In-game REPL
-            // console" via Package Manager, the contents of Samples~/InGameConsole/
-            // get copied into their project. We find ourselves on disk via
-            // MonoScript, then look for Stubs/arcade-basic-<rid> next door.
+            // (2) Bundled sample stub: the package's auto-imported ArcadeBasic
+            // sample includes a Stubs/ folder with arcade-basic-<rid> binaries.
+            // We find ourselves on disk via MonoScript, then look for
+            // Stubs/arcade-basic-<rid> next door.
             var bundled = LocateBundledStub();
             if (!string.IsNullOrEmpty(bundled)) return bundled;
 
@@ -647,6 +709,44 @@ namespace ArcadeBasic.Samples
             catch { /* best effort */ }
         }
 #endif
+
+        /// <summary>Populate and show the Problems pane. Empties / closes
+        /// it when <paramref name="diagnostics"/> is null or empty. Switches
+        /// to the Source tab so the pane is visible.</summary>
+        public void SetProblems(IReadOnlyList<string> diagnostics)
+        {
+            if (problemsPanel == null) return;
+            int count = diagnostics?.Count ?? 0;
+            if (count == 0) { HideProblems(); return; }
+            if (problemsTitleLabel != null)
+                problemsTitleLabel.text = $"Problems ({count})";
+            if (problemsText != null)
+                problemsText.text = string.Join("\n", diagnostics);
+            problemsPanel.SetActive(true);
+            SelectTab(0);
+        }
+
+        /// <summary>Hide the Problems pane (called from its X button).</summary>
+        public void HideProblems()
+        {
+            if (problemsPanel != null) problemsPanel.SetActive(false);
+        }
+
+        /// <summary>Copy the Problems pane's contents to the system clipboard
+        /// via <see cref="GUIUtility.systemCopyBuffer"/>. Updates the status
+        /// line with a confirmation.</summary>
+        public void CopyProblems()
+        {
+            if (problemsText == null) return;
+            string body = problemsText.text ?? string.Empty;
+            if (string.IsNullOrEmpty(body)) { SetStatus("No problems to copy"); return; }
+            GUIUtility.systemCopyBuffer = body;
+            // "Problems (3)" → 3
+            int count = 0;
+            foreach (var ch in body) if (ch == '\n') count++;
+            if (body.Length > 0) count++;
+            SetStatus($"Copied {count} problem{(count == 1 ? "" : "s")} to clipboard");
+        }
 
         void SetInputBarVisible(bool visible)
         {

@@ -1,0 +1,16 @@
+{
+    "name": "ArcadeBasic.Samples",
+    "rootNamespace": "ArcadeBasic.Samples",
+    "references": [
+        "ArcadeBasic",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

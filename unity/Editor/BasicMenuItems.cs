@@ -1,7 +1,9 @@
 using System.IO;
 using UnityEditor;
 using UnityEditor.ProjectWindowCallback;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace ArcadeBasic.Editor
 {
@@ -102,6 +104,84 @@ namespace ArcadeBasic.Editor
         public static void OpenConformance()
         {
             Application.OpenURL("https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/conformance.md");
+        }
+
+        [MenuItem("Window/Arcade BASIC/Samples/Create BASIC IDE Scene", priority = 150)]
+        public static void CreateBasicIdeScene()
+        {
+            var prefab = LocateIdePrefab();
+            if (prefab == null)
+            {
+                EditorUtility.DisplayDialog(
+                    "Arcade BASIC",
+                    "Could not find ArcadeBasicIDE.prefab. Make sure the Arcade BASIC " +
+                    "package is installed and its Samples/ArcadeBasic folder is present.",
+                    "OK");
+                return;
+            }
+
+            var savePath = EditorUtility.SaveFilePanelInProject(
+                "Save BASIC IDE scene",
+                "ArcadeBasicIDE",
+                "unity",
+                "Choose where to save the new scene.");
+            if (string.IsNullOrEmpty(savePath)) return;
+
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            var cameraGo = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
+            cameraGo.tag = "MainCamera";
+            var camera = cameraGo.GetComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
+            camera.transform.position = new Vector3(0f, 1f, -10f);
+            SceneManager.MoveGameObjectToScene(cameraGo, scene);
+
+            var ide = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            SceneManager.MoveGameObjectToScene(ide, scene);
+
+            SwapInputModuleForActiveInputSystem(ide);
+
+            EditorSceneManager.SaveScene(scene, savePath);
+            EditorSceneManager.OpenScene(savePath, OpenSceneMode.Single);
+        }
+
+        // The prefab's EventSystem ships with `StandaloneInputModule` (legacy input).
+        // If the project has Active Input Handling = "Input System Package" (or
+        // "Both"), Unity logs a warning unless we swap to InputSystemUIInputModule.
+        // Resolved via reflection so this code still compiles in projects that
+        // don't have the Input System package installed.
+        private static void SwapInputModuleForActiveInputSystem(GameObject ide)
+        {
+            var inputSystemType = System.Type.GetType(
+                "UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
+            if (inputSystemType == null) return;
+
+            var legacy = ide.GetComponentInChildren<UnityEngine.EventSystems.StandaloneInputModule>(true);
+            if (legacy == null) return;
+
+            var host = legacy.gameObject;
+            Object.DestroyImmediate(legacy, true);
+            host.AddComponent(inputSystemType);
+        }
+
+        private static GameObject LocateIdePrefab()
+        {
+            const string knownPath =
+                "Packages/com.arcadebasic.interpreter/Samples/ArcadeBasic/Prefab/ArcadeBasicIDE.prefab";
+            var direct = AssetDatabase.LoadAssetAtPath<GameObject>(knownPath);
+            if (direct != null) return direct;
+
+            foreach (var guid in AssetDatabase.FindAssets("ArcadeBasicIDE t:Prefab"))
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (path.EndsWith("/ArcadeBasicIDE.prefab", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    var go = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (go != null) return go;
+                }
+            }
+            return null;
         }
 
         [MenuItem("Window/Arcade BASIC/About", priority = 200)]

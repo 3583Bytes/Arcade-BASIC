@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # AOT-publish the `arcade-basic` CLI and stage the resulting binary into
-# unity/Samples~/InGameConsole/Stubs/ under its RID-tagged filename so the
+# unity/Samples/ArcadeBasic/Stubs/ under its RID-tagged filename so the
 # in-game IDE's "Build standalone" feature finds the stub automatically.
 #
 # Usage:
@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-STUBS_DIR="$REPO_ROOT/unity/Samples~/InGameConsole/Stubs"
+STUBS_DIR="$REPO_ROOT/unity/Samples/ArcadeBasic/Stubs"
 mkdir -p "$STUBS_DIR"
 
 # The stub binary's bytecode-deserializer version and the Plugins DLL's
