@@ -107,6 +107,8 @@ The REPL accumulates each accepted line into the session; variables persist, mul
 
 **Arcade BASIC IDE** is a full-screen Terminal.Gui editor + runner that lives in [`src/ArcadeBasic.Ide`](src/ArcadeBasic.Ide). It pairs a source pane (line-number gutter, syntax classification) with an output pane and a bottom input line for `INPUT`, and runs the current buffer through `BasicEngine` on F5.
 
+![Arcade BASIC IDE — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicIDEScreenshot.png)
+
 ```sh
 dotnet run --project src/ArcadeBasic.Ide                       # empty buffer
 dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
@@ -122,7 +124,7 @@ dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
 | Ctrl-L | Clear the output pane           |
 | Ctrl-Q | Quit                            |
 
-Every program in [`examples/`](examples/) is bundled into the binary and listed under **File ▸ Examples**. Release builds publish self-contained binaries (`arcade-basic-ide`) for `linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64` (plus a framework-dependent zip for users with .NET 9 installed). See [`src/ArcadeBasic.Ide/README.md`](src/ArcadeBasic.Ide/README.md) for implementation notes.
+Every program in [`examples/`](examples/) is bundled into the binary and listed under **File ▸ Examples**. Tagged releases publish self-contained `arcade-basic-ide` binaries for `linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64` — the .NET runtime is baked in, so no install is required on the target machine. See [`src/ArcadeBasic.Ide/README.md`](src/ArcadeBasic.Ide/README.md) for implementation notes.
 
 ## Running the example programs
 

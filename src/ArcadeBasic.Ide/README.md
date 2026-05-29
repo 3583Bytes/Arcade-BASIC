@@ -4,17 +4,7 @@ A full-screen terminal IDE for Arcade BASIC — edit, run, and compile from one
 keyboard-driven shell. Same shape as the Unity in-game console sample, but for
 the terminal.
 
-```
-+-- File -- Run -- Help ----------------------------+
-| +-- Source -- hello.bas --+ +-- Output ---------+ |
-| | 1 | FOR I = 1 TO 5      | | sq 1 1            | |
-| | 2 |   PRINT "sq "; I, I*I | sq 2 4            | |
-| | 3 | NEXT I              | | sq 3 9            | |
-| | 4 | END                 | | sq 4 16           | |
-| |   |                     | | sq 5 25           | |
-| +-------------------------+ +-------------------+ |
-+- Ready                                Ln 4 Col 4 -+
-```
+![Arcade BASIC IDE — startrek.bas loaded with the About dialog open](../../screenshots/ArcadeBasicIDEScreenshot.png)
 
 ## Running
 
@@ -33,9 +23,9 @@ arcade-basic-ide --version          # print version and exit
 arcade-basic-ide --help             # usage
 ```
 
-The release pipeline publishes self-contained binaries (no .NET install
-required) for `linux-x64`, `osx-arm64`, `osx-x64`, `win-x64`, plus a
-framework-dependent zip for users who already have .NET 9.
+The release pipeline publishes self-contained single-file binaries (no .NET
+install required — the runtime is bundled into the executable) for
+`linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64`.
 
 ## Keys
 

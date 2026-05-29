@@ -61,12 +61,22 @@ jobs:
           ./publish/aot/ArcadeBasic.Cli${{ matrix.ext }} --version
           ./publish/aot/ArcadeBasic.Cli${{ matrix.ext }} run examples/hello.bas
 
+      - name: Resolve version label
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Stage artifact
         shell: bash
         run: |
           mkdir -p artifacts
           cp publish/aot/ArcadeBasic.Cli${{ matrix.ext }} \
-             artifacts/arcade-basic-${{ matrix.rid }}${{ matrix.ext }}
+             artifacts/arcade-basic-${{ steps.ver.outputs.name }}-${{ matrix.rid }}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -75,43 +85,9 @@ jobs:
           path: artifacts/
 
   # -------------------------------------------------------------------------
-  # Framework-dependent portable build — single zip, runs on any host that
-  # has .NET 9 installed. Much smaller than the AOT binaries.
-  # -------------------------------------------------------------------------
-  framework-dependent:
-    name: Framework-dependent (portable)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up .NET 9
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 9.0.x
-
-      - name: Publish framework-dependent
-        run: |
-          dotnet publish src/ArcadeBasic.Cli \
-            --configuration Release \
-            --no-self-contained \
-            --output publish/fw
-
-      - name: Package
-        run: |
-          mkdir -p artifacts
-          cd publish/fw
-          zip -r ../../artifacts/arcade-basic-framework-dependent.zip .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: framework-dependent
-          path: artifacts/
-
-  # -------------------------------------------------------------------------
-  # Arcade BASIC IDE — Terminal.Gui v1 isn't AOT-clean, so we ship
-  # self-contained per-RID binaries (with the .NET runtime bundled) plus a
-  # small framework-dependent zip for users who already have .NET 9.
+  # Arcade BASIC IDE — Terminal.Gui v1 isn't AOT-clean, so the IDE ships
+  # self-contained single-file binaries (the .NET runtime is bundled). The
+  # resulting binary needs no .NET install on the target machine.
   # -------------------------------------------------------------------------
   ide:
     name: IDE (${{ matrix.rid }})
@@ -156,50 +132,27 @@ jobs:
         run: |
           ./publish/ide/arcade-basic-ide${{ matrix.ext }} --version
 
+      - name: Resolve version label
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Stage artifact
         shell: bash
         run: |
           mkdir -p artifacts
           cp publish/ide/arcade-basic-ide${{ matrix.ext }} \
-             artifacts/arcade-basic-ide-${{ matrix.rid }}${{ matrix.ext }}
+             artifacts/arcade-basic-ide-${{ steps.ver.outputs.name }}-${{ matrix.rid }}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ide-${{ matrix.rid }}
-          path: artifacts/
-
-  ide-framework-dependent:
-    name: IDE (framework-dependent)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up .NET 9
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 9.0.x
-
-      - name: Publish framework-dependent
-        run: |
-          dotnet publish src/ArcadeBasic.Ide \
-            --configuration Release \
-            --no-self-contained \
-            --output publish/ide-fw
-
-      - name: Smoke-test
-        run: ./publish/ide-fw/arcade-basic-ide --version
-
-      - name: Package
-        run: |
-          mkdir -p artifacts
-          cd publish/ide-fw
-          zip -r ../../artifacts/arcade-basic-ide-framework-dependent.zip .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ide-framework-dependent
           path: artifacts/
 
   # -------------------------------------------------------------------------
@@ -252,7 +205,7 @@ jobs:
   # -------------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [aot, framework-dependent, ide, ide-framework-dependent, unity]
+    needs: [aot, ide, unity]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
