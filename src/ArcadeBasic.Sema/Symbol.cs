@@ -29,8 +29,10 @@ public sealed record class SubSymbol(string Name, IReadOnlyList<Param> Params, S
 /// <summary>A FUNCTION declaration with its own body scope; return type from $ suffix.</summary>
 public sealed record class FunctionSymbol(string Name, bool IsString, IReadOnlyList<Param> Params, Scope BodyScope, FunctionStmt Stmt) : Symbol(Name, IsString);
 
-/// <summary>A DEF (single-line or multi-line user function).</summary>
-public sealed record class DefSymbol(string Name, bool IsString, IReadOnlyList<Param> Params, DefStmt Stmt) : Symbol(Name, IsString);
+/// <summary>A DEF (single-line or multi-line user function). BodyScope owns the
+/// param symbols so name resolution in the body has a stable Scope that other
+/// phases (e.g. the bytecode compiler) can refer back to.</summary>
+public sealed record class DefSymbol(string Name, bool IsString, IReadOnlyList<Param> Params, Scope BodyScope, DefStmt Stmt) : Symbol(Name, IsString);
 
 /// <summary>A predefined supplied function (SIN, COS, MID$, etc.).</summary>
 public sealed record class BuiltinSymbol(string Name, bool IsString, BuiltinSignature Signature) : Symbol(Name, IsString);

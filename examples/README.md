@@ -12,26 +12,25 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 |------------------|-------------------------------------------------|:-----------:|:-----------:|
 | `hello.bas`      | PRINT, IF/THEN/ELSE, FOR, ^                     | ✓           | ✓           |
 | `factorial.bas`  | recursive FUNCTION                              | ✓           | ✓           |
-| `fibonacci.bas`  | DIM array, FOR loop                             | ✓           | —           |
-| `primes.bas`     | sieve, nested FOR, IF inside loop               | ✓           | —           |
+| `fibonacci.bas`  | DIM array, FOR loop                             | ✓           | ✓           |
+| `primes.bas`     | sieve, nested FOR, IF inside loop               | ✓           | ✓           |
 | `strings.bas`    | LEN/MID$/LEFT$/RIGHT$/UCASE$/REPEAT$/CHR$/ORD   | ✓           | ✓           |
-| `matrix.bas`     | MAT + / * / TRN / INV / PRINT                   | ✓           | —           |
-| `exception.bas`  | WHEN/USE/END WHEN, CAUSE, EXLINE, EXTYPE, RETRY | ✓           | —           |
-| `fileio.bas`     | OPEN / PRINT # / LINE INPUT # / CLOSE           | ✓           | —           |
-| `formatted.bas`  | PRINT USING with picture strings                | ✓           | —           |
-| `modules.bas`    | MODULE block, PUBLIC vs private declarations    | ✓           | —           |
+| `matrix.bas`     | MAT + / * / TRN / INV / PRINT                   | ✓           | ✓           |
+| `exception.bas`  | WHEN/USE/END WHEN, CAUSE, EXLINE, EXTYPE, RETRY | ✓           | ✓           |
+| `fileio.bas`     | OPEN / PRINT # / LINE INPUT # / CLOSE           | ✓           | ✓           |
+| `formatted.bas`  | PRINT USING with picture strings                | ✓           | ✓           |
+| `modules.bas`    | MODULE block, PUBLIC vs private declarations    | ✓           | ✓           |
 | `pi.bas`         | Leibniz series, MOD, ABS, PI constant           | ✓           | ✓           |
-| `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | —           |
-| `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | —           |
-| `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | —           |
+| `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | ✓           |
+| `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
+| `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 
 A ✓ in the **Bytecode VM** column means the example also runs via
-`arcade-basic vm <file>`. The VM doesn't yet support arrays, MAT, file I/O,
-exception handling, modules, PRINT USING, or INPUT — those programs run
-on the tree-walker only.
+`arcade-basic vm <file>` with output byte-identical to the tree-walker
+(`startrek.bas` uses non-deterministic `RND`, so the two engines produce
+structurally-identical output up to RNG draws).
 
-To produce a self-contained native binary for any example that the VM
-supports:
+To produce a self-contained native binary for any example:
 
 ```sh
 ./publish/aot/ArcadeBasic.Cli build examples/factorial.bas -o factorial

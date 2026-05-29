@@ -201,7 +201,7 @@ Multiple values are emitted by re-applying the picture; `Apply` cycles the parse
 
 **IMPLEMENTATION-DEFINED:** Diagnostics use stable codes (`FB0001`...) with Rust-style snippets and a caret. Colour goes through ANSI when stderr is a TTY.
 
-**IMPLEMENTATION-DEFINED:** The `build` subcommand produces a self-extracting native binary by appending a serialised bytecode payload to the running CLI binary. The compiled program may use any documented Arcade BASIC feature — the VM covers the full surface: arrays/DIM, `INPUT`, `LINE INPUT`, MAT operations, `READ`/`DATA`/`RESTORE`, `PRINT USING`, DISPLAY-mode file I/O, `WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE` with inline or named `HANDLER` bodies, and modules with PUBLIC re-export.
+**IMPLEMENTATION-DEFINED:** The `build` subcommand produces a self-extracting native binary by appending a serialised bytecode payload to the running CLI binary. The VM is feature-complete against the tree-walker — it handles every Arcade BASIC feature the tree-walker accepts (arrays/DIM, `INPUT`, `LINE INPUT`, MAT operations, `READ`/`DATA`/`RESTORE`, `PRINT USING`, `PRINT TAB(n)`, DISPLAY-mode file I/O, `WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE` with inline or named `HANDLER` bodies, forward `GOTO`/`GOSUB`, single-line and multi-line `DEF`, nested MAT constants, modules with PUBLIC re-export) and matches its byte-for-byte output on every example program.
 
 ## Known gaps vs `examples/`
 

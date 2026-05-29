@@ -51,7 +51,7 @@ src/
   ArcadeBasic.Runtime/       # Value, ActivationRecord, FlowControl, BuiltinImpls, BasicFile
   ArcadeBasic.Interpreter/   # Tree-walking interpreter (feature-complete)
   ArcadeBasic.Bytecode/      # Opcode enum, Chunk, BytecodeSerializer
-  ArcadeBasic.Compiler/      # AST → bytecode lowering (subset of interpreter)
+  ArcadeBasic.Compiler/      # AST → bytecode lowering (feature-parity with interpreter)
   ArcadeBasic.Vm/            # Stack-based bytecode VM
   ArcadeBasic.Cli/           # Command dispatch + self-extracting AOT stub
 

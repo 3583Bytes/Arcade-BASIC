@@ -71,6 +71,26 @@ public sealed class Chunk
         _code[pc + 8] = (byte)((offset >> 24) & 0xFF);
     }
 
+    /// <summary>Overwrite the 4 bytes starting at <paramref name="operandStart"/> with
+    /// <paramref name="value"/>. Used by forward-jump backfilling (GOTO/GOSUB to
+    /// labels that weren't known when the opcode was emitted).</summary>
+    public void PatchU32(int operandStart, uint value)
+    {
+        _code[operandStart + 0] = (byte)(value & 0xFF);
+        _code[operandStart + 1] = (byte)((value >> 8) & 0xFF);
+        _code[operandStart + 2] = (byte)((value >> 16) & 0xFF);
+        _code[operandStart + 3] = (byte)((value >> 24) & 0xFF);
+    }
+
+    /// <summary>Patch a Jump-style relative-offset opcode at <paramref name="pc"/>
+    /// so it lands at <paramref name="targetPc"/>. Operand layout: 1 byte opcode
+    /// + 4-byte i32 offset relative to the byte just past it (= pc + 5).</summary>
+    public void PatchJumpAbsolute(int pc, int targetPc)
+    {
+        var offset = targetPc - (pc + 5);
+        PatchU32(pc + 1, (uint)offset);
+    }
+
     public void EmitJumpToAbsolute(Opcode op, int absolutePc)
     {
         var pc = Emit(op);
@@ -110,5 +130,5 @@ public sealed class Program
 
 public sealed record class CompiledSub(string Name, int ParamCount, Chunk Body);
 public sealed record class CompiledFunction(string Name, bool IsString, int ParamCount, int ReturnSlot, Chunk Body);
-public sealed record class CompiledDef(string Name, bool IsString, int ParamCount, Chunk Body);
+public sealed record class CompiledDef(string Name, bool IsString, int ParamCount, int ReturnSlot, Chunk Body);
 public sealed record class BcDataItem(bool IsString, string Text);

@@ -55,7 +55,7 @@ Arcade BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language
 Three paths come out of the analyzer:
 
 - **`run` path:** tree-walking interpreter, the most feature-complete. Supports the full surface — arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
-- **`vm`/`build` path:** AST → bytecode → stack VM. Tracks the tree-walker on every example program and on every documented language surface, including `CONTINUE` resumption inside USE bodies. The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
+- **`vm`/`build` path:** AST → bytecode → stack VM. Matches the tree-walker byte-for-byte on every example program in the repo. The compiler does deferred backfill for forward `GOTO`/`GOSUB` across statement boundaries, `PRINT TAB(n)` is its own opcode, `CallDef` is fully wired, and nested MAT constants resolve their shape from the assignment target via `MatPushConst`. The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
 - **`repl` path:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/ArcadeBasic.Cli/BasicRepl.cs`.
 
 ## Project graph
@@ -176,7 +176,7 @@ The non-interpreter path. `BasicCompiler.Compile(program, info)` walks the AST a
 
 Opcodes are listed in `Opcode.cs`. They split into stack manipulation, constants, variable load/store (with static-link variants for outer scopes), arithmetic/string, comparison/logical/bitwise, control flow, calls, I/O, and a handful of compound ops. The encoding is one byte for the op + LEB128 for operands (small ints) or 4-byte indices for pool entries.
 
-`BasicVm.Run()` is a switch dispatch over the opcode stream. The runtime uses the same `Value` types and `ActivationRecord` as the tree-walker. The VM intentionally rejects features it doesn't support yet (`BasicCompiler.UnsupportedFeatureException`); the CLI's `vm` and `build` commands report this and direct the user to `run` for full support.
+`BasicVm.Run()` is a switch dispatch over the opcode stream. The runtime uses the same `Value` types and `ActivationRecord` as the tree-walker, and the shared `MatOps` / `DisplayFormat` / `PictureFormat` / `ChannelTable` / `BuiltinImpls` helpers in `ArcadeBasic.Runtime` so the two engines produce byte-identical output on every program. The remaining `BasicCompiler.UnsupportedFeatureException` sites are defensive fallbacks for sema-invariants (e.g. "MAT target is not a known array") that well-formed input never reaches.
 
 ### ArcadeBasic.Cli + Phase-10 self-extracting binary
 

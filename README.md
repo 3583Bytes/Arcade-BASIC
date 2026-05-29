@@ -35,15 +35,15 @@ See [`unity/README.md`](unity/README.md) for install instructions (UPM via git U
 
 ## Status
 
-Three execution paths land an Arcade BASIC program in different forms:
+Three execution paths land an Arcade BASIC program in different forms — they're feature-equivalent (every program the tree-walker accepts also runs on the VM):
 
-- **`arcade-basic run <file>`** — tree-walking interpreter. The most complete front end: arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
-- **`arcade-basic vm <file>`** — compile to stack bytecode and run on the VM. Tracks the tree-walker on every example program and on every documented language surface, including `CONTINUE` resumption inside USE bodies.
-- **`arcade-basic build <file> [-o out]`** — bundle the VM and the compiled program into a single self-contained native binary (Phase 10, Path E). Same feature subset as `vm`.
+- **`arcade-basic run <file>`** — tree-walking interpreter. The reference implementation.
+- **`arcade-basic vm <file>`** — compile to stack bytecode and run on the VM. Byte-identical output to the tree-walker on every example program in the repo. (`startrek.bas` uses non-deterministic `RND`, so the two engines agree structurally rather than literally.)
+- **`arcade-basic build <file> [-o out]`** — bundle the VM and the compiled program into a single self-contained native binary (Phase 10, Path E). Any program that runs under `run` also builds.
 
 Pipeline phases 0–10 are all merged. Optional Phase 8 modules are partial: `PRINT USING` (8a) is done; graphics + picture (SVG backend) and fixed-decimal are not.
 
-See [`examples/README.md`](examples/README.md) for a feature matrix across the sample programs.
+See [`examples/README.md`](examples/README.md) for the per-example feature breakdown.
 
 ## Build
 
@@ -67,8 +67,8 @@ arcade-basic <command> [args]
   lex <file>              tokenize and print the token stream
   parse <file>            lex + parse, pretty-print the AST
   analyze <file>          lex + parse + sema, print symbol/DATA summary
-  run <file> [mod ...]    tree-walking interpreter (most complete)
-  vm <file>               compile to bytecode and run on the VM (subset)
+  run <file> [mod ...]    tree-walking interpreter
+  vm <file>               compile to bytecode and run on the VM
   build <file> [-o out]   produce a self-contained native binary
   repl                    interactive Arcade BASIC session
   --version
@@ -139,10 +139,10 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/guess.bas    # reads fr
 dotnet run --project src/ArcadeBasic.Cli -- run examples/startrek.bas # Super Star Trek (Ahl 1978)
 dotnet run --project src/ArcadeBasic.Cli -- run examples/lunar.bas    # Lunar Lander (Storer 1969)
 
-# Bytecode VM — only the examples marked ✓ in examples/README.md
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/hello.bas
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/factorial.bas
-dotnet run --project src/ArcadeBasic.Cli -- vm examples/strings.bas
+# Bytecode VM — every example runs here too (output byte-identical to run)
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/matrix.bas
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/exception.bas
+dotnet run --project src/ArcadeBasic.Cli -- vm examples/modules.bas
 dotnet run --project src/ArcadeBasic.Cli -- vm examples/pi.bas
 ```
 
@@ -154,7 +154,7 @@ dotnet run --project src/ArcadeBasic.Cli -- parse   examples/factorial.bas
 dotnet run --project src/ArcadeBasic.Cli -- analyze examples/factorial.bas
 ```
 
-After an AOT publish, use the native CLI directly (much faster startup) and produce a standalone binary for any VM-compatible example:
+After an AOT publish, use the native CLI directly (much faster startup) and produce a standalone binary for any example:
 
 ```sh
 dotnet publish src/ArcadeBasic.Cli -c Release /p:PublishAot=true

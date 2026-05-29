@@ -59,7 +59,12 @@ public sealed class BasicVm
         catch (BasicRuntimeException ex)
         {
             _out.Flush();
-            Console.Error.WriteLine($"runtime error [{ex.TypeCode}]: {ex.Message}");
+            // Match the tree-walker's "unhandled exception" format so the two
+            // engines produce identical stderr for an unhandled runtime error.
+            // _currentLine is the most recent LineNote, which matches the
+            // failing statement when the exception originates in user code.
+            Console.Error.WriteLine(
+                $"unhandled exception type {ex.TypeCode} at line {_currentLine}: {ex.Message}");
             return 1;
         }
         finally
@@ -85,6 +90,9 @@ public sealed class BasicVm
         // Kept chunk-local so a CALL into a SUB doesn't clobber the outer
         // chunk's view of where CONTINUE should resume.
         var stmtEndPc = 0;
+        // GOSUB return-PC stack — local to this chunk. Pushed by GosubFlow,
+        // popped by Return. GOSUB/RETURN never cross chunk boundaries.
+        var gosubStack = new Stack<int>();
 
         while (pc < code.Count)
         {
@@ -235,6 +243,21 @@ public sealed class BasicVm
                         if (((NumericValue)stack.Pop()).V == BigDecimal.Zero) pc += off;
                         break;
                     }
+                case Opcode.GosubFlow:
+                    {
+                        // Operand is the absolute PC of the GOSUB target.
+                        var target = (int)ReadU32(code, ref pc);
+                        gosubStack.Push(pc); // resume here after RETURN
+                        pc = target;
+                        break;
+                    }
+                case Opcode.Return:
+                    {
+                        if (gosubStack.Count == 0)
+                            throw new BasicRuntimeException(3001, "RETURN without GOSUB");
+                        pc = gosubStack.Pop();
+                        break;
+                    }
 
                 case Opcode.CallBuiltin:
                     {
@@ -305,7 +328,22 @@ public sealed class BasicVm
                         break;
                     }
                 case Opcode.CallDef:
-                    throw new BasicRuntimeException(0, "DEF calls are not yet supported by the VM (Phase-9 limitation)");
+                    {
+                        var did = (int)ReadU32(code, ref pc);
+                        var argc = (int)ReadU32(code, ref pc);
+                        var def = _program.Defs[did];
+                        var args = new Value[argc];
+                        for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
+                        // DEF body's parent scope is the caller's frame (so the
+                        // body can reference the caller's outer names), unlike
+                        // SUB/FUNCTION whose parent is programFrame.
+                        var defFrame = new ActivationRecord(def.Body.FrameSize, frame);
+                        for (var i = 0; i < argc; i++) defFrame.Set(i, args[i]);
+                        ExecuteChunk(def.Body, defFrame, programFrame);
+                        stack.Push(defFrame.GetOrDefault(def.ReturnSlot,
+                            def.IsString ? StringValue.Empty : NumericValue.Zero));
+                        break;
+                    }
                 case Opcode.LeaveSub:
                 case Opcode.LeaveFunction:
                     while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
@@ -338,6 +376,19 @@ public sealed class BasicVm
                         var next = ((col / DefaultZoneWidth) + 1) * DefaultZoneWidth;
                         for (var i = col; i < next; i++) _out.Write(' ');
                         col = next;
+                        break;
+                    }
+                case Opcode.PrintTab:
+                    {
+                        // BASIC TAB(n) is 1-based; clamp negatives to column 0,
+                        // and never move backwards (TAB to before current column is a no-op).
+                        var target = (int)((NumericValue)stack.Pop()).V - 1;
+                        if (target < 0) target = 0;
+                        if (target > col)
+                        {
+                            for (var i = col; i < target; i++) _out.Write(' ');
+                            col = target;
+                        }
                         break;
                     }
 
@@ -394,16 +445,17 @@ public sealed class BasicVm
                     {
                         var itemCount = (int)ReadU32(code, ref pc);
                         var kinds = new uint[itemCount];
-                        var exprItemCount = 0;
+                        // Both ExprNumeric/ExprString (0/1) and Tab (4) consume a stack value.
+                        var stackItemCount = 0;
                         for (var i = 0; i < itemCount; i++)
                         {
                             kinds[i] = ReadU32(code, ref pc);
-                            if (kinds[i] <= 1) exprItemCount++;
+                            if (kinds[i] <= 1 || kinds[i] == 4) stackItemCount++;
                         }
                         var channel = (int)((NumericValue)stack.Pop()).V;
-                        var exprValues = new Value[exprItemCount];
-                        for (var i = exprItemCount - 1; i >= 0; i--) exprValues[i] = stack.Pop();
-                        PerformPrintFile(channel, kinds, exprValues);
+                        var stackValues = new Value[stackItemCount];
+                        for (var i = stackItemCount - 1; i >= 0; i--) stackValues[i] = stack.Pop();
+                        PerformPrintFile(channel, kinds, stackValues);
                         break;
                     }
                 case Opcode.InputFile:
@@ -586,24 +638,31 @@ public sealed class BasicVm
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var isString = ReadU32(code, ref pc) != 0;
-                        // Kind values match Parser.Ast.MatConstKind ordinals:
-                        // 0=Identity (IDN), 1=Zeros (ZER), 2=Ones (CON), 3=NullString (NUL$).
                         var kind = ReadU32(code, ref pc);
                         var target = ResolveOuter(frame, programFrame, depth);
                         var current = target.GetOrDefault(slot, NumericValue.Zero);
                         var bounds = MatOps.BoundsOf(current)
                             ?? throw new BasicRuntimeException(6004,
                                 "MAT constant rhs requires the target to be DIM-ed first");
-                        Value result = (kind, isString) switch
-                        {
-                            (0u, false) => new NumericArrayValue(MatOps.Identity(bounds), bounds),
-                            (1u, false) => new NumericArrayValue(new BigDecimal[bounds.Length], bounds),
-                            (2u, false) => new NumericArrayValue(MatOps.Fill(bounds, BigDecimal.One), bounds),
-                            (3u, true) => new StringArrayValue(FillStrings(bounds.Length, ""), bounds),
-                            _ => throw new BasicRuntimeException(0,
-                                $"MAT constant kind {kind} not valid for {(isString ? "string" : "numeric")} target"),
-                        };
-                        target.Set(slot, result);
+                        target.Set(slot, BuildMatConst(kind, isString, bounds));
+                        break;
+                    }
+                case Opcode.MatPushConst:
+                    {
+                        // Same as MatAssignConst but pushes the constant array
+                        // onto the operand stack (so it can participate in a
+                        // bigger MatRhs expression — e.g. `MAT C = ZER + B`).
+                        // Reads the target's current bounds to know the shape.
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        var kind = ReadU32(code, ref pc);
+                        var target = ResolveOuter(frame, programFrame, depth);
+                        var current = target.GetOrDefault(slot, NumericValue.Zero);
+                        var bounds = MatOps.BoundsOf(current)
+                            ?? throw new BasicRuntimeException(6004,
+                                "MAT constant rhs requires the target to be DIM-ed first");
+                        stack.Push(BuildMatConst(kind, isString, bounds));
                         break;
                     }
                 case Opcode.MatRedim:
@@ -782,6 +841,22 @@ public sealed class BasicVm
         return false;
     }
 
+    /// <summary>Build a numeric or string constant array matching the
+    /// given <paramref name="bounds"/>. Kind values match Parser.Ast.MatConstKind:
+    /// 0=Identity (IDN), 1=Zeros (ZER), 2=Ones (CON), 3=NullString (NUL$).</summary>
+    private static Value BuildMatConst(uint kind, bool isString, Bounds bounds)
+    {
+        return (kind, isString) switch
+        {
+            (0u, false) => new NumericArrayValue(MatOps.Identity(bounds), bounds),
+            (1u, false) => new NumericArrayValue(new BigDecimal[bounds.Length], bounds),
+            (2u, false) => new NumericArrayValue(MatOps.Fill(bounds, BigDecimal.One), bounds),
+            (3u, true) => new StringArrayValue(FillStrings(bounds.Length, ""), bounds),
+            _ => throw new BasicRuntimeException(0,
+                $"MAT constant kind {kind} not valid for {(isString ? "string" : "numeric")} target"),
+        };
+    }
+
     private static void MatBinaryNumeric(
         Stack<Value> stack,
         Func<BigDecimal[], Bounds, BigDecimal[], Bounds, (BigDecimal[] Data, Bounds Bounds)> op)
@@ -876,13 +951,13 @@ public sealed class BasicVm
         }
     }
 
-    private void PerformPrintFile(int channel, uint[] kinds, Value[] exprValues)
+    private void PerformPrintFile(int channel, uint[] kinds, Value[] stackValues)
     {
         var file = _channels.Get(channel);
         var sb = new StringBuilder();
         var col = 0;
         var suppressNewline = false;
-        var nextExpr = 0;
+        var nextStackItem = 0;
         for (var i = 0; i < kinds.Length; i++)
         {
             switch (kinds[i])
@@ -890,7 +965,7 @@ public sealed class BasicVm
                 case 0u: // ExprNumeric
                 case 1u: // ExprString
                     {
-                        var v = exprValues[nextExpr++];
+                        var v = stackValues[nextStackItem++];
                         var text = v switch
                         {
                             StringValue s => s.V,
@@ -913,6 +988,18 @@ public sealed class BasicVm
                 case 3u: // Semicolon → no padding; suppresses trailing newline if last
                     suppressNewline = i == kinds.Length - 1;
                     break;
+                case 4u: // Tab(n) → pad spaces to 1-based column n (no-op if already past)
+                    {
+                        var target = (int)((NumericValue)stackValues[nextStackItem++]).V - 1;
+                        if (target < 0) target = 0;
+                        if (target > col)
+                        {
+                            sb.Append(' ', target - col);
+                            col = target;
+                        }
+                        suppressNewline = false;
+                        break;
+                    }
             }
         }
         if (suppressNewline) file.Write(sb.ToString());

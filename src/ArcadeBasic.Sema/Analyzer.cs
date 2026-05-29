@@ -140,10 +140,17 @@ public sealed class Analyzer
 
             case DefStmt def:
             {
-                // DEF doesn't get its own scope — single-line refs are evaluated
-                // with caller-side scope plus a small param environment in the
-                // interpreter. We only register the signature here.
-                var sym = new DefSymbol(def.Name, def.IsString, def.Params, def);
+                // Build the DEF's body scope here so it has a stable identity
+                // both phases can refer to: sema's Pass2 resolves references
+                // against it, and the bytecode compiler uses it as _currentScope
+                // when emitting the body so ScopeDepth resolves params at depth 0.
+                var defScope = new Scope(ScopeKind.Def, scope);
+                foreach (var p in def.Params)
+                {
+                    defScope.Declare(Scope.Key(p.Name, p.IsString),
+                        new ParamSymbol(p.Name, p.IsString, defScope.AllocateSlot(), p.IsArray));
+                }
+                var sym = new DefSymbol(def.Name, def.IsString, def.Params, defScope, def);
                 if (!scope.Declare(Scope.Key(def.Name, def.IsString), sym))
                 {
                     _diags.Error(ErrDuplicateDeclaration, def.Span,
@@ -405,14 +412,12 @@ public sealed class Analyzer
             }
             case DefStmt def:
             {
-                // Single-line DEF: parameters live in a temporary scope just for
-                // the body expression. Multi-line DEF: same, but for statements.
-                var defScope = new Scope(ScopeKind.Def, scope);
-                foreach (var p in def.Params)
-                {
-                    defScope.Declare(Scope.Key(p.Name, p.IsString),
-                        new ParamSymbol(p.Name, p.IsString, defScope.AllocateSlot(), p.IsArray));
-                }
+                // The defScope is built once in Pass1 (and stored on DefSymbol)
+                // so name resolution and the bytecode compiler agree on which
+                // Scope owns the parameters.
+                if (scope.LocalLookup(Scope.Key(def.Name, def.IsString)) is not DefSymbol defSym)
+                    break;
+                var defScope = defSym.BodyScope;
                 if (def.SingleLineBody is not null)
                 {
                     var bt = AnalyzeExpr(def.SingleLineBody, defScope);

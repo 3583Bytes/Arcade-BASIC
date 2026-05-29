@@ -9,9 +9,9 @@ using ArcadeBasic.Vm;
 namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>
-/// VM tests. The VM is feature-complete against the tree-walker on every
-/// documented Arcade BASIC surface and every example program in the repo,
-/// so for each scenario tested here the VM should match tree-walker output.
+/// VM tests. The VM is feature-complete against the tree-walker and matches
+/// its output byte-for-byte on every example program (startrek.bas uses
+/// non-deterministic RND so the engines agree structurally, not literally).
 /// </summary>
 public class VmTests
 {
@@ -1210,5 +1210,191 @@ public class VmTests
         var (output, exit) = Run("CONTINUE");
         exit.Should().Be(1);
         output.Should().Contain("CONTINUE outside of WHEN/USE");
+    }
+
+    // -- Forward GOTO/GOSUB --------------------------------------------
+
+    [Fact]
+    public void ForwardGotoJumpsAhead()
+    {
+        const string src = """
+            GOTO 200
+            PRINT "skipped"
+            200 PRINT "landed"
+            """;
+        Run(src).Output.Trim().Should().Be("landed");
+    }
+
+    [Fact]
+    public void GosubReturnRoundtrip()
+    {
+        const string src = """
+            PRINT "before"
+            GOSUB 100
+            PRINT "after"
+            STOP
+            100 PRINT "inside"
+            RETURN
+            """;
+        Run(src).Output.Trim().Should().Be("before\ninside\nafter");
+    }
+
+    [Fact]
+    public void ReturnWithoutGosubIsRuntimeError()
+    {
+        var (_, exit) = Run("RETURN");
+        exit.Should().Be(1);
+    }
+
+    // -- PRINT TAB -----------------------------------------------------
+
+    [Fact]
+    public void PrintTabPadsToColumn()
+    {
+        Run("PRINT \"x\"; TAB(10); \"y\"").Output.Should().Be("x        y\n");
+    }
+
+    [Fact]
+    public void PrintTabIsNoOpIfAlreadyPast()
+    {
+        // Already at column 5 ("hello") — TAB(3) shouldn't move backwards.
+        Run("PRINT \"hello\"; TAB(3); \"!\"").Output.Should().Be("hello!\n");
+    }
+
+    // -- DEF calls (single-line, runtime-callable) ---------------------
+
+    [Fact]
+    public void SingleLineDefCallable()
+    {
+        const string src = """
+            DEF SQUARE(X) = X * X
+            PRINT SQUARE(7)
+            """;
+        Run(src).Output.Trim().Should().Be("49");
+    }
+
+    [Fact]
+    public void DefSeesOuterVariables()
+    {
+        // DEF parent is the caller's frame so the body can reference outer names.
+        const string src = """
+            LET K = 10
+            DEF SHIFT(X) = X + K
+            PRINT SHIFT(5)
+            """;
+        Run(src).Output.Trim().Should().Be("15");
+    }
+
+    // -- Nested MAT constants ------------------------------------------
+
+    [Fact]
+    public void NestedZerInsideAddition()
+    {
+        const string src = """
+            DIM A(2, 2), B(2, 2)
+            LET B(1, 1) = 7
+            LET B(2, 2) = 9
+            MAT A = ZER + B
+            PRINT A(1, 1); A(2, 2)
+            """;
+        Run(src).Output.Trim().Should().Be("7  9");
+    }
+
+    [Fact]
+    public void NestedIdnInsideMultiplication()
+    {
+        // A · IDN = A. Confirms IDN nested in a multiply preserves identity.
+        const string src = """
+            DIM A(2, 2), C(2, 2)
+            LET A(1, 1) = 4
+            LET A(1, 2) = 7
+            LET A(2, 1) = 2
+            LET A(2, 2) = 6
+            MAT C = A * IDN
+            PRINT C(1, 1); C(1, 2); C(2, 1); C(2, 2)
+            """;
+        Run(src).Output.Trim().Should().Be("4  7  2  6");
+    }
+
+    // -- EXIT variants -------------------------------------------------
+
+    [Fact]
+    public void ExitHandlerLeavesWhenBlock()
+    {
+        const string src = """
+            WHEN EXCEPTION IN
+              CAUSE EXCEPTION 1
+              PRINT "skipped-in"
+            USE
+              PRINT "in handler"
+              EXIT HANDLER
+              PRINT "skipped-after-exit"
+            END WHEN
+            PRINT "after-when"
+            """;
+        Run(src).Output.Trim().Should().Be("in handler\nafter-when");
+    }
+
+    [Fact]
+    public void ExitWhenLeavesWhenBlock()
+    {
+        const string src = """
+            WHEN EXCEPTION IN
+              PRINT "in-body"
+              EXIT WHEN
+              PRINT "skipped"
+            USE
+              PRINT "use-body-not-reached"
+            END WHEN
+            PRINT "after-when"
+            """;
+        Run(src).Output.Trim().Should().Be("in-body\nafter-when");
+    }
+
+    [Fact]
+    public void ExitSubReturnsEarly()
+    {
+        const string src = """
+            SUB GREET(N$)
+              PRINT "hi"
+              IF N$ = "" THEN EXIT SUB
+              PRINT N$
+            END SUB
+            CALL GREET("Adam")
+            CALL GREET("")
+            """;
+        Run(src).Output.Trim().Should().Be("hi\nAdam\nhi");
+    }
+
+    [Fact]
+    public void ExitFunctionReturnsCurrentValue()
+    {
+        const string src = """
+            FUNCTION CAP(X)
+              CAP = 100
+              IF X > 100 THEN EXIT FUNCTION
+              CAP = X
+            END FUNCTION
+            PRINT CAP(50); CAP(500)
+            """;
+        Run(src).Output.Trim().Should().Be("50  100");
+    }
+
+    [Fact]
+    public void ExitDefReturnsEarly()
+    {
+        // Multi-line DEF that returns early via EXIT DEF. Multi-line DEFs return
+        // zero/empty (a tree-walker gap with multi-line DEF's name-slot) regardless
+        // of whether they exit early or fall through — EXIT DEF still has to compile
+        // and run without crashing.
+        const string src = """
+            DEF G(X)
+              IF X < 0 THEN EXIT DEF
+              PRINT "reached"
+            END DEF
+            LET Y = G(5)
+            LET Z = G(-1)
+            """;
+        Run(src).Output.Trim().Should().Be("reached");
     }
 }

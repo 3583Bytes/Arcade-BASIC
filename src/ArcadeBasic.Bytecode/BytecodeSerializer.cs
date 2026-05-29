@@ -23,7 +23,7 @@ namespace ArcadeBasic.Bytecode;
 public static class BytecodeSerializer
 {
     private const uint Magic = 0x46424358u; // 'FBCX'
-    private const uint Version = 2;
+    private const uint Version = 3;
 
     public static byte[] Serialize(Program program)
     {
@@ -58,6 +58,7 @@ public static class BytecodeSerializer
             WriteString(w, d.Name);
             w.Write(d.IsString);
             w.Write((uint)d.ParamCount);
+            w.Write((uint)d.ReturnSlot);
             WriteChunk(w, d.Body);
         }
 
@@ -113,8 +114,9 @@ public static class BytecodeSerializer
             var name = ReadString(r);
             var isString = r.ReadBoolean();
             var paramCount = (int)r.ReadUInt32();
+            var returnSlot = (int)r.ReadUInt32();
             var body = ReadChunk(r);
-            defs.Add(new CompiledDef(name, isString, paramCount, body));
+            defs.Add(new CompiledDef(name, isString, paramCount, returnSlot, body));
         }
 
         var dataCount = r.ReadUInt32();

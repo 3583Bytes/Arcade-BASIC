@@ -62,6 +62,7 @@ public enum Opcode : byte
     PrintString,           // pop string, write
     PrintNewline,          // emit newline
     PrintZonePad,          // pad to next zone boundary
+    PrintTab,              // pop numeric column target (1-based); pad spaces if target > current col
 
     // -- Constants for spec-defined identifiers --
     LoadConstantPi,
@@ -189,6 +190,7 @@ public enum Opcode : byte
     MatInv,                // pop square 2-D array, push inverse
     MatAssign,             // operand: u32 depth, u32 slot, u32 isString — pop array, store
     MatAssignConst,        // operand: u32 depth, u32 slot, u32 isString, u32 kind (0=IDN,1=ZER,2=CON,3=NUL$ — matches Parser.Ast.MatConstKind ordinals)
+    MatPushConst,          // operand: u32 depth, u32 slot, u32 isString, u32 kind — same as MatAssignConst but PUSHES the constant array (for nested-const RHS like MAT C = ZER + B)
     MatRedim,              // operand: u32 depth, u32 slot, u32 rank, u32 isString — pops 2*rank bounds
     MatPrint,              // operand: u32 depth, u32 slot
     MatInput,              // operand: u32 depth, u32 slot, u32 isString

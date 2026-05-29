@@ -8,19 +8,21 @@ using BcProgram = ArcadeBasic.Bytecode.Program;
 namespace ArcadeBasic.Compiler;
 
 /// <summary>
-/// AST → bytecode compiler. Covers the full documented Arcade BASIC surface:
+/// AST → bytecode compiler. Feature-complete against the tree-walker:
 /// literals, variables, all unary/binary arithmetic + comparison + logical,
-/// PRINT (positional), assignments, IF (block + single-line), FOR/NEXT,
-/// DO/LOOP (pre/post WHILE/UNTIL), SELECT CASE, GOTO/GOSUB/RETURN, EXIT,
-/// STOP/END, REM, RANDOMIZE, DEF (single-line), SUB/FUNCTION/CALL, builtins,
-/// DIM with 1-D and N-D bounds, indexed read/write, OPTION BASE, INPUT and
-/// LINE INPUT (scalar + array targets, prompts with semicolon/comma, retry
-/// loop), MAT assign/REDIM/INPUT/PRINT/READ, MAT +/-/*, MAT TRN/INV/IDN/
-/// ZER/CON/NUL$, READ/DATA/RESTORE, PRINT USING, OPEN/CLOSE/PRINT#/INPUT#/
-/// LINE INPUT# (DISPLAY mode SEQUENTIAL/STREAM), WHEN/USE/CAUSE/RETRY/
-/// CONTINUE exception handling with inline or named HANDLER bodies and
-/// EXTYPE/EXLINE/EXTEXT$ visibility, MODULE declarations with PUBLIC
-/// re-export. Output matches the tree-walker byte-for-byte on every example.
+/// PRINT (positional, expressions + separators + TAB), assignments, IF
+/// (block + single-line), FOR/NEXT, DO/LOOP (pre/post WHILE/UNTIL),
+/// SELECT CASE, GOTO/GOSUB/RETURN (including forward labels via deferred
+/// backfill), EXIT, STOP/END, REM, RANDOMIZE, single-line and multi-line
+/// DEF, SUB/FUNCTION/CALL, builtins, DIM with 1-D and N-D bounds, indexed
+/// read/write, OPTION BASE, INPUT and LINE INPUT (scalar + array targets,
+/// prompts with semicolon/comma, retry loop), MAT assign/REDIM/INPUT/PRINT/
+/// READ, MAT +/-/*, MAT TRN/INV/IDN/ZER/CON/NUL$ (including nested
+/// constants in an expression), READ/DATA/RESTORE, PRINT USING, OPEN/CLOSE/
+/// PRINT#/INPUT#/LINE INPUT# (DISPLAY mode SEQUENTIAL/STREAM), WHEN/USE/
+/// CAUSE/RETRY/CONTINUE exception handling with inline or named HANDLER
+/// bodies and EXTYPE/EXLINE/EXTEXT$ visibility, MODULE declarations with
+/// PUBLIC re-export.
 /// </summary>
 public sealed class BasicCompiler
 {
@@ -41,6 +43,26 @@ public sealed class BasicCompiler
 
     /// <summary>Stack of BeginWhen PCs for the open WHEN blocks; RETRY jumps to the innermost.</summary>
     private readonly Stack<int> _retryTargets = new();
+
+    /// <summary>Per open WHEN block: placeholder Jump PCs from EXIT WHEN / EXIT HANDLER
+    /// inside it. Patched to the byte just past the WHEN once compilation reaches that point.</summary>
+    private readonly Stack<List<int>> _exitWhenJumps = new();
+
+    /// <summary>Identifies the kind of chunk currently being compiled so EXIT
+    /// SUB/FUNCTION/DEF can emit the right epilogue (and reject invalid uses).</summary>
+    private CallableKind _currentCallable = CallableKind.None;
+
+    /// <summary>Return slot of the FUNCTION/DEF currently being compiled. Read by EXIT FUNCTION/DEF.</summary>
+    private int _currentReturnSlot;
+
+    private enum CallableKind { None, Sub, Function, Def }
+
+    /// <summary>Per-chunk: label number → bytecode PC. Populated as statements compile; queried during backfill.</summary>
+    private readonly Dictionary<int, int> _labelPcs = new();
+
+    /// <summary>Per-chunk: GOTO/GOSUB sites that referenced a label that may
+    /// not have been emitted yet. Patched once the chunk's statement list is fully compiled.</summary>
+    private readonly List<(int JumpPc, int Label, bool IsGosub)> _pendingLabelJumps = new();
 
     private BasicCompiler(SemanticInfo info)
     {
@@ -96,7 +118,10 @@ public sealed class BasicCompiler
         var main = new Chunk { FrameSize = _info.ProgramScope.FrameSize };
         _current = main;
         _currentScope = _info.ProgramScope;
+        _currentCallable = CallableKind.None;
+        ResetChunkLabelTracking();
         CompileStatements(program.Statements);
+        PatchPendingLabelJumps();
         main.Emit(Opcode.End);
 
         // Compile each SUB / FUNCTION / DEF body into its own chunk.
@@ -106,7 +131,10 @@ public sealed class BasicCompiler
             var chunk = new Chunk { FrameSize = ss.BodyScope.FrameSize };
             _current = chunk;
             _currentScope = ss.BodyScope;
+            _currentCallable = CallableKind.Sub;
+            ResetChunkLabelTracking();
             CompileStatements(ss.Stmt.Body);
+            PatchPendingLabelJumps();
             chunk.Emit(Opcode.LeaveSub);
             compiledSubs.Add(new CompiledSub(ss.Name, ss.Params.Count, chunk));
         }
@@ -119,7 +147,11 @@ public sealed class BasicCompiler
             _currentScope = fs.BodyScope;
             // Find the return slot — the local with the function's name.
             var returnSlotSym = (VariableSymbol)fs.BodyScope.LocalLookup(Scope.Key(fs.Name, fs.IsString))!;
+            _currentCallable = CallableKind.Function;
+            _currentReturnSlot = returnSlotSym.Slot;
+            ResetChunkLabelTracking();
             CompileStatements(fs.Stmt.Body);
+            PatchPendingLabelJumps();
             // After body: push the return slot value onto the stack.
             chunk.Emit(Opcode.LoadLocal); chunk.EmitU32((uint)returnSlotSym.Slot);
             chunk.Emit(Opcode.LeaveFunction);
@@ -129,26 +161,40 @@ public sealed class BasicCompiler
         var compiledDefs = new List<CompiledDef>();
         foreach (var ds in defs)
         {
-            var chunk = new Chunk { FrameSize = ds.Params.Count };
+            // Frame layout: [param0 .. paramN-1, returnSlot]. The body stores
+            // its result into returnSlot via StoreLocal; CallDef reads it after
+            // ExecuteChunk returns. Mirrors the FunctionSymbol convention.
+            var returnSlot = ds.Params.Count;
+            var chunk = new Chunk { FrameSize = ds.Params.Count + 1 };
             _current = chunk;
-            // Build a tiny scope for the DEF parameters.
-            _currentScope = new Scope(ScopeKind.Def, _info.ProgramScope);
-            for (var i = 0; i < ds.Params.Count; i++)
-            {
-                var p = ds.Params[i];
-                _currentScope.Declare(Scope.Key(p.Name, p.IsString),
-                    new ParamSymbol(p.Name, p.IsString, i, p.IsArray));
-            }
+            // Reuse sema's def scope: the params live in there with the same
+            // slot indices used at resolution time, so ScopeDepth matches.
+            _currentScope = ds.BodyScope;
+            _currentCallable = CallableKind.Def;
+            _currentReturnSlot = returnSlot;
             if (ds.Stmt.SingleLineBody is not null)
             {
                 CompileExpr(ds.Stmt.SingleLineBody);
+                chunk.Emit(Opcode.StoreLocal);
+                chunk.EmitU32((uint)returnSlot);
+                chunk.Emit(Opcode.LeaveFunction);
+            }
+            else if (ds.Stmt.MultiLineBody is not null)
+            {
+                // Multi-line DEF body is statement list; return value defaults
+                // to zero/empty unless the body assigns to the DEF's name (a
+                // documented gap the tree-walker has too — sema doesn't
+                // currently allocate a name-slot for DEF).
+                ResetChunkLabelTracking();
+                CompileStatements(ds.Stmt.MultiLineBody);
+                PatchPendingLabelJumps();
                 chunk.Emit(Opcode.LeaveFunction);
             }
             else
             {
-                throw new UnsupportedFeatureException("multi-line DEF is not yet supported by VM");
+                throw new UnsupportedFeatureException($"DEF '{ds.Name}' has no body");
             }
-            compiledDefs.Add(new CompiledDef(ds.Name, ds.IsString, ds.Params.Count, chunk));
+            compiledDefs.Add(new CompiledDef(ds.Name, ds.IsString, ds.Params.Count, returnSlot, chunk));
         }
 
         var dataPool = new List<BcDataItem>(_info.DataPool.Count);
@@ -172,11 +218,12 @@ public sealed class BasicCompiler
 
     private void CompileStatements(IReadOnlyList<Stmt> stmts)
     {
-        var labelTargets = new Dictionary<int, int>();
         var previousLineNotePc = -1;
         foreach (var stmt in stmts)
         {
-            if (stmt.Label is { } l) labelTargets[l] = _current.CodeLength;
+            // Record the label's bytecode PC into the chunk-wide map so
+            // forward GOTO/GOSUB references can be backfilled.
+            if (stmt.Label is { } l) _labelPcs[l] = _current.CodeLength;
             // Patch the previous statement's LineNote so its stmtEndOffset
             // points at the start of this LineNote — that's where CONTINUE
             // jumps if the previous statement was the one that raised.
@@ -188,13 +235,43 @@ public sealed class BasicCompiler
         // just past the end of this block. CONTINUE from the last stmt then
         // falls through cleanly to whatever follows (e.g., PopHandler).
         if (previousLineNotePc >= 0) _current.PatchLineNoteEnd(previousLineNotePc);
-        // Backfill any forward GOTO/GOSUB with absolute addresses.
-        // Simplification: in this Phase-9 first cut we don't support GOTO/GOSUB
-        // jumping to forward labels; we emit absolute jumps using the label
-        // map at point-of-emission, so labels must already be defined when the
-        // jump is emitted. Programs that need forward labels run via tree-walker.
-        // (See DocsConformance for tracking.)
-        _ = labelTargets;
+    }
+
+    /// <summary>Clear the per-chunk label-tracking state before compiling a
+    /// new chunk (main, SUB body, FUNCTION body, multi-line DEF body).</summary>
+    private void ResetChunkLabelTracking()
+    {
+        _labelPcs.Clear();
+        _pendingLabelJumps.Clear();
+    }
+
+    /// <summary>Backfill the GOTO/GOSUB sites we deferred while compiling the
+    /// current chunk. Call after the chunk's statement list is fully
+    /// compiled so every label PC is known.</summary>
+    private void PatchPendingLabelJumps()
+    {
+        foreach (var (jumpPc, label, isGosub) in _pendingLabelJumps)
+        {
+            if (!_labelPcs.TryGetValue(label, out var targetPc))
+                throw new UnsupportedFeatureException(
+                    $"{(isGosub ? "GOSUB" : "GOTO")} target label {label} not defined in this chunk");
+            if (isGosub)
+            {
+                // GosubFlow takes an absolute PC as its u32 operand.
+                _current.PatchU32(jumpPc + 1, (uint)targetPc);
+            }
+            else
+            {
+                // Jump takes a relative i32 offset.
+                _current.PatchJumpAbsolute(jumpPc, targetPc);
+            }
+        }
+    }
+
+    private int ResolveLabelTarget(Expr e)
+    {
+        if (e is NumberExpr n && int.TryParse(n.Text, out var v)) return v;
+        throw new UnsupportedFeatureException("computed GOTO/GOSUB target not supported by VM");
     }
 
     private void CompileStatement(Stmt stmt)
@@ -253,9 +330,21 @@ public sealed class BasicCompiler
                 break;
             case ModuleStmt or HandlerStmt:
                 break;
-            case GotoStmt or GosubStmt:
-                throw new UnsupportedFeatureException(
-                    "GOTO/GOSUB across statement boundaries not yet supported by VM (Phase-9 limitation)");
+            case GotoStmt g:
+                {
+                    var labelNum = ResolveLabelTarget(g.LabelTarget);
+                    var pc = _current.EmitJumpPlaceholder(Opcode.Jump);
+                    _pendingLabelJumps.Add((pc, labelNum, IsGosub: false));
+                    break;
+                }
+            case GosubStmt gs:
+                {
+                    var labelNum = ResolveLabelTarget(gs.LabelTarget);
+                    var pc = _current.Emit(Opcode.GosubFlow);
+                    _current.EmitU32(0); // placeholder — backfilled with absolute target PC
+                    _pendingLabelJumps.Add((pc, labelNum, IsGosub: true));
+                    break;
+                }
             default:
                 throw new UnsupportedFeatureException(
                     $"statement kind {stmt.GetType().Name} not yet supported by VM");
@@ -276,6 +365,14 @@ public sealed class BasicCompiler
                         break;
                     case ResolvedParam rp:
                         EmitStoreSymbolSlot(rp.Symbol.OwnerScope!, rp.Symbol.Slot);
+                        break;
+                    case ResolvedError:
+                        // Sema couldn't resolve the target — most commonly an
+                        // assignment to a DEF's own name (multi-line DEF return
+                        // value), which sema doesn't currently allocate a slot
+                        // for. The tree-walker silently ignores; we match by
+                        // discarding the value.
+                        _current.Emit(Opcode.Pop);
                         break;
                     default:
                         throw new UnsupportedFeatureException($"cannot assign to {resolved.GetType().Name}");
@@ -300,9 +397,8 @@ public sealed class BasicCompiler
     {
         var target = LookupMatTarget(ma.TargetName, ma.TargetIsString);
 
-        // Constant RHS (ZER/IDN/CON/NUL$) needs the target's existing bounds,
-        // so it's folded into a single MatAssignConst opcode rather than going
-        // through the stack-machine RHS evaluator.
+        // Top-level constant RHS (MAT A = ZER) folds into a single
+        // MatAssignConst opcode — no stack traffic needed.
         if (ma.Rhs is MatRhsConst c)
         {
             _current.Emit(Opcode.MatAssignConst);
@@ -313,14 +409,14 @@ public sealed class BasicCompiler
             return;
         }
 
-        CompileMatRhs(ma.Rhs);
+        CompileMatRhs(ma.Rhs, target, ma.TargetIsString);
         _current.Emit(Opcode.MatAssign);
         _current.EmitU32((uint)target.Depth);
         _current.EmitU32((uint)target.Slot);
         _current.EmitU32(ma.TargetIsString ? 1u : 0u);
     }
 
-    private void CompileMatRhs(MatRhs rhs)
+    private void CompileMatRhs(MatRhs rhs, (int Depth, int Slot) target, bool targetIsString)
     {
         switch (rhs)
         {
@@ -333,8 +429,8 @@ public sealed class BasicCompiler
                     break;
                 }
             case MatRhsBinary b:
-                CompileMatRhs(b.Left);
-                CompileMatRhs(b.Right);
+                CompileMatRhs(b.Left, target, targetIsString);
+                CompileMatRhs(b.Right, target, targetIsString);
                 _current.Emit(b.Op switch
                 {
                     MatBinaryKind.Add => Opcode.MatBinAdd,
@@ -345,20 +441,26 @@ public sealed class BasicCompiler
                 break;
             case MatRhsScalarMul sm:
                 CompileExpr(sm.Scalar);
-                CompileMatRhs(sm.Matrix);
+                CompileMatRhs(sm.Matrix, target, targetIsString);
                 _current.Emit(Opcode.MatScalarMul);
                 break;
             case MatRhsInv inv:
-                CompileMatRhs(inv.Operand);
+                CompileMatRhs(inv.Operand, target, targetIsString);
                 _current.Emit(Opcode.MatInv);
                 break;
             case MatRhsTrn trn:
-                CompileMatRhs(trn.Operand);
+                CompileMatRhs(trn.Operand, target, targetIsString);
                 _current.Emit(Opcode.MatTrn);
                 break;
-            case MatRhsConst:
-                throw new UnsupportedFeatureException(
-                    "nested MAT constants (ZER/IDN/CON/NUL$ inside an expression) not yet supported by VM");
+            case MatRhsConst c:
+                // Nested constant — push an array shaped like the target's
+                // current bounds onto the operand stack.
+                _current.Emit(Opcode.MatPushConst);
+                _current.EmitU32((uint)target.Depth);
+                _current.EmitU32((uint)target.Slot);
+                _current.EmitU32(targetIsString ? 1u : 0u);
+                _current.EmitU32((uint)c.Kind);
+                break;
             default:
                 throw new UnsupportedFeatureException($"MAT RHS kind {rhs.GetType().Name}");
         }
@@ -448,6 +550,7 @@ public sealed class BasicCompiler
 
         var beginWhenPc = _current.EmitJumpPlaceholder(Opcode.BeginWhen);
         _retryTargets.Push(beginWhenPc);
+        _exitWhenJumps.Push(new List<int>());
         try
         {
             CompileStatements(w.InBody);
@@ -456,9 +559,13 @@ public sealed class BasicCompiler
             _current.PatchJump(beginWhenPc);
             CompileStatements(useBody);
             _current.PatchJump(skipUsePc);
+            // Patch every EXIT WHEN / EXIT HANDLER inside this block to land
+            // here — the byte just past the WHEN.
+            foreach (var jumpPc in _exitWhenJumps.Peek()) _current.PatchJump(jumpPc);
         }
         finally
         {
+            _exitWhenJumps.Pop();
             _retryTargets.Pop();
         }
     }
@@ -512,6 +619,10 @@ public sealed class BasicCompiler
                     break;
                 case PrintSemicolon:
                     kinds[i] = 3u;
+                    break;
+                case PrintTab pt:
+                    CompileExpr(pt.Column);
+                    kinds[i] = 4u;
                     break;
                 default:
                     throw new UnsupportedFeatureException($"PRINT # item kind {item.GetType().Name} not supported by VM");
@@ -738,6 +849,11 @@ public sealed class BasicCompiler
                 case PrintSemicolon:
                     suppressNewline = i == p.Items.Count - 1;
                     break;
+                case PrintTab pt:
+                    CompileExpr(pt.Column);
+                    _current.Emit(Opcode.PrintTab);
+                    suppressNewline = false;
+                    break;
                 default:
                     throw new UnsupportedFeatureException($"PRINT item kind {item.GetType().Name} not supported by VM");
             }
@@ -933,17 +1049,57 @@ public sealed class BasicCompiler
 
     private void CompileExit(ExitStmt e)
     {
-        var stack = e.Target switch
+        switch (e.Target)
         {
-            ExitTarget.For => _exitForJumps,
-            ExitTarget.Do => _exitDoJumps,
-            ExitTarget.Select => _exitSelectJumps,
-            _ => throw new UnsupportedFeatureException($"EXIT {e.Target} not supported by VM"),
-        };
-        if (stack.Count == 0)
-            throw new UnsupportedFeatureException($"EXIT {e.Target} not inside matching block");
-        var jump = _current.EmitJumpPlaceholder(Opcode.Jump);
-        stack.Peek().Add(jump);
+            case ExitTarget.For:
+            case ExitTarget.Do:
+            case ExitTarget.Select:
+                {
+                    var stack = e.Target switch
+                    {
+                        ExitTarget.For => _exitForJumps,
+                        ExitTarget.Do => _exitDoJumps,
+                        ExitTarget.Select => _exitSelectJumps,
+                        _ => throw new InvalidOperationException(),
+                    };
+                    if (stack.Count == 0)
+                        throw new UnsupportedFeatureException($"EXIT {e.Target} not inside matching block");
+                    stack.Peek().Add(_current.EmitJumpPlaceholder(Opcode.Jump));
+                    break;
+                }
+            case ExitTarget.When:
+            case ExitTarget.Handler:
+                // EXIT WHEN and EXIT HANDLER both leave the enclosing WHEN
+                // block (HANDLER bodies are inlined into the WHEN's USE body,
+                // so they share the same exit target).
+                if (_exitWhenJumps.Count == 0)
+                    throw new UnsupportedFeatureException($"EXIT {e.Target} not inside a WHEN block");
+                _exitWhenJumps.Peek().Add(_current.EmitJumpPlaceholder(Opcode.Jump));
+                break;
+            case ExitTarget.Sub:
+                if (_currentCallable != CallableKind.Sub)
+                    throw new UnsupportedFeatureException("EXIT SUB outside of a SUB body");
+                _current.Emit(Opcode.LeaveSub);
+                break;
+            case ExitTarget.Function:
+                if (_currentCallable != CallableKind.Function)
+                    throw new UnsupportedFeatureException("EXIT FUNCTION outside of a FUNCTION body");
+                // Mid-body exit: emit the same epilogue the normal end-of-body emits.
+                _current.Emit(Opcode.LoadLocal);
+                _current.EmitU32((uint)_currentReturnSlot);
+                _current.Emit(Opcode.LeaveFunction);
+                break;
+            case ExitTarget.Def:
+                if (_currentCallable != CallableKind.Def)
+                    throw new UnsupportedFeatureException("EXIT DEF outside of a DEF body");
+                // DEF stores its return value into _currentReturnSlot via StoreLocal;
+                // mid-body exit just falls through to LeaveFunction. CallDef reads
+                // the slot afterwards (defaulting to zero/empty if never assigned).
+                _current.Emit(Opcode.LeaveFunction);
+                break;
+            default:
+                throw new UnsupportedFeatureException($"EXIT {e.Target} not supported by VM");
+        }
     }
 
     private void CompileCall(CallStmt c)

@@ -289,8 +289,11 @@ static int RunVm(ReadOnlySpan<string> args)
     }
     catch (BasicCompiler.UnsupportedFeatureException ex)
     {
+        // Reached only by programs that survive sema but then violate a
+        // VM-side invariant (e.g. a computed GOTO expression sema couldn't
+        // resolve to a literal label). Tree-walker may still accept these.
         Console.Error.WriteLine($"VM compile error: {ex.Message}");
-        Console.Error.WriteLine("(use `arcade-basic run` for full feature support)");
+        Console.Error.WriteLine("(`arcade-basic run` may still accept this program)");
         return 1;
     }
 
