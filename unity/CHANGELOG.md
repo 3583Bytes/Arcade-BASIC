@@ -10,7 +10,7 @@ All notable changes to the Unity package will be documented here. Versions follo
 ### Added
 - Initial Unity package: pre-built netstandard2.1 DLLs for the Arcade BASIC libraries.
 - `ArcadeBasic.BasicEngine` static class as a one-call embedding entry point.
-- `InGameConsole` sample: an in-game REPL/console scene (TMP input field + scrollable transcript + Run button) wired to `BasicEngine.Run`. Auto-generate the scene via `Window → Arcade BASIC → Samples → Create REPL Scene`, or wire `ArcadeBasicReplConsole` manually in your own Canvas.
+- `InGameConsole` sample: an in-game BASIC IDE scene — syntax-highlighted source pane, scrollable output transcript, single-line INPUT bar, File menu (New / Open / Save / Save As) and Run menu (Run / Compile / Build standalone / Stop / Clear Output), all wired to `BasicEngine.Run`. Auto-generate via `Window → Arcade BASIC → Samples → Create BASIC IDE Scene`, or attach `ArcadeBasicCodeEditor` manually in your own Canvas.
 - Unity editor integration (`Editor/` folder):
   - `Window → Arcade BASIC → Console` — REPL-style editor window with run + persistence.
   - `Assets → Create → Arcade BASIC → {Empty Program, Hello World, FOR Loop Demo, Function Demo}` — `.bas` templates.

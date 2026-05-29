@@ -116,7 +116,7 @@ All of the above is in `Editor/` of the package and only compiled when Unity is 
 
 ## Sample
 
-Open the **InGameConsole** sample via **Package Manager → Arcade BASIC Interpreter → Samples → Import**. Then run **Window → Arcade BASIC → Samples → Create REPL Scene** to generate a ready-to-play scene with a TMP input field, scrollable transcript, and Run button — press Play and type your first BASIC program.
+Open the **InGameConsole** sample via **Package Manager → Arcade BASIC Interpreter → Samples → Import**. Then run **Window → Arcade BASIC → Samples → Create BASIC IDE Scene** to generate a ready-to-play scene with a TMP input field, scrollable transcript, and Run button — press Play and type your first BASIC program.
 
 See [`Samples~/InGameConsole/README.md`](Samples~/InGameConsole/README.md) for the layout and manual-wiring instructions.
 

@@ -23,11 +23,11 @@ namespace ArcadeBasic.Samples.EditorTools
     /// menu panels and a fullscreen click-blocker that closes any open menu
     /// when clicked.
     ///
-    /// Menu: <c>Window &#x2192; Arcade BASIC &#x2192; Samples &#x2192; Create REPL Scene</c>
+    /// Menu: <c>Window &#x2192; Arcade BASIC &#x2192; Samples &#x2192; Create BASIC IDE Scene</c>
     /// </summary>
     internal static class ArcadeBasicReplSceneBuilder
     {
-        const string MenuPath = "Window/Arcade BASIC/Samples/Create REPL Scene";
+        const string MenuPath = "Window/Arcade BASIC/Samples/Create BASIC IDE Scene";
 
         // Modern dark theme palette.
         static readonly Color BgRoot      = new(0.06f, 0.07f, 0.09f, 1f);
@@ -49,6 +49,7 @@ namespace ArcadeBasic.Samples.EditorTools
         const int MenuButtonWidth = 48;
         const int TabButtonWidth  = 64;
         const int MenuPanelWidth  = 150;
+        const int InputLineHeight = 28;
         const int CodeFontSize    = 16;
         const int ChromeFontSize  = 12;
 
@@ -93,13 +94,15 @@ namespace ArcadeBasic.Samples.EditorTools
             // Output pane internals
             public TextMeshProUGUI output;
             public ScrollRect outputScroll;
+            public TMP_InputField inputLine;
+            public TextMeshProUGUI inputLinePrompt;
 
             // Menu bar + popups
             public Button fileMenuButton, runMenuButton;
             public GameObject fileMenuPanel, runMenuPanel;
             public Button menuBlocker;
-            public Button fileOpen, fileSave, fileSaveAs;
-            public Button runRun, runStop, runClear;
+            public Button fileNew, fileOpen, fileSave, fileSaveAs;
+            public Button runRun, runCompile, runBuild, runStop, runClear;
 
             // Footer
             public TextMeshProUGUI status;
@@ -299,12 +302,20 @@ namespace ArcadeBasic.Samples.EditorTools
             pane.AddComponent<Image>().color = BgPane;
             refs.outputPane = pane;
 
-            refs.outputScroll = pane.AddComponent<ScrollRect>();
+            // Scroll region — leaves InputLineHeight at the bottom for the
+            // single-line INPUT bar.
+            var scrollGo = NewUI("Scroll", pane.transform);
+            var scrollRT = scrollGo.GetComponent<RectTransform>();
+            scrollRT.anchorMin = new Vector2(0, 0);
+            scrollRT.anchorMax = new Vector2(1, 1);
+            scrollRT.offsetMin = new Vector2(0, InputLineHeight);
+            scrollRT.offsetMax = new Vector2(0, 0);
+            refs.outputScroll = scrollGo.AddComponent<ScrollRect>();
             refs.outputScroll.horizontal = false;
             refs.outputScroll.vertical = true;
             refs.outputScroll.movementType = ScrollRect.MovementType.Clamped;
 
-            var viewport = NewUI("Viewport", pane.transform);
+            var viewport = NewUI("Viewport", scrollGo.transform);
             Stretch(viewport.GetComponent<RectTransform>(), 8, 8, 8, 8);
             viewport.AddComponent<RectMask2D>();
             refs.outputScroll.viewport = viewport.GetComponent<RectTransform>();
@@ -323,6 +334,66 @@ namespace ArcadeBasic.Samples.EditorTools
             ConfigureCodeText(refs.output, TextOutput);
             refs.output.enableWordWrapping = true;
             refs.output.text = string.Empty;
+
+            // INPUT bar pinned to the bottom of the output pane. Stays
+            // hidden until the program runs an INPUT / LINE INPUT.
+            BuildInputLine(pane.transform, ref refs);
+        }
+
+        static void BuildInputLine(Transform parent, ref UIRefs refs)
+        {
+            var bar = NewUI("Input Bar", parent);
+            var barRT = bar.GetComponent<RectTransform>();
+            barRT.anchorMin = new Vector2(0, 0);
+            barRT.anchorMax = new Vector2(1, 0);
+            barRT.pivot = new Vector2(0.5f, 0);
+            barRT.anchoredPosition = Vector2.zero;
+            barRT.sizeDelta = new Vector2(0, InputLineHeight);
+            bar.AddComponent<Image>().color = BgChrome;
+
+            // "? " prompt label, 24px wide on the left.
+            var promptGo = NewUI("Prompt", bar.transform);
+            var promptRT = promptGo.GetComponent<RectTransform>();
+            promptRT.anchorMin = new Vector2(0, 0);
+            promptRT.anchorMax = new Vector2(0, 1);
+            promptRT.pivot = new Vector2(0, 0.5f);
+            promptRT.anchoredPosition = new Vector2(8, 0);
+            promptRT.sizeDelta = new Vector2(24, 0);
+            refs.inputLinePrompt = promptGo.AddComponent<TextMeshProUGUI>();
+            refs.inputLinePrompt.text = "? ";
+            refs.inputLinePrompt.color = TextMain;
+            refs.inputLinePrompt.fontSize = CodeFontSize;
+            refs.inputLinePrompt.alignment = TextAlignmentOptions.MidlineLeft;
+            refs.inputLinePrompt.raycastTarget = false;
+
+            // The input field itself fills the rest of the bar.
+            var fieldGo = NewUI("Field", bar.transform);
+            var fieldRT = fieldGo.GetComponent<RectTransform>();
+            fieldRT.anchorMin = new Vector2(0, 0);
+            fieldRT.anchorMax = new Vector2(1, 1);
+            fieldRT.offsetMin = new Vector2(36, 4);
+            fieldRT.offsetMax = new Vector2(-8, -4);
+            fieldGo.AddComponent<Image>().color = BgPane;
+
+            refs.inputLine = fieldGo.AddComponent<TMP_InputField>();
+            refs.inputLine.lineType = TMP_InputField.LineType.SingleLine;
+
+            // TMP_InputField wants a separate child for the actual text.
+            var textArea = NewUI("Text Area", fieldGo.transform);
+            Stretch(textArea.GetComponent<RectTransform>(), 6, 0, 6, 0);
+            textArea.AddComponent<RectMask2D>();
+
+            var textGo = NewUI("Text", textArea.transform);
+            Stretch(textGo.GetComponent<RectTransform>(), 0, 0, 0, 0);
+            var tmpText = textGo.AddComponent<TextMeshProUGUI>();
+            ConfigureCodeText(tmpText, TextMain);
+            tmpText.alignment = TextAlignmentOptions.MidlineLeft;
+
+            refs.inputLine.textViewport = textArea.GetComponent<RectTransform>();
+            refs.inputLine.textComponent = tmpText;
+
+            // Hide the bar by default; the controller flips it on when ReadLine fires.
+            bar.SetActive(false);
         }
 
         static void BuildSourcePane(Transform parent, ref UIRefs refs)
@@ -468,6 +539,7 @@ namespace ArcadeBasic.Samples.EditorTools
 
             // File menu — directly under the File button
             refs.fileMenuPanel = BuildMenuPanel(overlay.transform, "File Menu", xOffset: 4);
+            refs.fileNew    = BuildMenuItem(refs.fileMenuPanel.transform, "New");
             refs.fileOpen   = BuildMenuItem(refs.fileMenuPanel.transform, "Open...");
             refs.fileSave   = BuildMenuItem(refs.fileMenuPanel.transform, "Save");
             refs.fileSaveAs = BuildMenuItem(refs.fileMenuPanel.transform, "Save As...");
@@ -475,9 +547,11 @@ namespace ArcadeBasic.Samples.EditorTools
 
             // Run menu — directly under the Run button
             refs.runMenuPanel = BuildMenuPanel(overlay.transform, "Run Menu", xOffset: 4 + MenuButtonWidth);
-            refs.runRun   = BuildMenuItem(refs.runMenuPanel.transform, "Run");
-            refs.runStop  = BuildMenuItem(refs.runMenuPanel.transform, "Stop");
-            refs.runClear = BuildMenuItem(refs.runMenuPanel.transform, "Clear Output");
+            refs.runRun     = BuildMenuItem(refs.runMenuPanel.transform, "Run");
+            refs.runCompile = BuildMenuItem(refs.runMenuPanel.transform, "Compile");
+            refs.runBuild   = BuildMenuItem(refs.runMenuPanel.transform, "Build standalone...");
+            refs.runStop    = BuildMenuItem(refs.runMenuPanel.transform, "Stop");
+            refs.runClear   = BuildMenuItem(refs.runMenuPanel.transform, "Clear Output");
             refs.runMenuPanel.SetActive(false);
         }
 
@@ -566,12 +640,19 @@ namespace ArcadeBasic.Samples.EditorTools
             editor.fileMenuPanel = refs.fileMenuPanel;
             editor.runMenuPanel = refs.runMenuPanel;
             editor.menuBlocker = refs.menuBlocker;
+            editor.fileNewItem = refs.fileNew;
             editor.fileOpenItem = refs.fileOpen;
             editor.fileSaveItem = refs.fileSave;
             editor.fileSaveAsItem = refs.fileSaveAs;
             editor.runRunItem = refs.runRun;
+            editor.runCompileItem = refs.runCompile;
+            editor.runBuildItem = refs.runBuild;
             editor.runStopItem = refs.runStop;
             editor.runClearItem = refs.runClear;
+
+            // INPUT bar
+            editor.inputLineField = refs.inputLine;
+            editor.inputLinePromptLabel = refs.inputLinePrompt;
 
             // Status
             editor.statusText = refs.status;

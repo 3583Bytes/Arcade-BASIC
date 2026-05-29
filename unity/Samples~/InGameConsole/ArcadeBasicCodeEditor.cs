@@ -6,8 +6,12 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using ArcadeBasic;
+using ArcadeBasic.Bytecode;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
+using ArcadeBasic.Parser;
+using ArcadeBasic.Sema;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -26,7 +30,7 @@ namespace ArcadeBasic.Samples
     /// between statements. <b>Examples</b> dropdown loads a <c>.bas</c>
     /// <see cref="TextAsset"/> from <c>Resources/&lt;<see cref="resourcesPath"/>&gt;/</c> into the editor.
     ///
-    /// Generate a ready-to-play scene from <c>Window &#x2192; Arcade BASIC &#x2192; Samples &#x2192; Create REPL Scene</c>,
+    /// Generate a ready-to-play scene from <c>Window &#x2192; Arcade BASIC &#x2192; Samples &#x2192; Create BASIC IDE Scene</c>,
     /// or wire the fields manually.
     /// </summary>
     [AddComponentMenu("Arcade BASIC/Code Editor")]
@@ -72,12 +76,25 @@ namespace ArcadeBasic.Samples
         public Button menuBlocker;
 
         [Header("Menu items")]
+        public Button fileNewItem;
         public Button fileOpenItem;
         public Button fileSaveItem;
         public Button fileSaveAsItem;
         public Button runRunItem;
+        public Button runCompileItem;
+        public Button runBuildItem;
         public Button runStopItem;
         public Button runClearItem;
+
+        [Header("Build standalone (optional)")]
+        [Tooltip("Path to an `arcade-basic` AOT binary used as the build stub. Leave empty to auto-locate via PATH; if still not found, the Editor will prompt with a file picker.")]
+        public string buildStubPath = string.Empty;
+
+        [Header("INPUT bar (optional)")]
+        [Tooltip("Single-line input field below the output pane. When the program runs an INPUT or LINE INPUT, this is enabled and focused; the user types their line and presses Enter to submit.")]
+        public TMP_InputField inputLineField;
+        [Tooltip("Optional prompt label shown next to the input line (e.g. \"? \"). The label is hidden while no INPUT is pending.")]
+        public TMP_Text inputLinePromptLabel;
 
         [Header("Status")]
         public TMP_Text statusText;
@@ -123,6 +140,13 @@ namespace ArcadeBasic.Samples
         TextAsset[] _examples = Array.Empty<TextAsset>();
         string _currentFilePath;   // absolute path on disk; null = untitled
         int _activeTab;            // 0 = source, 1 = output
+        string _baseline = string.Empty;   // last-saved source; IsModified compares against it
+
+        // --- INPUT handshake (main thread <-> Task thread) ---
+        volatile bool _inputPending;       // BASIC task is blocked waiting for a line
+        bool _inputBarActivated;           // UI already in "input mode"; don't re-prompt every Update
+        string _inputResult;
+        readonly ManualResetEventSlim _inputDone = new(initialState: false);
 
         string SavedDir => Path.Combine(Application.persistentDataPath, savedSubfolder);
 
@@ -138,13 +162,22 @@ namespace ArcadeBasic.Samples
             if (fileMenuButton != null) fileMenuButton.onClick.AddListener(() => ToggleMenu(fileMenuPanel));
             if (runMenuButton != null) runMenuButton.onClick.AddListener(() => ToggleMenu(runMenuPanel));
             if (menuBlocker != null) menuBlocker.onClick.AddListener(CloseAllMenus);
+            if (fileNewItem != null)    fileNewItem.onClick.AddListener(()    => { NewFile();        CloseAllMenus(); });
             if (fileOpenItem != null)   fileOpenItem.onClick.AddListener(()   => { OpenFileDialog(); CloseAllMenus(); });
             if (fileSaveItem != null)   fileSaveItem.onClick.AddListener(()   => { SaveCurrent();    CloseAllMenus(); });
             if (fileSaveAsItem != null) fileSaveAsItem.onClick.AddListener(() => { SaveAs();         CloseAllMenus(); });
             if (runRunItem != null)     runRunItem.onClick.AddListener(()     => { Run();            CloseAllMenus(); });
+            if (runCompileItem != null) runCompileItem.onClick.AddListener(() => { CompileOnly();    CloseAllMenus(); });
+            if (runBuildItem != null)   runBuildItem.onClick.AddListener(()   => { BuildStandalone(); CloseAllMenus(); });
             if (runStopItem != null)    runStopItem.onClick.AddListener(()    => { Stop();           CloseAllMenus(); });
             if (runClearItem != null)   runClearItem.onClick.AddListener(()   => { ClearOutput();    CloseAllMenus(); });
             CloseAllMenus();
+
+            if (inputLineField != null)
+            {
+                inputLineField.onSubmit.AddListener(OnInputLineSubmitted);
+                SetInputBarVisible(false);
+            }
 
             if (sourceTabButton != null) sourceTabButton.onClick.AddListener(() => SelectTab(0));
             if (outputTabButton != null) outputTabButton.onClick.AddListener(() => SelectTab(1));
@@ -159,6 +192,9 @@ namespace ArcadeBasic.Samples
                 // Force one initial pass so the gutter + highlight reflect the
                 // current text even if no onValueChanged fired.
                 OnSourceChanged(inputField.text);
+                // Treat the starting source as the clean baseline so IsModified
+                // doesn't trip on a fresh, untouched scene.
+                _baseline = inputField.text ?? string.Empty;
             }
 
             if (exampleDropdown != null)
@@ -173,6 +209,22 @@ namespace ArcadeBasic.Samples
         void Update()
         {
             DrainLiveOutput();
+
+            // INPUT handshake: BASIC task asked for a line — turn on the
+            // input bar and focus it. Idempotent across frames via _inputBarActivated.
+            if (_inputPending && !_inputBarActivated)
+            {
+                _inputBarActivated = true;
+                SetInputBarVisible(true);
+                if (inputLineField != null)
+                {
+                    inputLineField.text = string.Empty;
+                    inputLineField.ActivateInputField();
+                    inputLineField.Select();
+                }
+                SelectTab(1);   // surface the output pane so the user can see context for the prompt
+            }
+
             if (_runTask != null && _runTask.IsCompleted) FinishRun();
             HandleHotkeys();
         }
@@ -219,12 +271,15 @@ namespace ArcadeBasic.Samples
 
             var token = _cts.Token;
             var writer = _liveWriter;
+            // INPUT readers run on the BASIC task thread; the reader marshals
+            // to the main thread via the _inputPending / _inputDone handshake.
+            var stdin = new MainThreadInputReader(this, token);
 
             _runTask = Task.Run(() =>
             {
                 try
                 {
-                    var res = BasicEngine.Run(source, writer, cancel: token);
+                    var res = BasicEngine.Run(source, writer, stdin: stdin, cancel: token);
                     return new RunResult(res.ExitCode, res.Diagnostics);
                 }
                 catch (Exception ex)
@@ -238,6 +293,8 @@ namespace ArcadeBasic.Samples
         public void Stop()
         {
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { /* race with FinishRun */ }
+            // Unblock any pending INPUT reader so the task can observe cancellation.
+            _inputDone.Set();
         }
 
         /// <summary>Wipe the output pane. Wired to the Clear Output button.</summary>
@@ -279,9 +336,344 @@ namespace ArcadeBasic.Samples
 
             try { cts?.Dispose(); } catch { /* ignore */ }
 
+            // Clear any leftover INPUT-handshake state in case the program ended mid-prompt.
+            _inputPending = false;
+            _inputBarActivated = false;
+            SetInputBarVisible(false);
+
             if (runButton != null) runButton.interactable = true;
             if (stopButton != null) stopButton.gameObject.SetActive(false);
             ScrollOutputToBottom();
+        }
+
+        // =====================================================================
+        // New / Compile / INPUT bar
+        // =====================================================================
+
+        /// <summary>Reset the editor to an empty buffer. Prompts to save if the
+        /// current buffer has unsaved changes (Editor build only — Player builds
+        /// fall back to a one-click-bypass via the status line).</summary>
+        public void NewFile()
+        {
+            if (_runTask != null) return;
+            if (IsModified)
+            {
+#if UNITY_EDITOR
+                int choice = UnityEditor.EditorUtility.DisplayDialogComplex(
+                    "Unsaved changes",
+                    "The current buffer has unsaved changes. Save now?",
+                    "Save", "Cancel", "Discard");
+                if (choice == 1) return;                        // Cancel
+                if (choice == 0)
+                {
+                    SaveCurrent();
+                    if (IsModified) return;                     // SaveAs cancelled → still dirty
+                }
+                // choice == 2 → Discard, fall through
+#else
+                // Player build: no native dialog. Print a hint and require a
+                // second New click within the dirty window to confirm.
+                if (!_newConfirmArmed)
+                {
+                    _newConfirmArmed = true;
+                    SetStatus("Unsaved changes — click New again to discard");
+                    return;
+                }
+#endif
+            }
+            _newConfirmArmed = false;
+            if (inputField != null) inputField.text = string.Empty;
+            _currentFilePath = null;
+            _baseline = string.Empty;
+            UpdateFilenameDisplay();
+            SetStatus("New file");
+            SelectTab(0);
+        }
+        bool _newConfirmArmed;
+
+        /// <summary>Has the buffer changed since the last load/save?</summary>
+        public bool IsModified =>
+            (inputField != null ? inputField.text ?? string.Empty : string.Empty) != _baseline;
+
+        /// <summary>Compile-only: lex + parse + sema with no execution. Diagnostics
+        /// surface in the output pane and the status text. Faster than Run for
+        /// catching syntax/sema errors before kicking off a long-running program.</summary>
+        public void CompileOnly()
+        {
+            if (_runTask != null) return;
+            if (inputField == null) return;
+
+            var source = inputField.text ?? string.Empty;
+            var file = new SourceFile("<editor>", source);
+            var diags = new DiagnosticBag();
+
+            var tokens = new BasicLexer(file, diags).Lex();
+            if (!diags.HasErrors)
+            {
+                var program = new BasicParser(tokens, file, diags).ParseProgram();
+                if (!diags.HasErrors) Analyzer.Analyze(program, diags);
+            }
+
+            if (diags.HasErrors)
+            {
+                SelectTab(1);
+                AppendOutput("=== Compile errors ===\n");
+                foreach (var d in diags.All) AppendOutput(d.Render(useColor: false) + "\n");
+                SetStatus("Compile failed");
+            }
+            else
+            {
+                SetStatus(diags.All.Count > 0 ? "Compiled OK (warnings)" : "Compiled OK");
+            }
+        }
+
+        /// <summary>Build a self-contained native binary from the current source —
+        /// same flow as the CLI's `arcade-basic build` and the TUI IDE's F7.
+        /// Editor-only: needs to call <c>EditorUtility.SaveFilePanel</c> and the
+        /// file produced is a desktop executable, not something a Player runtime
+        /// can host. In Player builds this prints a status hint and bails.</summary>
+        public void BuildStandalone()
+        {
+            if (_runTask != null) return;
+            if (inputField == null) return;
+
+#if !UNITY_EDITOR
+            SetStatus("Build only available in Editor");
+            return;
+#else
+            // 1. Compile to bytecode; surface any errors in the output pane.
+            var source = inputField.text ?? string.Empty;
+            var file = new SourceFile("<editor>", source);
+            var diags = new DiagnosticBag();
+            var tokens = new BasicLexer(file, diags).Lex();
+            ArcadeBasic.Parser.Ast.Program ast = null;
+            SemanticInfo info = null;
+            if (!diags.HasErrors)
+            {
+                ast = new BasicParser(tokens, file, diags).ParseProgram();
+                if (!diags.HasErrors) info = Analyzer.Analyze(ast, diags);
+            }
+            if (diags.HasErrors || ast == null || info == null)
+            {
+                SelectTab(1);
+                AppendOutput("=== Build: compile errors ===\n");
+                foreach (var d in diags.All) AppendOutput(d.Render(useColor: false) + "\n");
+                SetStatus("Build failed");
+                return;
+            }
+
+            ArcadeBasic.Bytecode.Program compiled;
+            try
+            {
+                compiled = BasicCompiler.Compile(ast, info);
+            }
+            catch (Exception ex)
+            {
+                SelectTab(1);
+                AppendOutput("Build error: " + ex.Message + "\n");
+                SetStatus("Build failed");
+                return;
+            }
+
+            // 2. Save dialog for the output binary — this comes first so the
+            // user sees the dialog they expect (where to put the result),
+            // not the stub-picker that only fires the first time.
+            string defaultName = !string.IsNullOrEmpty(_currentFilePath)
+                ? Path.GetFileNameWithoutExtension(_currentFilePath)
+                : "program";
+            string ext = Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "";
+            string outputPath = UnityEditor.EditorUtility.SaveFilePanel(
+                "Build standalone Arcade BASIC binary",
+                DefaultBrowseDir(),
+                defaultName,
+                ext);
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                SetStatus("Build cancelled");
+                return;
+            }
+
+            // 3. Find an `arcade-basic` AOT binary to use as the stub. Tried
+            // automatically first; if nothing matches, show an explanatory
+            // dialog before opening the file picker so the user knows the
+            // second dialog is for the stub, not the output.
+            string stub = LocateBuildStub();
+            if (string.IsNullOrEmpty(stub))
+            {
+                bool pick = UnityEditor.EditorUtility.DisplayDialog(
+                    "Locate arcade-basic",
+                    "To build a standalone binary, Arcade BASIC needs to find an `arcade-basic` AOT executable to use as the runtime stub.\n\n" +
+                    "It wasn't found on your PATH or in the Build Stub Path inspector field. Click Browse to point at one (any platform-matching `arcade-basic` from a release ZIP, or one built locally via `scripts/build-bundle.sh`).",
+                    "Browse...", "Cancel");
+                if (!pick) { SetStatus("Build cancelled"); return; }
+
+                stub = UnityEditor.EditorUtility.OpenFilePanel(
+                    "Locate `arcade-basic` AOT binary",
+                    DefaultBrowseDir(), "");
+                if (string.IsNullOrEmpty(stub) || !File.Exists(stub))
+                {
+                    SetStatus("Build cancelled");
+                    return;
+                }
+                buildStubPath = stub;     // remember for next time this session
+            }
+
+            // 4. Append the serialized bytecode to a copy of the stub. Same
+            // FB-BCEND framing the CLI uses at startup to find the payload.
+            try
+            {
+                byte[] payload = BytecodeSerializer.Serialize(compiled);
+                byte[] stubBytes = File.ReadAllBytes(stub);
+
+                // If the stub already has an embedded payload (someone pointed
+                // at an already-built binary), strip it so we don't grow on rebuild.
+                var existing = EmbeddedPayload.TryRead(stub);
+                if (existing != null)
+                {
+                    int strip = existing.Length + 12;
+                    Array.Resize(ref stubBytes, stubBytes.Length - strip);
+                }
+
+                using (var fs = File.Create(outputPath))
+                {
+                    fs.Write(stubBytes, 0, stubBytes.Length);
+                    EmbeddedPayload.Append(fs, payload);
+                }
+
+                // chmod +x on Unix-like platforms — File.SetUnixFileMode isn't
+                // in .NET Standard 2.1, so shell out to /bin/chmod.
+                if (Application.platform != RuntimePlatform.WindowsEditor)
+                {
+                    try
+                    {
+                        var p = System.Diagnostics.Process.Start("/bin/chmod", "755 \"" + outputPath + "\"");
+                        p?.WaitForExit();
+                    }
+                    catch { /* best effort */ }
+                }
+
+                long outBytes = new FileInfo(outputPath).Length;
+                SetStatus($"Built {Path.GetFileName(outputPath)} ({outBytes:N0} bytes, payload {payload.Length:N0})");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[ArcadeBasic.Editor] build failed: " + ex);
+                SelectTab(1);
+                AppendOutput("Build failed: " + ex.Message + "\n");
+                SetStatus("Build failed");
+            }
+#endif
+        }
+
+#if UNITY_EDITOR
+        /// <summary>Find an `arcade-basic` AOT binary. Order:
+        /// (1) explicit <see cref="buildStubPath"/>, (2) the
+        /// <c>Stubs/arcade-basic-&lt;rid&gt;</c> binary that ships with the
+        /// imported sample, (3) anywhere on <c>PATH</c>. Returns null if
+        /// nothing matches — the caller pops a file picker.</summary>
+        string LocateBuildStub()
+        {
+            if (!string.IsNullOrEmpty(buildStubPath) && File.Exists(buildStubPath))
+                return buildStubPath;
+
+            // (2) Bundled sample stub: when the user imports "In-game REPL
+            // console" via Package Manager, the contents of Samples~/InGameConsole/
+            // get copied into their project. We find ourselves on disk via
+            // MonoScript, then look for Stubs/arcade-basic-<rid> next door.
+            var bundled = LocateBundledStub();
+            if (!string.IsNullOrEmpty(bundled)) return bundled;
+
+            // (3) PATH walk — useful for users who installed arcade-basic
+            // globally (homebrew, /usr/local/bin, etc.).
+            string exe = Application.platform == RuntimePlatform.WindowsEditor
+                ? "arcade-basic.exe" : "arcade-basic";
+            string pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                foreach (var dir in pathEnv.Split(Path.PathSeparator))
+                {
+                    if (string.IsNullOrWhiteSpace(dir)) continue;
+                    var candidate = Path.Combine(dir, exe);
+                    if (File.Exists(candidate)) return candidate;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>Resolve the bundled sample stub for the host RID. Walks
+        /// up from this script's location to find a sibling <c>Stubs/</c>
+        /// folder; chmods the file +x on Unix-like hosts so the build can
+        /// actually exec it after the sample import (Unity strips +x bits).</summary>
+        string LocateBundledStub()
+        {
+            string rid = HostRid();
+            if (string.IsNullOrEmpty(rid)) return null;
+
+            string scriptPath = UnityEditor.AssetDatabase.GetAssetPath(
+                UnityEditor.MonoScript.FromMonoBehaviour(this));
+            if (string.IsNullOrEmpty(scriptPath)) return null;
+
+            string scriptDir = Path.GetDirectoryName(scriptPath);
+            if (string.IsNullOrEmpty(scriptDir)) return null;
+
+            string ext = rid == "win-x64" ? ".exe" : string.Empty;
+            string candidate = Path.Combine(scriptDir, "Stubs", "arcade-basic-" + rid + ext);
+            if (!File.Exists(candidate)) return null;
+
+            EnsureExecutable(candidate);
+            return candidate;
+        }
+
+        static string HostRid()
+        {
+            if (Application.platform == RuntimePlatform.WindowsEditor) return "win-x64";
+            if (Application.platform == RuntimePlatform.LinuxEditor)   return "linux-x64";
+            if (Application.platform == RuntimePlatform.OSXEditor)
+            {
+                return SystemInfo.processorType.StartsWith("Apple", StringComparison.Ordinal)
+                    ? "osx-arm64" : "osx-x64";
+            }
+            return null;
+        }
+
+        static void EnsureExecutable(string path)
+        {
+            if (Application.platform == RuntimePlatform.WindowsEditor) return;
+            try
+            {
+                var p = System.Diagnostics.Process.Start("/bin/chmod", "755 \"" + path + "\"");
+                p?.WaitForExit();
+            }
+            catch { /* best effort */ }
+        }
+#endif
+
+        void SetInputBarVisible(bool visible)
+        {
+            if (inputLineField != null)
+            {
+                inputLineField.gameObject.SetActive(visible);
+                inputLineField.interactable = visible;
+                if (!visible) inputLineField.text = string.Empty;
+            }
+            if (inputLinePromptLabel != null)
+            {
+                inputLinePromptLabel.gameObject.SetActive(visible);
+                if (visible) inputLinePromptLabel.text = "? ";
+            }
+        }
+
+        void OnInputLineSubmitted(string text)
+        {
+            if (!_inputPending) return;
+            _inputResult = text ?? string.Empty;
+            _inputPending = false;
+            _inputBarActivated = false;
+            SetInputBarVisible(false);
+            // Echo the user's line into the transcript so the program's output
+            // reads naturally (prompt → user typed → next line).
+            AppendOutput(_inputResult + "\n");
+            _inputDone.Set();
         }
 
         // =====================================================================
@@ -432,6 +824,7 @@ namespace ArcadeBasic.Samples
                 inputField.text = File.ReadAllText(path);
                 inputField.MoveTextStart(false);
                 _currentFilePath = path;
+                _baseline = inputField.text ?? string.Empty;
                 UpdateFilenameDisplay();
                 SetStatus("Loaded " + Path.GetFileName(path));
             }
@@ -448,6 +841,7 @@ namespace ArcadeBasic.Samples
             {
                 File.WriteAllText(path, inputField.text ?? string.Empty);
                 _currentFilePath = path;
+                _baseline = inputField.text ?? string.Empty;
                 UpdateFilenameDisplay();
                 SetStatus("Saved " + Path.GetFileName(path));
             }
@@ -576,6 +970,41 @@ namespace ArcadeBasic.Samples
             public override void Write(string value) { lock (_lock) _sb.Append(value); }
             public override void Write(char[] buffer, int index, int count) { lock (_lock) _sb.Append(buffer, index, count); }
             public string Snapshot(out int totalLen) { lock (_lock) { totalLen = _sb.Length; return _sb.ToString(); } }
+        }
+
+        /// <summary>
+        /// stdin for the interpreter. ReadLine runs on the BASIC Task thread;
+        /// it signals the main thread (via <see cref="_inputPending"/>), blocks on
+        /// <see cref="_inputDone"/>, and returns the user-submitted text. Stop
+        /// fires the cancellation token, which we observe to throw
+        /// OperationCanceledException — same clean-exit path the engine catches
+        /// to surface exit code 2, rather than the 4003 "INPUT: end of input"
+        /// runtime error that a plain null return would trigger.
+        /// </summary>
+        sealed class MainThreadInputReader : TextReader
+        {
+            readonly ArcadeBasicCodeEditor _editor;
+            readonly CancellationToken _cancel;
+            public MainThreadInputReader(ArcadeBasicCodeEditor editor, CancellationToken cancel)
+            {
+                _editor = editor;
+                _cancel = cancel;
+            }
+            public override string ReadLine()
+            {
+                _cancel.ThrowIfCancellationRequested();
+                _editor._inputResult = null;
+                _editor._inputDone.Reset();
+                _editor._inputPending = true;
+                _editor._inputDone.Wait();
+                _cancel.ThrowIfCancellationRequested();
+                return _editor._inputResult;
+            }
+            public override int Read()
+            {
+                var line = ReadLine();
+                return string.IsNullOrEmpty(line) ? -1 : line[0];
+            }
         }
     }
 
