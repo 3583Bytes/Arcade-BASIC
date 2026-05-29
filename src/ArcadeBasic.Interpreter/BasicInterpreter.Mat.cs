@@ -10,9 +10,12 @@ namespace ArcadeBasic.Interpreter;
 /// MAT statement execution. Per Q10:
 ///   - Always compute into a temp before assigning (kills aliasing).
 ///   - Reuse target buffer if dims match; otherwise re-allocate (re-dim).
-///   - Naive triple-loop multiply (BigDecimal cost dominates).
-///   - LU decomposition with partial pivoting for INV.
 ///   - String MAT supports only assign / NUL$ / REDIM / I/O.
+///
+/// The numeric kernels (multiply, transpose, LU inverse, REDIM overlap walk,
+/// matrix print) live in <see cref="MatOps"/> so the bytecode VM can share
+/// them; this file is just the dispatcher that wires statement execution to
+/// those kernels and handles the symbol-table / activation-record glue.
 /// </summary>
 public sealed partial class BasicInterpreter
 {
@@ -25,12 +28,12 @@ public sealed partial class BasicInterpreter
 
         if (stmt.TargetIsString)
         {
-            var (data, bounds) = EvalStringMatRhs(stmt.Rhs, frame, BoundsOf(current));
+            var (data, bounds) = EvalStringMatRhs(stmt.Rhs, frame, MatOps.BoundsOf(current));
             WriteSlot(frame, sym.OwnerScope!, sym.Slot, new StringArrayValue(data, bounds));
         }
         else
         {
-            var (data, bounds) = EvalNumericMatRhs(stmt.Rhs, frame, BoundsOf(current));
+            var (data, bounds) = EvalNumericMatRhs(stmt.Rhs, frame, MatOps.BoundsOf(current));
             WriteSlot(frame, sym.OwnerScope!, sym.Slot, new NumericArrayValue(data, bounds));
         }
         return FlowControl.Continue;
@@ -59,15 +62,14 @@ public sealed partial class BasicInterpreter
         if (stmt.TargetIsString)
         {
             var newData = new string[newBounds.Length];
-            // Default-initialize and preserve elements that fit.
             for (var i = 0; i < newData.Length; i++) newData[i] = "";
-            if (current is StringArrayValue oldS) PreserveStringElements(oldS, newData, newBounds);
+            if (current is StringArrayValue oldS) MatOps.PreserveStringElements(oldS, newData, newBounds);
             WriteSlot(frame, sym.OwnerScope!, sym.Slot, new StringArrayValue(newData, newBounds));
         }
         else
         {
             var newData = new BigDecimal[newBounds.Length];
-            if (current is NumericArrayValue oldN) PreserveNumericElements(oldN, newData, newBounds);
+            if (current is NumericArrayValue oldN) MatOps.PreserveNumericElements(oldN, newData, newBounds);
             WriteSlot(frame, sym.OwnerScope!, sym.Slot, new NumericArrayValue(newData, newBounds));
         }
         return FlowControl.Continue;
@@ -79,7 +81,7 @@ public sealed partial class BasicInterpreter
         var current = TryReadArray(sym, frame)
             ?? throw new BasicRuntimeException(6004, $"MAT INPUT requires {stmt.TargetName} to be DIM-ed first");
 
-        var n = BoundsOf(current)!.Length;
+        var n = MatOps.BoundsOf(current)!.Length;
         var values = new List<string>();
         while (values.Count < n)
         {
@@ -119,43 +121,9 @@ public sealed partial class BasicInterpreter
         var current = TryReadArray(sym, frame)
             ?? throw new BasicRuntimeException(6004, $"MAT PRINT requires {stmt.TargetName} to be DIM-ed first");
 
-        if (current is NumericArrayValue narr) PrintMatrix(narr.Data, narr.Bounds, FormatNumeric);
-        else if (current is StringArrayValue sarr) PrintMatrix(sarr.Data, sarr.Bounds, s => s);
+        if (current is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.Data, narr.Bounds, FormatNumeric);
+        else if (current is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
         return FlowControl.Continue;
-    }
-
-    private void PrintMatrix<T>(T[] data, Bounds bounds, Func<T, string> fmt)
-    {
-        if (bounds.Rank == 1)
-        {
-            for (var i = 0; i < data.Length; i++)
-            {
-                _out.Write(fmt(data[i]));
-            }
-            _out.WriteLine();
-            return;
-        }
-        if (bounds.Rank == 2)
-        {
-            var rows = bounds.Upper[0] - bounds.Lower[0] + 1;
-            var cols = bounds.Upper[1] - bounds.Lower[1] + 1;
-            for (var r = 0; r < rows; r++)
-            {
-                for (var c = 0; c < cols; c++)
-                {
-                    _out.Write(fmt(data[r * cols + c]));
-                }
-                _out.WriteLine();
-            }
-            _out.WriteLine();
-            return;
-        }
-        // Higher-dimensional: just print row-major with spaces.
-        for (var i = 0; i < data.Length; i++)
-        {
-            _out.Write(fmt(data[i]));
-        }
-        _out.WriteLine();
     }
 
     private FlowControl ExecMatRead(MatReadStmt stmt, ActivationRecord frame)
@@ -164,7 +132,7 @@ public sealed partial class BasicInterpreter
         var current = TryReadArray(sym, frame)
             ?? throw new BasicRuntimeException(6004, $"MAT READ requires {stmt.TargetName} to be DIM-ed first");
 
-        var n = BoundsOf(current)!.Length;
+        var n = MatOps.BoundsOf(current)!.Length;
         if (stmt.TargetIsString)
         {
             var sarr = (StringArrayValue)current;
@@ -209,9 +177,9 @@ public sealed partial class BasicInterpreter
                     var (r, rb) = EvalNumericMatRhs(b.Right, frame, targetBounds);
                     return b.Op switch
                     {
-                        MatBinaryKind.Add => MatElementWise(l, lb, r, rb, (a, c) => a + c, "+"),
-                        MatBinaryKind.Subtract => MatElementWise(l, lb, r, rb, (a, c) => a - c, "-"),
-                        MatBinaryKind.Multiply => MatMultiply(l, lb, r, rb),
+                        MatBinaryKind.Add => MatOps.ElementWise(l, lb, r, rb, (a, c) => a + c, "+"),
+                        MatBinaryKind.Subtract => MatOps.ElementWise(l, lb, r, rb, (a, c) => a - c, "-"),
+                        MatBinaryKind.Multiply => MatOps.Multiply(l, lb, r, rb),
                         _ => throw new BasicRuntimeException(0, $"unsupported MAT op {b.Op}"),
                     };
                 }
@@ -220,21 +188,19 @@ public sealed partial class BasicInterpreter
                 {
                     var k = ((NumericValue)EvalExpr(sm.Scalar, frame)).V;
                     var (m, mb) = EvalNumericMatRhs(sm.Matrix, frame, targetBounds);
-                    var result = new BigDecimal[m.Length];
-                    for (var i = 0; i < m.Length; i++) result[i] = k * m[i];
-                    return (result, mb);
+                    return (MatOps.ScalarMultiply(k, m), mb);
                 }
 
             case MatRhsInv inv:
                 {
                     var (m, mb) = EvalNumericMatRhs(inv.Operand, frame, targetBounds);
-                    return (MatInverse(m, mb), mb);
+                    return (MatOps.Inverse(m, mb), mb);
                 }
 
             case MatRhsTrn trn:
                 {
                     var (m, mb) = EvalNumericMatRhs(trn.Operand, frame, targetBounds);
-                    return MatTranspose(m, mb);
+                    return MatOps.Transpose(m, mb);
                 }
 
             case MatRhsConst c:
@@ -244,9 +210,9 @@ public sealed partial class BasicInterpreter
                             "MAT constant rhs requires the target to be DIM-ed first");
                     return c.Kind switch
                     {
-                        MatConstKind.Identity => (MatIdentity(targetBounds), targetBounds),
+                        MatConstKind.Identity => (MatOps.Identity(targetBounds), targetBounds),
                         MatConstKind.Zeros => (new BigDecimal[targetBounds.Length], targetBounds),
-                        MatConstKind.Ones => (MatFill(targetBounds, BigDecimal.One), targetBounds),
+                        MatConstKind.Ones => (MatOps.Fill(targetBounds, BigDecimal.One), targetBounds),
                         _ => throw new BasicRuntimeException(0, $"MAT {c.Kind} not valid for numeric"),
                     };
                 }
@@ -280,196 +246,6 @@ public sealed partial class BasicInterpreter
         }
     }
 
-    // -- Numeric MAT building blocks -------------------------------------
-
-    private static (BigDecimal[], Bounds) MatElementWise(
-        BigDecimal[] l, Bounds lb, BigDecimal[] r, Bounds rb,
-        Func<BigDecimal, BigDecimal, BigDecimal> op, string label)
-    {
-        if (lb.Rank != rb.Rank || !LowersEqual(lb, rb) || !UppersEqual(lb, rb))
-        {
-            throw new BasicRuntimeException(6010,
-                $"MAT {label}: operand shapes do not match");
-        }
-        var result = new BigDecimal[l.Length];
-        for (var i = 0; i < l.Length; i++) result[i] = op(l[i], r[i]);
-        return (result, lb);
-    }
-
-    private static (BigDecimal[], Bounds) MatMultiply(BigDecimal[] l, Bounds lb, BigDecimal[] r, Bounds rb)
-    {
-        if (lb.Rank != 2 || rb.Rank != 2)
-            throw new BasicRuntimeException(6011, "MAT *: both operands must be 2-D");
-        var lRows = lb.Upper[0] - lb.Lower[0] + 1;
-        var lCols = lb.Upper[1] - lb.Lower[1] + 1;
-        var rRows = rb.Upper[0] - rb.Lower[0] + 1;
-        var rCols = rb.Upper[1] - rb.Lower[1] + 1;
-        if (lCols != rRows)
-            throw new BasicRuntimeException(6012,
-                $"MAT *: inner dimensions disagree ({lCols} vs {rRows})");
-
-        var bounds = new Bounds([lb.Lower[0], rb.Lower[1]], [lb.Upper[0], rb.Upper[1]]);
-        var result = new BigDecimal[lRows * rCols];
-        for (var i = 0; i < lRows; i++)
-        {
-            for (var k = 0; k < lCols; k++)
-            {
-                var lv = l[i * lCols + k];
-                if (lv == BigDecimal.Zero) continue;
-                for (var j = 0; j < rCols; j++)
-                {
-                    result[i * rCols + j] += lv * r[k * rCols + j];
-                }
-            }
-        }
-        return (result, bounds);
-    }
-
-    private static (BigDecimal[], Bounds) MatTranspose(BigDecimal[] m, Bounds mb)
-    {
-        if (mb.Rank != 2) throw new BasicRuntimeException(6013, "TRN requires a 2-D matrix");
-        var rows = mb.Upper[0] - mb.Lower[0] + 1;
-        var cols = mb.Upper[1] - mb.Lower[1] + 1;
-        var result = new BigDecimal[m.Length];
-        for (var i = 0; i < rows; i++)
-        for (var j = 0; j < cols; j++)
-        {
-            result[j * rows + i] = m[i * cols + j];
-        }
-        var bounds = new Bounds([mb.Lower[1], mb.Lower[0]], [mb.Upper[1], mb.Upper[0]]);
-        return (result, bounds);
-    }
-
-    /// <summary>LU decomposition with partial pivoting.</summary>
-    private static BigDecimal[] MatInverse(BigDecimal[] m, Bounds mb)
-    {
-        if (mb.Rank != 2) throw new BasicRuntimeException(6014, "INV requires a 2-D matrix");
-        var n = mb.Upper[0] - mb.Lower[0] + 1;
-        if (n != mb.Upper[1] - mb.Lower[1] + 1)
-            throw new BasicRuntimeException(6015, "INV requires a square matrix");
-
-        // Build [A | I] augmented matrix as doubles for speed; final result back to BigDecimal.
-        var a = new BigDecimal[n, 2 * n];
-        for (var i = 0; i < n; i++)
-        {
-            for (var j = 0; j < n; j++) a[i, j] = m[i * n + j];
-            a[i, n + i] = BigDecimal.One;
-        }
-
-        for (var col = 0; col < n; col++)
-        {
-            // Partial pivoting: find the row with the largest absolute value in column `col`.
-            var pivotRow = col;
-            var pivotMag = BigDecimal.Abs(a[col, col]);
-            for (var r = col + 1; r < n; r++)
-            {
-                var mag = BigDecimal.Abs(a[r, col]);
-                if (mag > pivotMag) { pivotMag = mag; pivotRow = r; }
-            }
-            if (pivotMag == BigDecimal.Zero)
-                throw new BasicRuntimeException(6016, "INV: matrix is singular");
-            if (pivotRow != col)
-            {
-                for (var j = 0; j < 2 * n; j++) (a[col, j], a[pivotRow, j]) = (a[pivotRow, j], a[col, j]);
-            }
-
-            // Scale pivot row.
-            var pv = a[col, col];
-            for (var j = 0; j < 2 * n; j++)
-            {
-                a[col, j] = BigDecimal.Divide(a[col, j], pv, 30, RoundingMode.MidpointToEven);
-            }
-
-            // Eliminate column in other rows.
-            for (var r = 0; r < n; r++)
-            {
-                if (r == col) continue;
-                var f = a[r, col];
-                if (f == BigDecimal.Zero) continue;
-                for (var j = 0; j < 2 * n; j++)
-                {
-                    a[r, j] -= f * a[col, j];
-                }
-            }
-        }
-
-        // Round each element to clean up the noise from chained divisions.
-        // We compute at 30+ digits but the human-visible answer typically has
-        // far fewer significant digits — round trailing 9s/0s.
-        var result = new BigDecimal[n * n];
-        for (var i = 0; i < n; i++)
-        for (var j = 0; j < n; j++)
-        {
-            result[i * n + j] = BigDecimal.Round(a[i, n + j], 25, RoundingMode.MidpointToEven);
-        }
-        return result;
-    }
-
-    private static BigDecimal[] MatIdentity(Bounds b)
-    {
-        if (b.Rank != 2 || (b.Upper[0] - b.Lower[0]) != (b.Upper[1] - b.Lower[1]))
-            throw new BasicRuntimeException(6017, "IDN requires a square 2-D target");
-        var n = b.Upper[0] - b.Lower[0] + 1;
-        var data = new BigDecimal[n * n];
-        for (var i = 0; i < n; i++) data[i * n + i] = BigDecimal.One;
-        return data;
-    }
-
-    private static BigDecimal[] MatFill(Bounds b, BigDecimal value)
-    {
-        var data = new BigDecimal[b.Length];
-        for (var i = 0; i < data.Length; i++) data[i] = value;
-        return data;
-    }
-
-    // -- Element preservation for REDIM ----------------------------------
-
-    private static void PreserveNumericElements(NumericArrayValue old, BigDecimal[] newData, Bounds newBounds)
-    {
-        if (old.Bounds.Rank != newBounds.Rank) return;
-        WalkOverlap(old.Bounds, newBounds, (oldIdx, newIdx) =>
-            newData[newIdx] = old.Data[oldIdx]);
-    }
-
-    private static void PreserveStringElements(StringArrayValue old, string[] newData, Bounds newBounds)
-    {
-        if (old.Bounds.Rank != newBounds.Rank) return;
-        WalkOverlap(old.Bounds, newBounds, (oldIdx, newIdx) =>
-            newData[newIdx] = old.Data[oldIdx]);
-    }
-
-    private static void WalkOverlap(Bounds oldB, Bounds newB, Action<int, int> copy)
-    {
-        var rank = oldB.Rank;
-        var idx = new int[rank];
-        for (var i = 0; i < rank; i++) idx[i] = Math.Max(oldB.Lower[i], newB.Lower[i]);
-        var max = new int[rank];
-        for (var i = 0; i < rank; i++) max[i] = Math.Min(oldB.Upper[i], newB.Upper[i]);
-
-        while (true)
-        {
-            try
-            {
-                copy(oldB.IndexOf(idx), newB.IndexOf(idx));
-            }
-            catch
-            {
-                /* skip out-of-range; shouldn't happen given bounds clamp above */
-            }
-
-            // Increment idx like an odometer; carry on overflow.
-            var dim = rank - 1;
-            while (dim >= 0)
-            {
-                idx[dim]++;
-                if (idx[dim] <= max[dim]) break;
-                idx[dim] = Math.Max(oldB.Lower[dim], newB.Lower[dim]);
-                dim--;
-            }
-            if (dim < 0) return;
-        }
-    }
-
     // -- Helpers ---------------------------------------------------------
 
     private ArraySymbol LookupArraySymbol(string name, bool isString)
@@ -485,29 +261,10 @@ public sealed partial class BasicInterpreter
         return v is NumericArrayValue or StringArrayValue ? v : null;
     }
 
-    private static Bounds? BoundsOf(Value? v) => v switch
-    {
-        NumericArrayValue n => n.Bounds,
-        StringArrayValue s => s.Bounds,
-        _ => null,
-    };
-
     private Value RequireArray(string name, bool isString, ActivationRecord frame)
     {
         var sym = LookupArraySymbol(name, isString);
         return TryReadArray(sym, frame)
             ?? throw new BasicRuntimeException(6004, $"array '{name}' has not been DIM-ed");
-    }
-
-    private static bool LowersEqual(Bounds a, Bounds b)
-    {
-        for (var i = 0; i < a.Rank; i++) if (a.Lower[i] != b.Lower[i]) return false;
-        return true;
-    }
-
-    private static bool UppersEqual(Bounds a, Bounds b)
-    {
-        for (var i = 0; i < a.Rank; i++) if (a.Upper[i] != b.Upper[i]) return false;
-        return true;
     }
 }

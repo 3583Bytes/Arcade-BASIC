@@ -132,51 +132,9 @@ public sealed partial class BasicInterpreter
         return FlowControl.Continue;
     }
 
-    /// <summary>Significant-digit cap for PRINT output. ISO 10279 mandates
-    /// at least 6 significant digits; we use 9 as a reasonable default.</summary>
-    private const int DisplaySignificantDigits = 9;
-
-    /// <summary>BASIC-style numeric formatting: leading space for non-negative.
-    /// Caps the printed value at <see cref="DisplaySignificantDigits"/> so
-    /// expressions through BigDecimal arithmetic don't dump huge digit tails.</summary>
-    private static string FormatNumeric(BigDecimal x)
-    {
-        var rounded = RoundForDisplay(x);
-        var s = rounded.ToString();
-        if (s.Contains('.'))
-        {
-            s = s.TrimEnd('0').TrimEnd('.');
-            if (s.Length == 0 || s == "-") s = "0";
-        }
-        return x >= BigDecimal.Zero ? " " + s + " " : s + " ";
-    }
-
-    private static BigDecimal RoundForDisplay(BigDecimal x)
-    {
-        if (x == BigDecimal.Zero) return x;
-        var s = BigDecimal.Abs(x).ToString();
-        var dot = s.IndexOf('.');
-        int intDigits;
-        if (dot < 0)
-        {
-            intDigits = s.Length;
-        }
-        else if (dot == 1 && s[0] == '0')
-        {
-            // 0.xxx — count leading zeros after the decimal as negative "integer digits".
-            intDigits = 1;
-            for (var i = dot + 1; i < s.Length && s[i] == '0'; i++) intDigits--;
-        }
-        else
-        {
-            intDigits = dot;
-        }
-        if (intDigits >= DisplaySignificantDigits)
-        {
-            return BigDecimal.Round(x, 0, RoundingMode.MidpointToEven);
-        }
-        return BigDecimal.Round(x, DisplaySignificantDigits - intDigits, RoundingMode.MidpointToEven);
-    }
+    /// <summary>BASIC-style numeric formatting. Delegates to <see cref="DisplayFormat.FormatNumeric"/>
+    /// so the bytecode VM produces byte-identical output.</summary>
+    private static string FormatNumeric(BigDecimal x) => DisplayFormat.FormatNumeric(x);
 
     // -- INPUT -----------------------------------------------------------
 

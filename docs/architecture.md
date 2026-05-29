@@ -55,7 +55,7 @@ Arcade BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language
 Three paths come out of the analyzer:
 
 - **`run` path:** tree-walking interpreter, the most feature-complete. Supports the full surface — arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
-- **`vm`/`build` path:** AST → bytecode → stack VM. Currently a strict subset of the tree-walker (no arrays, MAT, files, exceptions, modules, `PRINT USING`, or `INPUT`). The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
+- **`vm`/`build` path:** AST → bytecode → stack VM. Tracks the tree-walker on every example program and on every documented language surface, including `CONTINUE` resumption inside USE bodies. The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
 - **`repl` path:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/ArcadeBasic.Cli/BasicRepl.cs`.
 
 ## Project graph

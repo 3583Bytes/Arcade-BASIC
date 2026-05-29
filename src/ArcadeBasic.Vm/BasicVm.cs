@@ -20,6 +20,26 @@ public sealed class BasicVm
 
     private const int DefaultZoneWidth = 16;
 
+    /// <summary>Cursor into <see cref="BcProgram.DataPool"/>. Reset on each Run(); advanced by READ / MatRead; rewound by RESTORE.</summary>
+    private int _dataCursor;
+
+    /// <summary>Per-run file channel table for OPEN / PRINT # / INPUT # / CLOSE.</summary>
+    private readonly ChannelTable _channels = new();
+
+    /// <summary>Stack of active exception handlers — pushed by BeginWhen, popped by PopHandler or by an exception dispatch.</summary>
+    private readonly Stack<HandlerFrame> _handlerStack = new();
+
+    /// <summary>Currently-active exception inside a USE body. Read by EXTYPE / EXLINE / EXTEXT$.</summary>
+    private BasicException? _currentException;
+
+    /// <summary>Source line of the statement currently executing. Updated by LineNote; used as EXLINE when an exception fires.</summary>
+    private int _currentLine;
+
+    /// <summary>PC at which CONTINUE should resume — the start of the statement immediately after the one that raised. Set by the exception-dispatch catch from the chunk-local stmtEndPc.</summary>
+    private int _currentContinuePc;
+
+    private readonly record struct HandlerFrame(int UsePc, int StackBaseline);
+
     public BasicVm(BcProgram program, TextWriter @out, TextReader @in)
     {
         _program = program;
@@ -31,6 +51,7 @@ public sealed class BasicVm
     {
         try
         {
+            _dataCursor = 0;
             var programFrame = new ActivationRecord(_program.Main.FrameSize, parent: null);
             ExecuteChunk(_program.Main, programFrame, programFrame);
             return 0;
@@ -40,6 +61,10 @@ public sealed class BasicVm
             _out.Flush();
             Console.Error.WriteLine($"runtime error [{ex.TypeCode}]: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            _channels.Dispose();
         }
     }
 
@@ -51,15 +76,28 @@ public sealed class BasicVm
         var pc = 0;
         var col = 0; // current PRINT column for zone padding
         var pendingNewline = false;
+        // Handlers pushed below this depth belong to an enclosing chunk — if a
+        // BasicRuntimeException is thrown here and the topmost handler isn't ours,
+        // we rethrow to let the caller's loop dispatch it.
+        var entryHandlerDepth = _handlerStack.Count;
+        // PC of the next statement after the one currently executing. Updated
+        // by LineNote, snapshotted into _currentContinuePc on exception dispatch.
+        // Kept chunk-local so a CALL into a SUB doesn't clobber the outer
+        // chunk's view of where CONTINUE should resume.
+        var stmtEndPc = 0;
 
         while (pc < code.Count)
         {
+            try
+            {
             var op = (Opcode)code[pc++];
             switch (op)
             {
-                case Opcode.Halt: return true;
-                case Opcode.Stop: return true;
-                case Opcode.End: return true;
+                case Opcode.Halt:
+                case Opcode.Stop:
+                case Opcode.End:
+                    while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
+                    return true;
                 case Opcode.Nop: break;
 
                 case Opcode.Pop: stack.Pop(); break;
@@ -205,18 +243,31 @@ public sealed class BasicVm
                         var name = _program.BuiltinNames[bid];
                         var args = new Value[argc];
                         for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
-                        if (BuiltinImpls.All.TryGetValue(name, out var fn))
+                        // EXTYPE/EXLINE/EXTEXT$ must see the VM's current
+                        // exception. BuiltinImpls has zero-returning stubs for
+                        // them (they don't have access to interpreter state),
+                        // so we intercept here before the BuiltinImpls dispatch.
+                        if (string.Equals(name, "EXTYPE", StringComparison.OrdinalIgnoreCase))
                         {
-                            stack.Push(fn(args));
+                            stack.Push(_currentException is null
+                                ? NumericValue.Zero
+                                : new NumericValue(BigDecimal.Parse(_currentException.Type.ToString(CultureInfo.InvariantCulture))));
                         }
-                        else if (string.Equals(name, "EXTYPE", StringComparison.OrdinalIgnoreCase)
-                              || string.Equals(name, "EXLINE", StringComparison.OrdinalIgnoreCase))
+                        else if (string.Equals(name, "EXLINE", StringComparison.OrdinalIgnoreCase))
                         {
-                            stack.Push(NumericValue.Zero);
+                            stack.Push(_currentException is null
+                                ? NumericValue.Zero
+                                : new NumericValue(BigDecimal.Parse(_currentException.Line.ToString(CultureInfo.InvariantCulture))));
                         }
                         else if (string.Equals(name, "EXTEXT", StringComparison.OrdinalIgnoreCase))
                         {
-                            stack.Push(StringValue.Empty);
+                            stack.Push(_currentException is null
+                                ? StringValue.Empty
+                                : new StringValue(_currentException.Text));
+                        }
+                        else if (BuiltinImpls.All.TryGetValue(name, out var fn))
+                        {
+                            stack.Push(fn(args));
                         }
                         else
                         {
@@ -255,8 +306,10 @@ public sealed class BasicVm
                     }
                 case Opcode.CallDef:
                     throw new BasicRuntimeException(0, "DEF calls are not yet supported by the VM (Phase-9 limitation)");
-                case Opcode.LeaveSub: return false;
-                case Opcode.LeaveFunction: return false;
+                case Opcode.LeaveSub:
+                case Opcode.LeaveFunction:
+                    while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
+                    return false;
 
                 case Opcode.PrintNumber:
                     {
@@ -288,6 +341,407 @@ public sealed class BasicVm
                         break;
                     }
 
+                case Opcode.LineNote:
+                    {
+                        _currentLine = (int)ReadU32(code, ref pc);
+                        var endOffset = ReadI32(code, ref pc);
+                        stmtEndPc = pc + endOffset;
+                        break;
+                    }
+                case Opcode.BeginWhen:
+                    {
+                        var useOffset = ReadI32(code, ref pc);
+                        var usePc = pc + useOffset;
+                        _handlerStack.Push(new HandlerFrame(usePc, stack.Count));
+                        break;
+                    }
+                case Opcode.PopHandler:
+                    if (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
+                    break;
+                case Opcode.Cause:
+                    {
+                        var type = (int)((NumericValue)stack.Pop()).V;
+                        throw new BasicRuntimeException(type, $"user-raised exception {type}");
+                    }
+                case Opcode.Retry:
+                    {
+                        var off = ReadI32(code, ref pc);
+                        pc += off;
+                        break;
+                    }
+                case Opcode.Continue:
+                    pc = _currentContinuePc;
+                    break;
+
+                case Opcode.Open:
+                    {
+                        var access = ReadU32(code, ref pc);
+                        var organization = ReadU32(code, ref pc);
+                        var create = ReadU32(code, ref pc);
+                        _ = organization; // SEQUENTIAL and STREAM both map to DisplayFile; RANDOM is unsupported.
+                        var name = ((StringValue)stack.Pop()).V;
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        OpenChannel(channel, name, access, create);
+                        break;
+                    }
+                case Opcode.Close:
+                    {
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        _channels.Close(channel);
+                        break;
+                    }
+                case Opcode.PrintFile:
+                    {
+                        var itemCount = (int)ReadU32(code, ref pc);
+                        var kinds = new uint[itemCount];
+                        var exprItemCount = 0;
+                        for (var i = 0; i < itemCount; i++)
+                        {
+                            kinds[i] = ReadU32(code, ref pc);
+                            if (kinds[i] <= 1) exprItemCount++;
+                        }
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var exprValues = new Value[exprItemCount];
+                        for (var i = exprItemCount - 1; i >= 0; i--) exprValues[i] = stack.Pop();
+                        PerformPrintFile(channel, kinds, exprValues);
+                        break;
+                    }
+                case Opcode.InputFile:
+                    {
+                        var targetCount = (int)ReadU32(code, ref pc);
+                        var descs = new InputTargetDesc[targetCount];
+                        for (var i = 0; i < targetCount; i++)
+                        {
+                            descs[i] = new InputTargetDesc(
+                                Depth: (int)ReadU32(code, ref pc),
+                                Slot: (int)ReadU32(code, ref pc),
+                                IsString: ReadU32(code, ref pc) != 0,
+                                Rank: (int)ReadU32(code, ref pc));
+                        }
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var indices = new int[targetCount][];
+                        for (var i = targetCount - 1; i >= 0; i--)
+                        {
+                            indices[i] = PopIndices(stack, descs[i].Rank);
+                        }
+                        PerformInputFile(channel, descs, indices, frame, programFrame);
+                        break;
+                    }
+                case Opcode.LineInput:
+                    {
+                        var suppressQuestionMark = ReadU32(code, ref pc) != 0;
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        var indices = PopIndices(stack, rank);
+                        _out.Write(suppressQuestionMark ? " " : "? ");
+                        _out.Flush();
+                        var line = _in.ReadLine()
+                            ?? throw new BasicRuntimeException(4003, "LINE INPUT: end of input stream");
+                        var desc = new InputTargetDesc(depth, slot, IsString: true, rank);
+                        AssignInputTarget(ResolveOuter(frame, programFrame, depth), desc, indices, new StringValue(line));
+                        col = 0;
+                        pendingNewline = false;
+                        break;
+                    }
+                case Opcode.LineInputFile:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var indices = PopIndices(stack, rank);
+                        var file = _channels.Get(channel);
+                        var line = file.ReadLine()
+                            ?? throw new BasicRuntimeException(7020, $"LINE INPUT #{channel}: end of file");
+                        var desc = new InputTargetDesc(depth, slot, IsString: true, rank);
+                        AssignInputTarget(ResolveOuter(frame, programFrame, depth), desc, indices, new StringValue(line));
+                        break;
+                    }
+
+                case Opcode.PrintUsing:
+                    {
+                        var itemCount = (int)ReadU32(code, ref pc);
+                        var items = new Value[itemCount];
+                        for (var i = itemCount - 1; i >= 0; i--) items[i] = stack.Pop();
+                        var format = ((StringValue)stack.Pop()).V;
+                        var parts = PictureFormat.Parse(format);
+                        _out.WriteLine(PictureFormat.Apply(parts, items));
+                        col = 0;
+                        pendingNewline = false;
+                        break;
+                    }
+
+                case Opcode.Read:
+                    {
+                        var targetCount = (int)ReadU32(code, ref pc);
+                        var descs = new InputTargetDesc[targetCount];
+                        for (var i = 0; i < targetCount; i++)
+                        {
+                            descs[i] = new InputTargetDesc(
+                                Depth: (int)ReadU32(code, ref pc),
+                                Slot: (int)ReadU32(code, ref pc),
+                                IsString: ReadU32(code, ref pc) != 0,
+                                Rank: (int)ReadU32(code, ref pc));
+                        }
+                        var indices = new int[targetCount][];
+                        for (var i = targetCount - 1; i >= 0; i--)
+                        {
+                            indices[i] = PopIndices(stack, descs[i].Rank);
+                        }
+                        for (var i = 0; i < targetCount; i++)
+                        {
+                            var value = ReadNextDataValue(descs[i].IsString);
+                            AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], value);
+                        }
+                        break;
+                    }
+                case Opcode.Restore:
+                    _dataCursor = 0;
+                    break;
+                case Opcode.MatRead:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        var arr = ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero);
+                        if (arr is not (NumericArrayValue or StringArrayValue))
+                            throw new BasicRuntimeException(6004, "MAT READ requires the target to be DIM-ed first");
+                        var n = MatOps.BoundsOf(arr)!.Length;
+                        if (isString)
+                        {
+                            var sarr = (StringArrayValue)arr;
+                            for (var i = 0; i < n; i++)
+                            {
+                                if (_dataCursor >= _program.DataPool.Count)
+                                    throw new BasicRuntimeException(5001, "MAT READ: DATA pool exhausted");
+                                sarr.Data[i] = _program.DataPool[_dataCursor++].Text;
+                            }
+                        }
+                        else
+                        {
+                            var narr = (NumericArrayValue)arr;
+                            for (var i = 0; i < n; i++)
+                            {
+                                if (_dataCursor >= _program.DataPool.Count)
+                                    throw new BasicRuntimeException(5001, "MAT READ: DATA pool exhausted");
+                                var item = _program.DataPool[_dataCursor++];
+                                if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+                                    throw new BasicRuntimeException(5002, $"MAT READ: '{item.Text}' is not numeric");
+                                narr.Data[i] = bd;
+                            }
+                        }
+                        break;
+                    }
+
+                case Opcode.MatLoadArray:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var f = ResolveOuter(frame, programFrame, depth);
+                        var arr = f.GetOrDefault(slot, NumericValue.Zero);
+                        if (arr is not (NumericArrayValue or StringArrayValue))
+                            throw new BasicRuntimeException(6004, "MAT operand: array has not been DIM-ed");
+                        stack.Push(arr);
+                        break;
+                    }
+                case Opcode.MatBinAdd: MatBinaryNumeric(stack, (a, ab, b, bb) => MatOps.ElementWise(a, ab, b, bb, (x, y) => x + y, "+")); break;
+                case Opcode.MatBinSub: MatBinaryNumeric(stack, (a, ab, b, bb) => MatOps.ElementWise(a, ab, b, bb, (x, y) => x - y, "-")); break;
+                case Opcode.MatBinMul: MatBinaryNumeric(stack, MatOps.Multiply); break;
+                case Opcode.MatScalarMul:
+                    {
+                        var matrix = (NumericArrayValue)stack.Pop();
+                        var scalar = ((NumericValue)stack.Pop()).V;
+                        stack.Push(new NumericArrayValue(MatOps.ScalarMultiply(scalar, matrix.Data), matrix.Bounds));
+                        break;
+                    }
+                case Opcode.MatTrn:
+                    {
+                        var m = (NumericArrayValue)stack.Pop();
+                        var (data, bounds) = MatOps.Transpose(m.Data, m.Bounds);
+                        stack.Push(new NumericArrayValue(data, bounds));
+                        break;
+                    }
+                case Opcode.MatInv:
+                    {
+                        var m = (NumericArrayValue)stack.Pop();
+                        stack.Push(new NumericArrayValue(MatOps.Inverse(m.Data, m.Bounds), m.Bounds));
+                        break;
+                    }
+                case Opcode.MatAssign:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        var newArr = stack.Pop();
+                        if (isString && newArr is not StringArrayValue)
+                            throw new BasicRuntimeException(0, "MAT assign: RHS is not a string array");
+                        if (!isString && newArr is not NumericArrayValue)
+                            throw new BasicRuntimeException(0, "MAT assign: RHS is not a numeric array");
+                        ResolveOuter(frame, programFrame, depth).Set(slot, newArr);
+                        break;
+                    }
+                case Opcode.MatAssignConst:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        // Kind values match Parser.Ast.MatConstKind ordinals:
+                        // 0=Identity (IDN), 1=Zeros (ZER), 2=Ones (CON), 3=NullString (NUL$).
+                        var kind = ReadU32(code, ref pc);
+                        var target = ResolveOuter(frame, programFrame, depth);
+                        var current = target.GetOrDefault(slot, NumericValue.Zero);
+                        var bounds = MatOps.BoundsOf(current)
+                            ?? throw new BasicRuntimeException(6004,
+                                "MAT constant rhs requires the target to be DIM-ed first");
+                        Value result = (kind, isString) switch
+                        {
+                            (0u, false) => new NumericArrayValue(MatOps.Identity(bounds), bounds),
+                            (1u, false) => new NumericArrayValue(new BigDecimal[bounds.Length], bounds),
+                            (2u, false) => new NumericArrayValue(MatOps.Fill(bounds, BigDecimal.One), bounds),
+                            (3u, true) => new StringArrayValue(FillStrings(bounds.Length, ""), bounds),
+                            _ => throw new BasicRuntimeException(0,
+                                $"MAT constant kind {kind} not valid for {(isString ? "string" : "numeric")} target"),
+                        };
+                        target.Set(slot, result);
+                        break;
+                    }
+                case Opcode.MatRedim:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        var lower = new int[rank];
+                        var upper = new int[rank];
+                        for (var i = rank - 1; i >= 0; i--)
+                        {
+                            upper[i] = (int)((NumericValue)stack.Pop()).V;
+                            lower[i] = (int)((NumericValue)stack.Pop()).V;
+                            if (upper[i] < lower[i])
+                                throw new BasicRuntimeException(6001,
+                                    $"MAT REDIM: upper bound {upper[i]} less than lower bound {lower[i]}");
+                        }
+                        var newBounds = new Bounds(lower, upper);
+                        var target = ResolveOuter(frame, programFrame, depth);
+                        var current = target.GetOrDefault(slot, NumericValue.Zero);
+                        if (isString)
+                        {
+                            var newData = FillStrings(newBounds.Length, "");
+                            if (current is StringArrayValue oldS) MatOps.PreserveStringElements(oldS, newData, newBounds);
+                            target.Set(slot, new StringArrayValue(newData, newBounds));
+                        }
+                        else
+                        {
+                            var newData = new BigDecimal[newBounds.Length];
+                            if (current is NumericArrayValue oldN) MatOps.PreserveNumericElements(oldN, newData, newBounds);
+                            target.Set(slot, new NumericArrayValue(newData, newBounds));
+                        }
+                        break;
+                    }
+                case Opcode.MatPrint:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var arr = ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero);
+                        if (arr is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.Data, narr.Bounds, FormatNumeric);
+                        else if (arr is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
+                        else throw new BasicRuntimeException(6004, "MAT PRINT requires the target to be DIM-ed first");
+                        col = 0;
+                        pendingNewline = false;
+                        break;
+                    }
+                case Opcode.MatInput:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        var arr = ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero);
+                        if (arr is not (NumericArrayValue or StringArrayValue))
+                            throw new BasicRuntimeException(6004, "MAT INPUT requires the target to be DIM-ed first");
+                        PerformMatInput(arr, isString);
+                        col = 0;
+                        pendingNewline = false;
+                        break;
+                    }
+
+                case Opcode.Input:
+                    {
+                        var suppressQuestionMark = ReadU32(code, ref pc) != 0;
+                        var targetCount = (int)ReadU32(code, ref pc);
+                        var descs = new InputTargetDesc[targetCount];
+                        for (var i = 0; i < targetCount; i++)
+                        {
+                            descs[i] = new InputTargetDesc(
+                                Depth: (int)ReadU32(code, ref pc),
+                                Slot: (int)ReadU32(code, ref pc),
+                                IsString: ReadU32(code, ref pc) != 0,
+                                Rank: (int)ReadU32(code, ref pc));
+                        }
+                        // Subscripts were pushed in target order; pop in reverse so
+                        // we end up with one int[] per target keyed by declaration index.
+                        var indices = new int[targetCount][];
+                        for (var i = targetCount - 1; i >= 0; i--)
+                        {
+                            indices[i] = PopIndices(stack, descs[i].Rank);
+                        }
+                        // Prompt text (if any) was already emitted via PrintString
+                        // before this opcode. col was updated then; PerformInput
+                        // resets col after its own writes since INPUT always
+                        // consumes a full line.
+                        col = PerformInput(descs, indices, suppressQuestionMark, frame, programFrame);
+                        pendingNewline = false;
+                        break;
+                    }
+
+                case Opcode.DimArray:
+                    {
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        AllocArray(stack, frame, slot, rank, isString);
+                        break;
+                    }
+                case Opcode.DimArrayOuter:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        var isString = ReadU32(code, ref pc) != 0;
+                        AllocArray(stack, ResolveOuter(frame, programFrame, depth), slot, rank, isString);
+                        break;
+                    }
+                case Opcode.LoadElement:
+                    {
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        stack.Push(ReadElement(stack, frame, slot, rank));
+                        break;
+                    }
+                case Opcode.LoadElementOuter:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        stack.Push(ReadElement(stack, ResolveOuter(frame, programFrame, depth), slot, rank));
+                        break;
+                    }
+                case Opcode.StoreElement:
+                    {
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        WriteElement(stack, frame, slot, rank);
+                        break;
+                    }
+                case Opcode.StoreElementOuter:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var rank = (int)ReadU32(code, ref pc);
+                        WriteElement(stack, ResolveOuter(frame, programFrame, depth), slot, rank);
+                        break;
+                    }
+
                 case Opcode.LoadConstantPi:
                     stack.Push(BuiltinImpls.EvalConstant("PI"));
                     break;
@@ -304,10 +758,373 @@ public sealed class BasicVm
                 default:
                     throw new BasicRuntimeException(0, $"unimplemented opcode {op}");
             }
+            }
+            catch (BasicRuntimeException ex)
+            {
+                // If no handler in this chunk's scope, propagate up the call chain
+                // to a caller's ExecuteChunk (or out to Run() for unhandled).
+                if (_handlerStack.Count <= entryHandlerDepth) throw;
+                var top = _handlerStack.Pop();
+                while (stack.Count > top.StackBaseline) stack.Pop();
+                _currentException = new BasicException(ex.TypeCode, _currentLine, ex.Message);
+                // Snapshot the chunk-local stmtEndPc so a CONTINUE inside the
+                // USE body resumes at the statement after the one that raised.
+                _currentContinuePc = stmtEndPc;
+                pc = top.UsePc;
+            }
         }
 
+        // Reaching the end of the chunk naturally — clean up any handlers we
+        // opened but didn't formally PopHandler (a defensive measure; well-formed
+        // bytecode shouldn't leave anything dangling).
+        while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
         _ = pendingNewline;
         return false;
+    }
+
+    private static void MatBinaryNumeric(
+        Stack<Value> stack,
+        Func<BigDecimal[], Bounds, BigDecimal[], Bounds, (BigDecimal[] Data, Bounds Bounds)> op)
+    {
+        var r = (NumericArrayValue)stack.Pop();
+        var l = (NumericArrayValue)stack.Pop();
+        var (data, bounds) = op(l.Data, l.Bounds, r.Data, r.Bounds);
+        stack.Push(new NumericArrayValue(data, bounds));
+    }
+
+    private static string[] FillStrings(int length, string value)
+    {
+        var arr = new string[length];
+        for (var i = 0; i < length; i++) arr[i] = value;
+        return arr;
+    }
+
+    private void PerformMatInput(Value arr, bool isString)
+    {
+        // Mirrors BasicInterpreter.ExecMatInput: prompt with "? " per line and
+        // collect comma-separated fields until the array is filled. Errors
+        // line up with the tree-walker (4002 non-numeric, 6005 EOF).
+        var n = MatOps.BoundsOf(arr)!.Length;
+        var values = new List<string>();
+        while (values.Count < n)
+        {
+            _out.Write("? "); _out.Flush();
+            var line = _in.ReadLine()
+                ?? throw new BasicRuntimeException(6005, "MAT INPUT: end of input");
+            foreach (var part in line.Split(','))
+            {
+                var t = part.Trim();
+                if (t.Length > 0) values.Add(t);
+                if (values.Count == n) break;
+            }
+        }
+        if (isString)
+        {
+            var sarr = (StringArrayValue)arr;
+            for (var i = 0; i < n; i++) sarr.Data[i] = values[i];
+        }
+        else
+        {
+            var narr = (NumericArrayValue)arr;
+            for (var i = 0; i < n; i++)
+            {
+                if (!BigDecimal.TryParse(values[i], NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+                    throw new BasicRuntimeException(4002, $"MAT INPUT: '{values[i]}' is not numeric");
+                narr.Data[i] = bd;
+            }
+        }
+    }
+
+    // -- File-I/O helpers (mirror BasicInterpreter.File.cs) ---------------
+
+    private void OpenChannel(int channel, string path, uint access, uint create)
+    {
+        // Access values: 0=Default, 1=Input, 2=Output, 3=Outin (match Parser.Ast.OpenAccess).
+        // Create values: 0=Default, 1=New, 2=Old, 3=NewOld (match Parser.Ast.OpenCreate).
+        var fileAccess = access switch
+        {
+            1u => FileAccess.Read,
+            2u => FileAccess.Write,
+            3u => FileAccess.ReadWrite,
+            _ => FileAccess.ReadWrite,
+        };
+        var mode = create switch
+        {
+            1u => FileMode.CreateNew,
+            2u => FileMode.Open,
+            3u => FileMode.OpenOrCreate,
+            _ => access == 1u ? FileMode.Open : FileMode.OpenOrCreate,
+        };
+        // ACCESS OUTPUT with no explicit CREATE truncates on open per spec.
+        if (access == 2u && create == 0u) mode = FileMode.Create;
+        try
+        {
+            var file = new DisplayFile(path, mode, fileAccess);
+            _channels.Open(channel, file);
+        }
+        catch (FileNotFoundException ex)
+        {
+            throw new BasicRuntimeException(7010, $"file '{path}' not found: {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            throw new BasicRuntimeException(7011, $"OPEN failed for '{path}': {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new BasicRuntimeException(7012, $"OPEN denied for '{path}': {ex.Message}");
+        }
+    }
+
+    private void PerformPrintFile(int channel, uint[] kinds, Value[] exprValues)
+    {
+        var file = _channels.Get(channel);
+        var sb = new StringBuilder();
+        var col = 0;
+        var suppressNewline = false;
+        var nextExpr = 0;
+        for (var i = 0; i < kinds.Length; i++)
+        {
+            switch (kinds[i])
+            {
+                case 0u: // ExprNumeric
+                case 1u: // ExprString
+                    {
+                        var v = exprValues[nextExpr++];
+                        var text = v switch
+                        {
+                            StringValue s => s.V,
+                            NumericValue n => FormatNumeric(n.V),
+                            _ => v.ToString() ?? string.Empty,
+                        };
+                        sb.Append(text);
+                        col += text.Length;
+                        suppressNewline = false;
+                        break;
+                    }
+                case 2u: // Comma → zone pad
+                    {
+                        var next = ((col / DefaultZoneWidth) + 1) * DefaultZoneWidth;
+                        sb.Append(' ', next - col);
+                        col = next;
+                        suppressNewline = i == kinds.Length - 1;
+                        break;
+                    }
+                case 3u: // Semicolon → no padding; suppresses trailing newline if last
+                    suppressNewline = i == kinds.Length - 1;
+                    break;
+            }
+        }
+        if (suppressNewline) file.Write(sb.ToString());
+        else file.WriteLine(sb.ToString());
+    }
+
+    private void PerformInputFile(
+        int channel,
+        InputTargetDesc[] descs,
+        int[][] indices,
+        ActivationRecord frame,
+        ActivationRecord programFrame)
+    {
+        var file = _channels.Get(channel);
+        var line = file.ReadLine()
+            ?? throw new BasicRuntimeException(7020, $"INPUT #{channel}: end of file");
+        var fields = line.Split(',');
+        if (fields.Length < descs.Length)
+            throw new BasicRuntimeException(7021,
+                $"INPUT #{channel}: line had {fields.Length} field(s), expected {descs.Length}");
+
+        for (var i = 0; i < descs.Length; i++)
+        {
+            var raw = fields[i].Trim();
+            Value v;
+            if (descs[i].IsString)
+            {
+                if (raw.Length >= 2 && raw[0] == '"' && raw[^1] == '"')
+                    raw = raw[1..^1].Replace("\"\"", "\"", StringComparison.Ordinal);
+                v = new StringValue(raw);
+            }
+            else
+            {
+                if (!BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+                    throw new BasicRuntimeException(7022, $"INPUT #{channel}: '{raw}' is not numeric");
+                v = new NumericValue(bd);
+            }
+            AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], v);
+        }
+    }
+
+    private Value ReadNextDataValue(bool isString)
+    {
+        if (_dataCursor >= _program.DataPool.Count)
+            throw new BasicRuntimeException(5001, "READ: DATA pool exhausted");
+        var item = _program.DataPool[_dataCursor++];
+        if (isString) return new StringValue(item.Text);
+        if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+            throw new BasicRuntimeException(5002, $"READ: data item '{item.Text}' is not numeric");
+        return new NumericValue(bd);
+    }
+
+    private readonly record struct InputTargetDesc(int Depth, int Slot, bool IsString, int Rank);
+
+    private int PerformInput(
+        InputTargetDesc[] descs,
+        int[][] indices,
+        bool suppressQuestionMark,
+        ActivationRecord frame,
+        ActivationRecord programFrame)
+    {
+        // Bad-input retry loop. Mirrors BasicInterpreter.ExecInput; same error
+        // codes and user-facing messages so the VM and tree-walker agree.
+        while (true)
+        {
+            _out.Write(suppressQuestionMark ? " " : "? ");
+            _out.Flush();
+
+            var rawLine = _in.ReadLine();
+            if (rawLine is null)
+                throw new BasicRuntimeException(4003, "INPUT: end of input stream");
+
+            var fields = rawLine.Split(',');
+            if (fields.Length < descs.Length)
+            {
+                _out.WriteLine("Not enough data — redo from start.");
+                continue;
+            }
+
+            var parsed = new Value[descs.Length];
+            var badField = -1;
+            for (var i = 0; i < descs.Length; i++)
+            {
+                var raw = fields[i].Trim();
+                if (descs[i].IsString)
+                {
+                    parsed[i] = new StringValue(raw);
+                }
+                else if (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+                {
+                    parsed[i] = new NumericValue(bd);
+                }
+                else
+                {
+                    badField = i;
+                    break;
+                }
+            }
+
+            if (badField >= 0)
+            {
+                _out.WriteLine($"'{fields[badField].Trim()}' is not numeric — redo from start.");
+                continue;
+            }
+
+            for (var i = 0; i < descs.Length; i++)
+            {
+                var target = ResolveOuter(frame, programFrame, descs[i].Depth);
+                AssignInputTarget(target, descs[i], indices[i], parsed[i]);
+            }
+            return 0;
+        }
+    }
+
+    private static void AssignInputTarget(ActivationRecord target, InputTargetDesc desc, int[] indices, Value value)
+    {
+        if (desc.Rank == 0)
+        {
+            target.Set(desc.Slot, value);
+            return;
+        }
+        var arr = target.GetOrDefault(desc.Slot, NumericValue.Zero);
+        try
+        {
+            if (arr is NumericArrayValue narr) { narr.Data[narr.Bounds.IndexOf(indices)] = ((NumericValue)value).V; return; }
+            if (arr is StringArrayValue sarr) { sarr.Data[sarr.Bounds.IndexOf(indices)] = ((StringValue)value).V; return; }
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new BasicRuntimeException(1002, "INPUT array subscript: " + ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BasicRuntimeException(1003, "INPUT array subscript: " + ex.Message);
+        }
+        throw new BasicRuntimeException(0, "INPUT into array not allocated; missing DIM");
+    }
+
+    private static ActivationRecord ResolveOuter(ActivationRecord frame, ActivationRecord programFrame, int depth)
+    {
+        var f = frame;
+        for (var i = 0; i < depth && f is not null; i++) f = f.Parent!;
+        return f ?? programFrame;
+    }
+
+    private static void AllocArray(Stack<Value> stack, ActivationRecord target, int slot, int rank, bool isString)
+    {
+        var lower = new int[rank];
+        var upper = new int[rank];
+        // Bounds were pushed left-to-right per dimension: lo_0, hi_0, lo_1, hi_1, ...
+        // Popping reverses, so iterate from the highest dim downward.
+        for (var i = rank - 1; i >= 0; i--)
+        {
+            upper[i] = (int)((NumericValue)stack.Pop()).V;
+            lower[i] = (int)((NumericValue)stack.Pop()).V;
+            if (upper[i] < lower[i])
+                throw new BasicRuntimeException(6001,
+                    $"DIM: upper bound {upper[i]} less than lower bound {lower[i]}");
+        }
+        var bounds = new Bounds(lower, upper);
+        Value array = isString
+            ? new StringArrayValue(new string[bounds.Length], bounds)
+            : new NumericArrayValue(new BigDecimal[bounds.Length], bounds);
+        target.Set(slot, array);
+    }
+
+    private static Value ReadElement(Stack<Value> stack, ActivationRecord frame, int slot, int rank)
+    {
+        var indices = PopIndices(stack, rank);
+        var arr = frame.GetOrDefault(slot, NumericValue.Zero);
+        try
+        {
+            if (arr is NumericArrayValue narr) return new NumericValue(narr.Data[narr.Bounds.IndexOf(indices)]);
+            if (arr is StringArrayValue sarr) return new StringValue(sarr.Data[sarr.Bounds.IndexOf(indices)] ?? "");
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new BasicRuntimeException(1002, "array subscript: " + ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BasicRuntimeException(1003, "array subscript: " + ex.Message);
+        }
+        throw new BasicRuntimeException(0, "array not allocated; missing DIM");
+    }
+
+    private static void WriteElement(Stack<Value> stack, ActivationRecord frame, int slot, int rank)
+    {
+        var indices = PopIndices(stack, rank);
+        var value = stack.Pop();
+        var arr = frame.GetOrDefault(slot, NumericValue.Zero);
+        try
+        {
+            if (arr is NumericArrayValue narr) { narr.Data[narr.Bounds.IndexOf(indices)] = ((NumericValue)value).V; return; }
+            if (arr is StringArrayValue sarr) { sarr.Data[sarr.Bounds.IndexOf(indices)] = ((StringValue)value).V; return; }
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            throw new BasicRuntimeException(1002, "array subscript: " + ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new BasicRuntimeException(1003, "array subscript: " + ex.Message);
+        }
+        throw new BasicRuntimeException(0, "array not allocated; missing DIM");
+    }
+
+    private static int[] PopIndices(Stack<Value> stack, int rank)
+    {
+        var indices = new int[rank];
+        for (var i = rank - 1; i >= 0; i--) indices[i] = (int)((NumericValue)stack.Pop()).V;
+        return indices;
     }
 
     private static uint ReadU32(IReadOnlyList<byte> code, ref int pc)
@@ -354,9 +1171,5 @@ public sealed class BasicVm
         return BigDecimal.Parse(Math.Pow(ad, bd).ToString("R", CultureInfo.InvariantCulture));
     }
 
-    private static string FormatNumeric(BigDecimal x)
-    {
-        var s = x.ToString();
-        return x >= BigDecimal.Zero ? " " + s + " " : s + " ";
-    }
+    private static string FormatNumeric(BigDecimal x) => DisplayFormat.FormatNumeric(x);
 }

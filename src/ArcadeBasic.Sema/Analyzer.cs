@@ -58,6 +58,7 @@ public sealed class Analyzer
             DataPool = a._dataPool,
             LineLabels = a._labels,
             CallTargets = a._callTargets,
+            ModuleScopes = a._moduleScopes,
         };
     }
 

@@ -23,6 +23,9 @@ public sealed class SemanticInfo
     /// <summary>CallStmt → resolved SubSymbol. Walks scope chain at sema time so cross-module CALLs work.</summary>
     public required IReadOnlyDictionary<CallStmt, SubSymbol> CallTargets { get; init; }
 
+    /// <summary>Per-module local scope. PUBLIC declarations are also re-exported into ProgramScope, but private ones live only here. The compiler needs this to enumerate module-private callables when emitting bytecode.</summary>
+    public required IReadOnlyDictionary<ModuleStmt, Scope> ModuleScopes { get; init; }
+
     /// <summary>Lookup the resolution for a given expression. Returns ResolvedError for unresolved names.</summary>
     public ResolvedRef Resolve(Expr expr) =>
         Resolutions.TryGetValue(expr, out var r) ? r : new ResolvedError("not resolved");

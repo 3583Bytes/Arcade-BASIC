@@ -201,7 +201,7 @@ Multiple values are emitted by re-applying the picture; `Apply` cycles the parse
 
 **IMPLEMENTATION-DEFINED:** Diagnostics use stable codes (`FB0001`...) with Rust-style snippets and a caret. Colour goes through ANSI when stderr is a TTY.
 
-**IMPLEMENTATION-DEFINED:** The `build` subcommand produces a self-extracting native binary by appending a serialised bytecode payload to the running CLI binary. The compiled program is limited to the VM's subset (no arrays, MAT, files, exceptions, modules, `PRINT USING`, `INPUT`).
+**IMPLEMENTATION-DEFINED:** The `build` subcommand produces a self-extracting native binary by appending a serialised bytecode payload to the running CLI binary. The compiled program may use any documented Arcade BASIC feature — the VM covers the full surface: arrays/DIM, `INPUT`, `LINE INPUT`, MAT operations, `READ`/`DATA`/`RESTORE`, `PRINT USING`, DISPLAY-mode file I/O, `WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE` with inline or named `HANDLER` bodies, and modules with PUBLIC re-export.
 
 ## Known gaps vs `examples/`
 

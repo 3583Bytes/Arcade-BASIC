@@ -38,7 +38,7 @@ See [`unity/README.md`](unity/README.md) for install instructions (UPM via git U
 Three execution paths land an Arcade BASIC program in different forms:
 
 - **`arcade-basic run <file>`** — tree-walking interpreter. The most complete front end: arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
-- **`arcade-basic vm <file>`** — compile to stack bytecode and run on the VM. Currently a subset of the tree-walker (no arrays/MAT, no file I/O, no exceptions, no modules, no `PRINT USING`, no `INPUT`).
+- **`arcade-basic vm <file>`** — compile to stack bytecode and run on the VM. Tracks the tree-walker on every example program and on every documented language surface, including `CONTINUE` resumption inside USE bodies.
 - **`arcade-basic build <file> [-o out]`** — bundle the VM and the compiled program into a single self-contained native binary (Phase 10, Path E). Same feature subset as `vm`.
 
 Pipeline phases 0–10 are all merged. Optional Phase 8 modules are partial: `PRINT USING` (8a) is done; graphics + picture (SVG backend) and fixed-decimal are not.

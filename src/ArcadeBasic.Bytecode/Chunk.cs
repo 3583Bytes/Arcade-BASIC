@@ -57,6 +57,20 @@ public sealed class Chunk
         _code[pc + 4] = (byte)((offset >> 24) & 0xFF);
     }
 
+    /// <summary>Patch a LineNote opcode at <paramref name="pc"/> so its
+    /// stmtEndOffset points to the current end-of-code. Layout is
+    /// [opcode][u32 line][i32 stmtEndOffset] = 9 bytes; the offset is
+    /// relative to the byte just past it (= pc + 9).</summary>
+    public void PatchLineNoteEnd(int pc)
+    {
+        var target = _code.Count;
+        var offset = target - (pc + 9);
+        _code[pc + 5] = (byte)(offset & 0xFF);
+        _code[pc + 6] = (byte)((offset >> 8) & 0xFF);
+        _code[pc + 7] = (byte)((offset >> 16) & 0xFF);
+        _code[pc + 8] = (byte)((offset >> 24) & 0xFF);
+    }
+
     public void EmitJumpToAbsolute(Opcode op, int absolutePc)
     {
         var pc = Emit(op);
@@ -90,8 +104,11 @@ public sealed class Program
     public required IReadOnlyList<CompiledFunction> Functions { get; init; }
     public required IReadOnlyList<CompiledDef> Defs { get; init; }
     public required IReadOnlyList<string> BuiltinNames { get; init; }
+    /// <summary>Items collected from all DATA statements, in source order. Read via READ / MAT READ; rewound via RESTORE.</summary>
+    public required IReadOnlyList<BcDataItem> DataPool { get; init; }
 }
 
 public sealed record class CompiledSub(string Name, int ParamCount, Chunk Body);
 public sealed record class CompiledFunction(string Name, bool IsString, int ParamCount, int ReturnSlot, Chunk Body);
 public sealed record class CompiledDef(string Name, bool IsString, int ParamCount, Chunk Body);
+public sealed record class BcDataItem(bool IsString, string Text);

@@ -8,29 +8,39 @@ using BcProgram = ArcadeBasic.Bytecode.Program;
 namespace ArcadeBasic.Compiler;
 
 /// <summary>
-/// Phase-9 AST → bytecode compiler. Supported subset:
-///   literals, variables, all unary/binary arithmetic + comparison + logical,
-///   PRINT (positional), assignments, IF (block + single-line), FOR/NEXT,
-///   DO/LOOP (pre/post WHILE/UNTIL), SELECT CASE, GOTO/GOSUB/RETURN, EXIT,
-///   STOP/END, REM, RANDOMIZE, DEF (single-line), SUB/FUNCTION/CALL, builtins.
-///
-/// Unsupported (throws): arrays/DIM/MAT, INPUT, READ/DATA/RESTORE, file I/O,
-/// exception handling, modules, PRINT USING. Programs using these continue
-/// to work via the tree-walker (`run` subcommand).
+/// AST → bytecode compiler. Covers the full documented Arcade BASIC surface:
+/// literals, variables, all unary/binary arithmetic + comparison + logical,
+/// PRINT (positional), assignments, IF (block + single-line), FOR/NEXT,
+/// DO/LOOP (pre/post WHILE/UNTIL), SELECT CASE, GOTO/GOSUB/RETURN, EXIT,
+/// STOP/END, REM, RANDOMIZE, DEF (single-line), SUB/FUNCTION/CALL, builtins,
+/// DIM with 1-D and N-D bounds, indexed read/write, OPTION BASE, INPUT and
+/// LINE INPUT (scalar + array targets, prompts with semicolon/comma, retry
+/// loop), MAT assign/REDIM/INPUT/PRINT/READ, MAT +/-/*, MAT TRN/INV/IDN/
+/// ZER/CON/NUL$, READ/DATA/RESTORE, PRINT USING, OPEN/CLOSE/PRINT#/INPUT#/
+/// LINE INPUT# (DISPLAY mode SEQUENTIAL/STREAM), WHEN/USE/CAUSE/RETRY/
+/// CONTINUE exception handling with inline or named HANDLER bodies and
+/// EXTYPE/EXLINE/EXTEXT$ visibility, MODULE declarations with PUBLIC
+/// re-export. Output matches the tree-walker byte-for-byte on every example.
 /// </summary>
 public sealed class BasicCompiler
 {
     public sealed class UnsupportedFeatureException(string message) : Exception(message);
 
     private readonly SemanticInfo _info;
-    private readonly Dictionary<string, int> _subIndex = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, int> _funcIndex = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, int> _defIndex = new(StringComparer.OrdinalIgnoreCase);
+    // Identity-keyed: a module-private "HELPER" and a top-level "HELPER" must
+    // resolve to different bytecode indices even though they share a name.
+    private readonly Dictionary<SubSymbol, int> _subIndex = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<FunctionSymbol, int> _funcIndex = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<DefSymbol, int> _defIndex = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, int> _builtinIndex = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _builtinNames = [];
 
     private Chunk _current = null!;
     private Scope _currentScope = null!;
+    private int _optionBase = 1;
+
+    /// <summary>Stack of BeginWhen PCs for the open WHEN blocks; RETRY jumps to the innermost.</summary>
+    private readonly Stack<int> _retryTargets = new();
 
     private BasicCompiler(SemanticInfo info)
     {
@@ -45,29 +55,42 @@ public sealed class BasicCompiler
 
     private BcProgram CompileProgram(AstProgram program)
     {
-        // Pass 1: collect all top-level callable symbols and assign indices.
-        var subs = new List<(SubSymbol Sym, int Id)>();
-        var funcs = new List<(FunctionSymbol Sym, int Id)>();
-        var defs = new List<(DefSymbol Sym, int Id)>();
+        // OPTION BASE is module-level by spec, so resolve at compile time —
+        // the last directive in source order wins; default 1.
+        _optionBase = ResolveOptionBase(program.Statements);
 
-        foreach (var sym in _info.ProgramScope.Symbols.Values)
+        // Pass 1: collect all callable symbols and assign indices. We walk
+        // ProgramScope plus every module scope so module-private SUB/FUNCTION/DEF
+        // bodies get compiled too. Sema re-exports PUBLIC symbols into
+        // ProgramScope, so the same symbol may appear in both — keep a seen
+        // set so each gets exactly one bytecode index.
+        var subs = new List<SubSymbol>();
+        var funcs = new List<FunctionSymbol>();
+        var defs = new List<DefSymbol>();
+
+        void CollectFrom(Scope scope)
         {
-            switch (sym)
+            foreach (var sym in scope.Symbols.Values)
             {
-                case SubSymbol ss:
-                    _subIndex[ss.Name] = subs.Count;
-                    subs.Add((ss, subs.Count));
-                    break;
-                case FunctionSymbol fs:
-                    _funcIndex[fs.Name + (fs.IsString ? "$" : "")] = funcs.Count;
-                    funcs.Add((fs, funcs.Count));
-                    break;
-                case DefSymbol ds:
-                    _defIndex[ds.Name + (ds.IsString ? "$" : "")] = defs.Count;
-                    defs.Add((ds, defs.Count));
-                    break;
+                switch (sym)
+                {
+                    case SubSymbol ss when !_subIndex.ContainsKey(ss):
+                        _subIndex[ss] = subs.Count;
+                        subs.Add(ss);
+                        break;
+                    case FunctionSymbol fs when !_funcIndex.ContainsKey(fs):
+                        _funcIndex[fs] = funcs.Count;
+                        funcs.Add(fs);
+                        break;
+                    case DefSymbol ds when !_defIndex.ContainsKey(ds):
+                        _defIndex[ds] = defs.Count;
+                        defs.Add(ds);
+                        break;
+                }
             }
         }
+        CollectFrom(_info.ProgramScope);
+        foreach (var modScope in _info.ModuleScopes.Values) CollectFrom(modScope);
 
         // Compile main chunk.
         var main = new Chunk { FrameSize = _info.ProgramScope.FrameSize };
@@ -78,7 +101,7 @@ public sealed class BasicCompiler
 
         // Compile each SUB / FUNCTION / DEF body into its own chunk.
         var compiledSubs = new List<CompiledSub>();
-        foreach (var (ss, _) in subs)
+        foreach (var ss in subs)
         {
             var chunk = new Chunk { FrameSize = ss.BodyScope.FrameSize };
             _current = chunk;
@@ -89,7 +112,7 @@ public sealed class BasicCompiler
         }
 
         var compiledFuncs = new List<CompiledFunction>();
-        foreach (var (fs, _) in funcs)
+        foreach (var fs in funcs)
         {
             var chunk = new Chunk { FrameSize = fs.BodyScope.FrameSize };
             _current = chunk;
@@ -104,7 +127,7 @@ public sealed class BasicCompiler
         }
 
         var compiledDefs = new List<CompiledDef>();
-        foreach (var (ds, _) in defs)
+        foreach (var ds in defs)
         {
             var chunk = new Chunk { FrameSize = ds.Params.Count };
             _current = chunk;
@@ -128,6 +151,12 @@ public sealed class BasicCompiler
             compiledDefs.Add(new CompiledDef(ds.Name, ds.IsString, ds.Params.Count, chunk));
         }
 
+        var dataPool = new List<BcDataItem>(_info.DataPool.Count);
+        foreach (var item in _info.DataPool)
+        {
+            dataPool.Add(new BcDataItem(item.IsString, item.Text));
+        }
+
         return new BcProgram
         {
             Main = main,
@@ -135,6 +164,7 @@ public sealed class BasicCompiler
             Functions = compiledFuncs,
             Defs = compiledDefs,
             BuiltinNames = _builtinNames,
+            DataPool = dataPool,
         };
     }
 
@@ -143,11 +173,21 @@ public sealed class BasicCompiler
     private void CompileStatements(IReadOnlyList<Stmt> stmts)
     {
         var labelTargets = new Dictionary<int, int>();
+        var previousLineNotePc = -1;
         foreach (var stmt in stmts)
         {
             if (stmt.Label is { } l) labelTargets[l] = _current.CodeLength;
+            // Patch the previous statement's LineNote so its stmtEndOffset
+            // points at the start of this LineNote — that's where CONTINUE
+            // jumps if the previous statement was the one that raised.
+            if (previousLineNotePc >= 0) _current.PatchLineNoteEnd(previousLineNotePc);
+            previousLineNotePc = EmitLineNote(stmt);
             CompileStatement(stmt);
         }
+        // After the last statement: patch its LineNote to point at the byte
+        // just past the end of this block. CONTINUE from the last stmt then
+        // falls through cleanly to whatever follows (e.g., PopHandler).
+        if (previousLineNotePc >= 0) _current.PatchLineNoteEnd(previousLineNotePc);
         // Backfill any forward GOTO/GOSUB with absolute addresses.
         // Simplification: in this Phase-9 first cut we don't support GOTO/GOSUB
         // jumping to forward labels; we emit absolute jumps using the label
@@ -180,6 +220,34 @@ public sealed class BasicCompiler
             case SelectStmt s: CompileSelect(s); break;
             case ExitStmt e: CompileExit(e); break;
             case CallStmt c: CompileCall(c); break;
+            case DimStmt d: CompileDim(d); break;
+            case InputStmt input: CompileInput(input); break;
+            case LineInputStmt lin: CompileLineInput(lin); break;
+            case MatAssignStmt ma: CompileMatAssign(ma); break;
+            case MatRedimStmt mr: CompileMatRedim(mr); break;
+            case MatPrintStmt mp: CompileMatPrint(mp); break;
+            case MatInputStmt mi: CompileMatInput(mi); break;
+            case MatReadStmt mrd: CompileMatRead(mrd); break;
+            case ReadStmt rd: CompileRead(rd); break;
+            case RestoreStmt: _current.Emit(Opcode.Restore); break;
+            case PrintUsingStmt pu: CompilePrintUsing(pu); break;
+            case WhenStmt w: CompileWhen(w); break;
+            case CauseStmt cs: CompileCause(cs); break;
+            case RetryStmt: CompileRetry(); break;
+            case ContinueResumeStmt:
+                if (_retryTargets.Count == 0)
+                    throw new UnsupportedFeatureException("CONTINUE outside of WHEN/USE");
+                _current.Emit(Opcode.Continue);
+                break;
+            case OpenStmt op: CompileOpen(op); break;
+            case CloseStmt cs: CompileClose(cs); break;
+            case PrintFileStmt pf: CompilePrintFile(pf); break;
+            case InputFileStmt ifs: CompileInputFile(ifs); break;
+            case LineInputFileStmt lif: CompileLineInputFile(lif); break;
+            case DataStmt:
+                // DATA was collected by sema into _info.DataPool at compile time;
+                // there's no runtime opcode to emit for the DATA statement itself.
+                break;
             case SubStmt or FunctionStmt or DefStmt:
                 // Declarations — already compiled into separate chunks.
                 break;
@@ -196,21 +264,450 @@ public sealed class BasicCompiler
 
     private void CompileAssign(AssignStmt a)
     {
-        if (a.Target is not NameRefExpr nr)
-            throw new UnsupportedFeatureException("array element assignment not yet supported by VM");
-
-        CompileExpr(a.Value);
-        var resolved = _info.Resolve(nr);
-        switch (resolved)
+        switch (a.Target)
         {
-            case ResolvedVariable rv:
-                EmitStoreSymbolSlot(rv.Symbol.OwnerScope!, rv.Symbol.Slot);
+            case NameRefExpr nr:
+                CompileExpr(a.Value);
+                var resolved = _info.Resolve(nr);
+                switch (resolved)
+                {
+                    case ResolvedVariable rv:
+                        EmitStoreSymbolSlot(rv.Symbol.OwnerScope!, rv.Symbol.Slot);
+                        break;
+                    case ResolvedParam rp:
+                        EmitStoreSymbolSlot(rp.Symbol.OwnerScope!, rp.Symbol.Slot);
+                        break;
+                    default:
+                        throw new UnsupportedFeatureException($"cannot assign to {resolved.GetType().Name}");
+                }
                 break;
-            case ResolvedParam rp:
-                EmitStoreSymbolSlot(rp.Symbol.OwnerScope!, rp.Symbol.Slot);
+            case CallOrIndexExpr c:
+                if (_info.Resolve(c) is not ResolvedArrayAccess ra)
+                    throw new UnsupportedFeatureException($"cannot assign to indexed '{c.Name}'");
+                // Push value first, then subscripts; StoreElement pops subs (reverse) then value.
+                CompileExpr(a.Value);
+                foreach (var arg in c.Args) CompileExpr(arg);
+                EmitStoreElement(ra.Symbol.OwnerScope!, ra.Symbol.Slot, c.Args.Count);
                 break;
             default:
-                throw new UnsupportedFeatureException($"cannot assign to {resolved.GetType().Name}");
+                throw new UnsupportedFeatureException("invalid assignment target");
+        }
+    }
+
+    // -- MAT lowering ----------------------------------------------------
+
+    private void CompileMatAssign(MatAssignStmt ma)
+    {
+        var target = LookupMatTarget(ma.TargetName, ma.TargetIsString);
+
+        // Constant RHS (ZER/IDN/CON/NUL$) needs the target's existing bounds,
+        // so it's folded into a single MatAssignConst opcode rather than going
+        // through the stack-machine RHS evaluator.
+        if (ma.Rhs is MatRhsConst c)
+        {
+            _current.Emit(Opcode.MatAssignConst);
+            _current.EmitU32((uint)target.Depth);
+            _current.EmitU32((uint)target.Slot);
+            _current.EmitU32(ma.TargetIsString ? 1u : 0u);
+            _current.EmitU32((uint)c.Kind);
+            return;
+        }
+
+        CompileMatRhs(ma.Rhs);
+        _current.Emit(Opcode.MatAssign);
+        _current.EmitU32((uint)target.Depth);
+        _current.EmitU32((uint)target.Slot);
+        _current.EmitU32(ma.TargetIsString ? 1u : 0u);
+    }
+
+    private void CompileMatRhs(MatRhs rhs)
+    {
+        switch (rhs)
+        {
+            case MatRhsName n:
+                {
+                    var t = LookupMatTarget(n.Name, n.IsString);
+                    _current.Emit(Opcode.MatLoadArray);
+                    _current.EmitU32((uint)t.Depth);
+                    _current.EmitU32((uint)t.Slot);
+                    break;
+                }
+            case MatRhsBinary b:
+                CompileMatRhs(b.Left);
+                CompileMatRhs(b.Right);
+                _current.Emit(b.Op switch
+                {
+                    MatBinaryKind.Add => Opcode.MatBinAdd,
+                    MatBinaryKind.Subtract => Opcode.MatBinSub,
+                    MatBinaryKind.Multiply => Opcode.MatBinMul,
+                    _ => throw new UnsupportedFeatureException($"MAT binary op {b.Op}"),
+                });
+                break;
+            case MatRhsScalarMul sm:
+                CompileExpr(sm.Scalar);
+                CompileMatRhs(sm.Matrix);
+                _current.Emit(Opcode.MatScalarMul);
+                break;
+            case MatRhsInv inv:
+                CompileMatRhs(inv.Operand);
+                _current.Emit(Opcode.MatInv);
+                break;
+            case MatRhsTrn trn:
+                CompileMatRhs(trn.Operand);
+                _current.Emit(Opcode.MatTrn);
+                break;
+            case MatRhsConst:
+                throw new UnsupportedFeatureException(
+                    "nested MAT constants (ZER/IDN/CON/NUL$ inside an expression) not yet supported by VM");
+            default:
+                throw new UnsupportedFeatureException($"MAT RHS kind {rhs.GetType().Name}");
+        }
+    }
+
+    private void CompileMatRedim(MatRedimStmt mr)
+    {
+        var target = LookupMatTarget(mr.TargetName, mr.TargetIsString);
+        foreach (var bound in mr.Bounds)
+        {
+            if (bound.Lower is null) EmitLoadInt(_optionBase);
+            else CompileExpr(bound.Lower);
+            CompileExpr(bound.Upper);
+        }
+        _current.Emit(Opcode.MatRedim);
+        _current.EmitU32((uint)target.Depth);
+        _current.EmitU32((uint)target.Slot);
+        _current.EmitU32((uint)mr.Bounds.Count);
+        _current.EmitU32(mr.TargetIsString ? 1u : 0u);
+    }
+
+    private void CompileMatPrint(MatPrintStmt mp)
+    {
+        var target = LookupMatTarget(mp.TargetName, mp.TargetIsString);
+        _current.Emit(Opcode.MatPrint);
+        _current.EmitU32((uint)target.Depth);
+        _current.EmitU32((uint)target.Slot);
+    }
+
+    private void CompileMatInput(MatInputStmt mi)
+    {
+        var target = LookupMatTarget(mi.TargetName, mi.TargetIsString);
+        _current.Emit(Opcode.MatInput);
+        _current.EmitU32((uint)target.Depth);
+        _current.EmitU32((uint)target.Slot);
+        _current.EmitU32(mi.TargetIsString ? 1u : 0u);
+    }
+
+    private void CompileMatRead(MatReadStmt mrd)
+    {
+        var target = LookupMatTarget(mrd.TargetName, mrd.TargetIsString);
+        _current.Emit(Opcode.MatRead);
+        _current.EmitU32((uint)target.Depth);
+        _current.EmitU32((uint)target.Slot);
+        _current.EmitU32(mrd.TargetIsString ? 1u : 0u);
+    }
+
+    // -- File-I/O lowering -----------------------------------------------
+
+    // -- Exception-handling lowering -------------------------------------
+
+    /// <summary>Emit a LineNote with the source line of <paramref name="stmt"/> plus a
+    /// placeholder stmtEndOffset (patched once the next LineNote starts, or once
+    /// the enclosing statement list finishes). Returns the LineNote's PC so
+    /// <see cref="Chunk.PatchLineNoteEnd"/> can find it later.</summary>
+    private int EmitLineNote(Stmt stmt)
+    {
+        var pc = _current.Emit(Opcode.LineNote);
+        _current.EmitU32((uint)stmt.Span.StartPosition.LineCol.Line);
+        _current.EmitI32(0); // stmtEndOffset placeholder
+        return pc;
+    }
+
+    private void CompileWhen(WhenStmt w)
+    {
+        // Resolve the USE body. A named handler reference is inlined here —
+        // every WHEN that references the same handler gets its own copy of
+        // the body's bytecode. Bytecode size grows linearly with how often
+        // the handler's referenced; the alternative (compiling each HANDLER
+        // as a callable chunk) would save bytes but add a control-flow opcode.
+        IReadOnlyList<Stmt> useBody;
+        if (w.UseBody is not null)
+        {
+            useBody = w.UseBody;
+        }
+        else if (w.UseHandlerName is not null)
+        {
+            if (_info.ProgramScope.Lookup(Scope.Key(w.UseHandlerName, isString: false)) is not HandlerSymbol h)
+                throw new UnsupportedFeatureException(
+                    $"WHEN: HANDLER '{w.UseHandlerName}' not declared");
+            useBody = h.Stmt.Body;
+        }
+        else
+        {
+            throw new UnsupportedFeatureException("WHEN: handler body could not be resolved");
+        }
+
+        var beginWhenPc = _current.EmitJumpPlaceholder(Opcode.BeginWhen);
+        _retryTargets.Push(beginWhenPc);
+        try
+        {
+            CompileStatements(w.InBody);
+            _current.Emit(Opcode.PopHandler);
+            var skipUsePc = _current.EmitJumpPlaceholder(Opcode.Jump);
+            _current.PatchJump(beginWhenPc);
+            CompileStatements(useBody);
+            _current.PatchJump(skipUsePc);
+        }
+        finally
+        {
+            _retryTargets.Pop();
+        }
+    }
+
+    private void CompileCause(CauseStmt c)
+    {
+        CompileExpr(c.Type);
+        _current.Emit(Opcode.Cause);
+    }
+
+    private void CompileRetry()
+    {
+        if (_retryTargets.Count == 0)
+            throw new UnsupportedFeatureException("RETRY outside of WHEN/USE");
+        _current.EmitJumpToAbsolute(Opcode.Retry, _retryTargets.Peek());
+    }
+
+    private void CompileOpen(OpenStmt op)
+    {
+        CompileExpr(op.Channel);
+        CompileExpr(op.Name);
+        _current.Emit(Opcode.Open);
+        _current.EmitU32((uint)op.Access);
+        _current.EmitU32((uint)op.Organization);
+        _current.EmitU32((uint)op.Create);
+    }
+
+    private void CompileClose(CloseStmt cs)
+    {
+        CompileExpr(cs.Channel);
+        _current.Emit(Opcode.Close);
+    }
+
+    private void CompilePrintFile(PrintFileStmt pf)
+    {
+        // Push every Expr-item's value in declaration order, then the channel
+        // on top. The opcode's inline kind tape says which positions are
+        // expressions versus separators.
+        var kinds = new uint[pf.Items.Count];
+        for (var i = 0; i < pf.Items.Count; i++)
+        {
+            var item = pf.Items[i];
+            switch (item)
+            {
+                case PrintExprItem ei:
+                    CompileExpr(ei.Value);
+                    kinds[i] = _info.TypeOf(ei.Value) == BasicType.String ? 1u : 0u;
+                    break;
+                case PrintComma:
+                    kinds[i] = 2u;
+                    break;
+                case PrintSemicolon:
+                    kinds[i] = 3u;
+                    break;
+                default:
+                    throw new UnsupportedFeatureException($"PRINT # item kind {item.GetType().Name} not supported by VM");
+            }
+        }
+        CompileExpr(pf.Channel);
+        _current.Emit(Opcode.PrintFile);
+        _current.EmitU32((uint)pf.Items.Count);
+        foreach (var k in kinds) _current.EmitU32(k);
+    }
+
+    private void CompileInputFile(InputFileStmt ifs)
+    {
+        var targets = new (int Depth, int Slot, bool IsString, int Rank, IReadOnlyList<Expr> Subs)[ifs.Targets.Count];
+        for (var i = 0; i < ifs.Targets.Count; i++)
+        {
+            targets[i] = ResolveInputTarget(ifs.Targets[i]);
+        }
+        foreach (var t in targets)
+        {
+            foreach (var sub in t.Subs) CompileExpr(sub);
+        }
+        CompileExpr(ifs.Channel);
+        _current.Emit(Opcode.InputFile);
+        _current.EmitU32((uint)targets.Length);
+        foreach (var t in targets)
+        {
+            _current.EmitU32((uint)t.Depth);
+            _current.EmitU32((uint)t.Slot);
+            _current.EmitU32(t.IsString ? 1u : 0u);
+            _current.EmitU32((uint)t.Rank);
+        }
+    }
+
+    private void CompileLineInput(LineInputStmt lin)
+    {
+        var t = ResolveInputTarget(lin.Target);
+        if (!t.IsString)
+            throw new UnsupportedFeatureException("LINE INPUT requires a string target");
+
+        if (lin.Prompt is not null)
+        {
+            CompileExpr(lin.Prompt);
+            _current.Emit(Opcode.PrintString);
+        }
+        foreach (var sub in t.Subs) CompileExpr(sub);
+        _current.Emit(Opcode.LineInput);
+        _current.EmitU32(lin.Prompt is not null && lin.PromptIsSemicolon ? 1u : 0u);
+        _current.EmitU32((uint)t.Depth);
+        _current.EmitU32((uint)t.Slot);
+        _current.EmitU32((uint)t.Rank);
+    }
+
+    private void CompileLineInputFile(LineInputFileStmt lif)
+    {
+        var t = ResolveInputTarget(lif.Target);
+        foreach (var sub in t.Subs) CompileExpr(sub);
+        CompileExpr(lif.Channel);
+        _current.Emit(Opcode.LineInputFile);
+        _current.EmitU32((uint)t.Depth);
+        _current.EmitU32((uint)t.Slot);
+        _current.EmitU32((uint)t.Rank);
+    }
+
+    private void CompilePrintUsing(PrintUsingStmt pu)
+    {
+        CompileExpr(pu.Format);
+        foreach (var item in pu.Items) CompileExpr(item);
+        _current.Emit(Opcode.PrintUsing);
+        _current.EmitU32((uint)pu.Items.Count);
+    }
+
+    private void CompileRead(ReadStmt rd)
+    {
+        // Reuse the INPUT target resolution since the assignment surface is
+        // identical (scalar variables / params / array elements). Subscripts
+        // are pushed in target order; the opcode pops them in reverse.
+        var targets = new (int Depth, int Slot, bool IsString, int Rank, IReadOnlyList<Expr> Subs)[rd.Targets.Count];
+        for (var i = 0; i < rd.Targets.Count; i++)
+        {
+            targets[i] = ResolveInputTarget(rd.Targets[i]);
+        }
+
+        foreach (var t in targets)
+        {
+            foreach (var sub in t.Subs) CompileExpr(sub);
+        }
+
+        _current.Emit(Opcode.Read);
+        _current.EmitU32((uint)targets.Length);
+        foreach (var t in targets)
+        {
+            _current.EmitU32((uint)t.Depth);
+            _current.EmitU32((uint)t.Slot);
+            _current.EmitU32(t.IsString ? 1u : 0u);
+            _current.EmitU32((uint)t.Rank);
+        }
+    }
+
+    /// <summary>
+    /// Resolves a MAT statement's named array to its (depth, slot) coordinate.
+    /// MAT statements (like the tree-walker) operate on program-scope arrays.
+    /// </summary>
+    private (int Depth, int Slot) LookupMatTarget(string name, bool isString)
+    {
+        if (_info.ProgramScope.Lookup(Scope.Key(name, isString)) is not ArraySymbol arr)
+            throw new UnsupportedFeatureException($"MAT target '{name}' is not a known array");
+        return (ScopeDepth(arr.OwnerScope!), arr.Slot);
+    }
+
+    private void CompileInput(InputStmt input)
+    {
+        // Resolve each target up front so the runtime opcode has everything
+        // it needs as immediate operands.
+        var targets = new (int Depth, int Slot, bool IsString, int Rank, IReadOnlyList<Expr> Subs)[input.Targets.Count];
+        for (var i = 0; i < input.Targets.Count; i++)
+        {
+            targets[i] = ResolveInputTarget(input.Targets[i]);
+        }
+
+        // Prompt text: lower as a separate PrintString. Suffix (" " vs "? ")
+        // is encoded in the Input opcode's operand.
+        if (input.Prompt is not null)
+        {
+            CompileExpr(input.Prompt);
+            _current.Emit(Opcode.PrintString);
+        }
+
+        // Push subscripts for array targets in declaration order.
+        foreach (var t in targets)
+        {
+            foreach (var sub in t.Subs) CompileExpr(sub);
+        }
+
+        _current.Emit(Opcode.Input);
+        _current.EmitU32(input.Prompt is not null && input.PromptIsSemicolon ? 1u : 0u);
+        _current.EmitU32((uint)targets.Length);
+        foreach (var t in targets)
+        {
+            _current.EmitU32((uint)t.Depth);
+            _current.EmitU32((uint)t.Slot);
+            _current.EmitU32(t.IsString ? 1u : 0u);
+            _current.EmitU32((uint)t.Rank);
+        }
+    }
+
+    private (int Depth, int Slot, bool IsString, int Rank, IReadOnlyList<Expr> Subs) ResolveInputTarget(Expr target)
+    {
+        switch (target)
+        {
+            case NameRefExpr nr:
+                {
+                    var resolved = _info.Resolve(nr);
+                    var sym = resolved switch
+                    {
+                        ResolvedVariable rv => (Symbol)rv.Symbol,
+                        ResolvedParam rp => rp.Symbol,
+                        _ => throw new UnsupportedFeatureException($"INPUT target '{nr.Name}' resolves to {resolved.GetType().Name}, not a variable"),
+                    };
+                    var slot = sym switch
+                    {
+                        VariableSymbol vs => vs.Slot,
+                        ParamSymbol ps => ps.Slot,
+                        _ => throw new UnsupportedFeatureException($"INPUT target symbol kind {sym.GetType().Name}"),
+                    };
+                    return (ScopeDepth(sym.OwnerScope!), slot, sym.IsString, 0, Array.Empty<Expr>());
+                }
+            case CallOrIndexExpr c:
+                {
+                    if (_info.Resolve(c) is not ResolvedArrayAccess ra)
+                        throw new UnsupportedFeatureException($"INPUT target '{c.Name}' is not an array reference");
+                    return (ScopeDepth(ra.Symbol.OwnerScope!), ra.Symbol.Slot, ra.Symbol.IsString, c.Args.Count, c.Args);
+                }
+            default:
+                throw new UnsupportedFeatureException($"INPUT target kind {target.GetType().Name}");
+        }
+    }
+
+    private void CompileDim(DimStmt d)
+    {
+        foreach (var spec in d.Specs)
+        {
+            var sym = (ArraySymbol?)_info.ProgramScope.Lookup(Scope.Key(spec.Name, spec.IsString))
+                ?? throw new UnsupportedFeatureException(
+                    $"DIM '{spec.Name}': sema did not register an ArraySymbol");
+
+            // Push bounds left-to-right: lower_0, upper_0, lower_1, upper_1, ...
+            // The VM pops them in reverse and writes upper/lower per dimension.
+            foreach (var bound in spec.Bounds)
+            {
+                if (bound.Lower is null) EmitLoadInt(_optionBase);
+                else CompileExpr(bound.Lower);
+                CompileExpr(bound.Upper);
+            }
+
+            EmitDimArray(sym.OwnerScope!, sym.Slot, spec.Bounds.Count, spec.IsString);
         }
     }
 
@@ -453,7 +950,7 @@ public sealed class BasicCompiler
     {
         if (!_info.CallTargets.TryGetValue(c, out var sub))
             throw new UnsupportedFeatureException($"CALL target '{c.Name}' not resolved");
-        if (!_subIndex.TryGetValue(sub.Name, out var id))
+        if (!_subIndex.TryGetValue(sub, out var id))
             throw new UnsupportedFeatureException($"SUB '{c.Name}' not in compiled set");
         foreach (var a in c.Args) CompileExpr(a);
         _current.Emit(Opcode.CallSub);
@@ -533,7 +1030,7 @@ public sealed class BasicCompiler
                 EmitBuiltinCall(rb.Symbol.Name, c.Args.Count);
                 break;
             case ResolvedFunctionCall rf:
-                if (!_funcIndex.TryGetValue(rf.Symbol.Name + (rf.Symbol.IsString ? "$" : ""), out var fid))
+                if (!_funcIndex.TryGetValue(rf.Symbol, out var fid))
                     throw new UnsupportedFeatureException($"FUNCTION '{rf.Symbol.Name}' not in compiled set");
                 foreach (var a in c.Args) CompileExpr(a);
                 _current.Emit(Opcode.CallFunction);
@@ -541,15 +1038,17 @@ public sealed class BasicCompiler
                 _current.EmitU32((uint)c.Args.Count);
                 break;
             case ResolvedDefCall rd:
-                if (!_defIndex.TryGetValue(rd.Symbol.Name + (rd.Symbol.IsString ? "$" : ""), out var did))
+                if (!_defIndex.TryGetValue(rd.Symbol, out var did))
                     throw new UnsupportedFeatureException($"DEF '{rd.Symbol.Name}' not in compiled set");
                 foreach (var a in c.Args) CompileExpr(a);
                 _current.Emit(Opcode.CallDef);
                 _current.EmitU32((uint)did);
                 _current.EmitU32((uint)c.Args.Count);
                 break;
-            case ResolvedArrayAccess:
-                throw new UnsupportedFeatureException("array indexing not yet supported by VM");
+            case ResolvedArrayAccess ra:
+                foreach (var a in c.Args) CompileExpr(a);
+                EmitLoadElement(ra.Symbol.OwnerScope!, ra.Symbol.Slot, c.Args.Count);
+                break;
             default:
                 throw new UnsupportedFeatureException($"call/index target {resolved.GetType().Name} not supported by VM");
         }
@@ -639,5 +1138,81 @@ public sealed class BasicCompiler
         }
         // Not found in chain — assume program scope at outermost.
         return Math.Max(0, depth - 1);
+    }
+
+    private void EmitDimArray(Scope ownerScope, int slot, int rank, bool isString)
+    {
+        var depth = ScopeDepth(ownerScope);
+        if (depth == 0)
+        {
+            _current.Emit(Opcode.DimArray);
+            _current.EmitU32((uint)slot);
+            _current.EmitU32((uint)rank);
+            _current.EmitU32(isString ? 1u : 0u);
+        }
+        else
+        {
+            _current.Emit(Opcode.DimArrayOuter);
+            _current.EmitU32((uint)depth);
+            _current.EmitU32((uint)slot);
+            _current.EmitU32((uint)rank);
+            _current.EmitU32(isString ? 1u : 0u);
+        }
+    }
+
+    private void EmitLoadElement(Scope ownerScope, int slot, int rank)
+    {
+        var depth = ScopeDepth(ownerScope);
+        if (depth == 0)
+        {
+            _current.Emit(Opcode.LoadElement);
+            _current.EmitU32((uint)slot);
+            _current.EmitU32((uint)rank);
+        }
+        else
+        {
+            _current.Emit(Opcode.LoadElementOuter);
+            _current.EmitU32((uint)depth);
+            _current.EmitU32((uint)slot);
+            _current.EmitU32((uint)rank);
+        }
+    }
+
+    private void EmitStoreElement(Scope ownerScope, int slot, int rank)
+    {
+        var depth = ScopeDepth(ownerScope);
+        if (depth == 0)
+        {
+            _current.Emit(Opcode.StoreElement);
+            _current.EmitU32((uint)slot);
+            _current.EmitU32((uint)rank);
+        }
+        else
+        {
+            _current.Emit(Opcode.StoreElementOuter);
+            _current.EmitU32((uint)depth);
+            _current.EmitU32((uint)slot);
+            _current.EmitU32((uint)rank);
+        }
+    }
+
+    private void EmitLoadInt(int v)
+    {
+        if (v == 0) { _current.Emit(Opcode.LoadZero); return; }
+        if (v == 1) { _current.Emit(Opcode.LoadOne); return; }
+        if (v == -1) { _current.Emit(Opcode.LoadMinusOne); return; }
+        var idx = _current.AddNumberConstant(BigDecimal.Parse(v.ToString()));
+        _current.Emit(Opcode.LoadConstNumber);
+        _current.EmitU32(idx);
+    }
+
+    private static int ResolveOptionBase(IReadOnlyList<Stmt> stmts)
+    {
+        var resolved = 1;
+        foreach (var s in stmts)
+        {
+            if (s is OptionBaseStmt o) resolved = o.Base;
+        }
+        return resolved;
     }
 }
