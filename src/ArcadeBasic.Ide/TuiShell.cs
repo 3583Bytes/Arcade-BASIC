@@ -146,6 +146,7 @@ internal sealed class TuiShell
             {
                 new("_Run", string.Empty, RunProgram, shortcut: Key.F5),
                 new("_Compile", string.Empty, CompileProgram, shortcut: Key.F6),
+                new("_Build standalone...", string.Empty, BuildStandalone, shortcut: Key.F7),
                 new("_Stop", string.Empty, StopProgram, shortcut: Key.Esc),
                 new("_Clear output", string.Empty, () => _output.ClearOutput(), shortcut: Key.CtrlMask | Key.L),
             }),
@@ -196,6 +197,91 @@ internal sealed class TuiShell
         }
 
         _statusItem.Title = result.Ok ? "Compiled OK" : "Compile failed";
+        Application.Top.SetNeedsDisplay();
+        RefocusEditor();
+    }
+
+    private void BuildStandalone()
+    {
+        if (_runner.IsRunning) return;
+
+        // Step 1: compile. Surface any errors in the Problems pane the same
+        // way Run / Compile do, so the user fixes them before retrying.
+        var result = CompileService.Compile(_source.GetText());
+        _source.Problems.SetDiagnostics(result.Diagnostics);
+        if (!result.Ok || result.Program is null)
+        {
+            _source.SetProblemsVisible(true);
+            _tabs.SelectedTab = _sourceTab;
+            _statusItem.Title = "Build failed (see Problems)";
+            Application.Top.SetNeedsDisplay();
+            RefocusEditor();
+            return;
+        }
+
+        // Step 2: confirm we can find the AOT stub. If not, tell the user
+        // exactly what to do — no point opening the Save dialog only to
+        // fail at the very end.
+        var stub = BuildService.LocateStub();
+        if (stub is null)
+        {
+            MessageBox.ErrorQuery(70, 10, "Build standalone",
+                "Could not find an `arcade-basic` AOT binary to use as the build stub.\n\n" +
+                "Fix: download the matching `arcade-basic` from the releases page and either:\n" +
+                "  • drop it next to arcade-basic-ide, or\n" +
+                "  • add it to your PATH.",
+                "OK");
+            RefocusEditor();
+            return;
+        }
+
+        // Step 3: ask where to write the output. Default name derived from
+        // the currently-loaded file (or "program" if nothing is loaded yet).
+        var defaultName = _currentFilePath is null
+            ? "program"
+            : Path.GetFileNameWithoutExtension(_currentFilePath);
+        if (OperatingSystem.IsWindows()) defaultName += ".exe";
+
+        var dlg = new SaveDialog("Build standalone",
+            $"Save self-contained binary (stub: {Path.GetFileName(stub)})")
+        {
+            FilePath = defaultName,
+        };
+        string? outputPath;
+        try
+        {
+            Application.Run(dlg);
+            if (dlg.Canceled)
+            {
+                _statusItem.Title = "Build cancelled";
+                Application.Top.SetNeedsDisplay();
+                return;
+            }
+            outputPath = dlg.FilePath?.ToString();
+        }
+        finally
+        {
+            RefocusEditor();
+        }
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            _statusItem.Title = "Build cancelled";
+            Application.Top.SetNeedsDisplay();
+            return;
+        }
+
+        // Step 4: do the build. BuildService handles stub-reading, payload
+        // append, and chmod — same flow as the CLI's build subcommand.
+        var buildResult = BuildService.Build(result.Program, outputPath, stub);
+        if (buildResult.Ok)
+        {
+            _statusItem.Title = $"Built {Path.GetFileName(outputPath)} ({buildResult.OutputBytes:N0} bytes)";
+        }
+        else
+        {
+            MessageBox.ErrorQuery(70, 8, "Build failed", buildResult.Message, "OK");
+            _statusItem.Title = "Build failed";
+        }
         Application.Top.SetNeedsDisplay();
         RefocusEditor();
     }

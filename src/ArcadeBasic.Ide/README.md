@@ -32,6 +32,8 @@ install required — the runtime is bundled into the executable) for
 | Key            | Action                              |
 | -------------- | ----------------------------------- |
 | F5             | Run the current source              |
+| F6             | Compile-check (no execution)        |
+| F7             | Build a standalone native binary    |
 | Esc            | Stop a running program              |
 | Ctrl-N         | New (empty) buffer                  |
 | Ctrl-O         | Open a `.bas` file                  |
@@ -41,6 +43,29 @@ install required — the runtime is bundled into the executable) for
 
 Every example in `/examples` is bundled into the binary and listed under
 **File ▸ Examples**.
+
+## Build standalone (F7)
+
+**Run ▸ Build standalone…** (or F7) compiles the current buffer to a single
+self-contained executable that contains both the bytecode VM and your
+program. The result needs no .NET install and no separate Arcade BASIC
+install — just the one file.
+
+How it works: the IDE compiles the source, then locates an external
+`arcade-basic` AOT binary to use as the *stub*, reads it, appends the
+compiled bytecode + an `FB-BCEND` trailer, and chmods the result executable.
+This is the same mechanism the CLI's `build` subcommand uses.
+
+Because the IDE itself isn't AOT-compiled (Terminal.Gui v1 relies on
+reflection), it can't use itself as the stub. It looks for `arcade-basic`
+in two places:
+
+1. Same directory as the running `arcade-basic-ide` binary.
+2. Anywhere on `PATH`.
+
+If neither finds it, the IDE shows an error pointing to the releases page.
+The fix is to put `arcade-basic` next to `arcade-basic-ide` or add it to
+your PATH; tagged releases ship both binaries for every supported RID.
 
 ## What's inside
 
@@ -52,6 +77,8 @@ Every example in `/examples` is bundled into the binary and listed under
 | `OutputPane.cs`         | Read-only scrollback (size-capped) + the bottom input line for INPUT. |
 | `RunController.cs`      | Task-based runner + thread-safe writer + main-loop drain pump.    |
 | `SyntaxColorizer.cs`    | Token-kind → palette mapping (mirrors the Unity sample).          |
+| `CompileService.cs`     | Lex → parse → sema → bytecode-emit; powers F6 and F7.             |
+| `BuildService.cs`       | Append-bytecode-to-AOT-stub flow used by F7.                      |
 | `ExamplesProvider.cs`   | Enumerates the bundled `.bas` files.                              |
 
 ## Implementation notes

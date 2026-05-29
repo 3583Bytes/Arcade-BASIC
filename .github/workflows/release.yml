@@ -49,10 +49,13 @@ jobs:
       - name: Publish AOT
         shell: bash
         run: |
+          # PublishAot is set on the CLI's csproj (project-level), so we
+          # DON'T pass -p:PublishAot=true on the command line — that would
+          # promote it to a global MSBuild property and propagate into the
+          # netstandard2.1 builds of the multi-targeted libs, which can't AOT.
           dotnet publish src/ArcadeBasic.Cli \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
-            -p:PublishAot=true \
             --output publish/aot
 
       - name: Smoke-test the binary

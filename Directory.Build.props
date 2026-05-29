@@ -34,4 +34,14 @@
     <Compile Include="$(MSBuildThisFileDirectory)Polyfill.cs" Link="Polyfill.cs" />
   </ItemGroup>
 
+  <!-- AOT-publish a multi-targeted lib only on its net9.0 build. When the CLI
+       publishes with `-p:PublishAot=true`, MSBuild propagates that property to
+       every transitively-referenced project, and the netstandard2.1 variant of
+       each lib then errors out with NETSDK1207. Override here so the
+       netstandard2.1 build path always opts out, regardless of caller. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'netstandard2.1'">
+    <PublishAot>false</PublishAot>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
 </Project>
