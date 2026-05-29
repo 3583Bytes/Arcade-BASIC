@@ -13,6 +13,11 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>ArcadeBasic.Cli</RootNamespace>
+    <!-- Published binary name. Matches the conventional CLI name on disk so
+         the IDE's BuildService can locate it without a path hint, and so
+         release artifacts only need a version+rid suffix appended. -->
+    <AssemblyName>arcade-basic</AssemblyName>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>

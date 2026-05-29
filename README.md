@@ -167,7 +167,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
 # Produce an AOT-compiled standalone CLI for the current platform
 # (PublishAot is set in the CLI csproj, so no need to pass it on the cmdline)
 dotnet publish src/ArcadeBasic.Cli -c Release -r osx-arm64
-# → src/ArcadeBasic.Cli/bin/Release/net9.0/<rid>/publish/ArcadeBasic.Cli
+# → src/ArcadeBasic.Cli/bin/Release/net9.0/<rid>/publish/arcade-basic
 ```
 
 Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are attached to each tagged GitHub release — both `arcade-basic` (the CLI) and `arcade-basic-ide` (the IDE), plus the Unity package zip. No .NET install needed on the target machine.

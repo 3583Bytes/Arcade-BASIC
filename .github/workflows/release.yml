@@ -61,8 +61,8 @@ jobs:
       - name: Smoke-test the binary
         shell: bash
         run: |
-          ./publish/aot/ArcadeBasic.Cli${{ matrix.ext }} --version
-          ./publish/aot/ArcadeBasic.Cli${{ matrix.ext }} run examples/hello.bas
+          ./publish/aot/arcade-basic${{ matrix.ext }} --version
+          ./publish/aot/arcade-basic${{ matrix.ext }} run examples/hello.bas
 
       - name: Resolve version label
         id: ver
@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          cp publish/aot/ArcadeBasic.Cli${{ matrix.ext }} \
+          cp publish/aot/arcade-basic${{ matrix.ext }} \
              artifacts/arcade-basic-${{ steps.ver.outputs.name }}-${{ matrix.rid }}${{ matrix.ext }}
 
       - name: Upload artifact

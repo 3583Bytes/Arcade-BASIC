@@ -34,8 +34,8 @@ dotnet run --project src/ArcadeBasic.Cli -- parse   examples/factorial.bas
 dotnet run --project src/ArcadeBasic.Cli -- analyze examples/factorial.bas
 
 # AOT-publish.
-dotnet publish src/ArcadeBasic.Cli -c Release /p:PublishAot=true
-# → publish/aot/ArcadeBasic.Cli
+dotnet publish src/ArcadeBasic.Cli -c Release -r <rid>
+# → src/ArcadeBasic.Cli/bin/Release/net9.0/<rid>/publish/arcade-basic
 ```
 
 Release builds set `TreatWarningsAsErrors=true`, so anything that builds cleanly in Debug must also be warning-free for CI.
