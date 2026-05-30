@@ -19,5 +19,12 @@
   "author": {
     "name": "Arcade BASIC contributors",
     "url": "https://github.com/3583Bytes/Arcade-BASIC"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Arcade BASIC IDE",
+      "description": "A drop-in in-game IDE: prefab + scene with menu bar (File/Run), syntax-highlighted source pane, output transcript, INPUT bar, Problems pane, and Build Standalone support.",
+      "path": "Samples~/ArcadeBasic"
+    }
+  ]
 }

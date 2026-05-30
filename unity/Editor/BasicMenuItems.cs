@@ -109,13 +109,17 @@ namespace ArcadeBasic.Editor
         [MenuItem("Window/Arcade BASIC/Samples/Create BASIC IDE Scene", priority = 150)]
         public static void CreateBasicIdeScene()
         {
-            var prefab = LocateIdePrefab();
-            if (prefab == null)
+            // The sample's MonoBehaviour (ArcadeBasicCodeEditor) lives in the
+            // ArcadeBasic.Samples assembly, which only exists after the user
+            // imports the sample via Package Manager.
+            var editorType = FindEditorType();
+            if (editorType == null)
             {
                 EditorUtility.DisplayDialog(
                     "Arcade BASIC",
-                    "Could not find ArcadeBasicIDE.prefab. Make sure the Arcade BASIC " +
-                    "package is installed and its Samples/ArcadeBasic folder is present.",
+                    "Import the sample first:\n\n" +
+                    "Window → Package Manager → Arcade BASIC Interpreter → Samples → " +
+                    "Import (next to 'Arcade BASIC IDE'). Then run this menu item again.",
                     "OK");
                 return;
             }
@@ -137,49 +141,25 @@ namespace ArcadeBasic.Editor
             camera.transform.position = new Vector3(0f, 1f, -10f);
             SceneManager.MoveGameObjectToScene(cameraGo, scene);
 
-            var ide = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            // Empty host GameObject — the script's Awake builds the entire
+            // Canvas + UI tree at runtime (see ArcadeBasicUIBuilder.cs).
+            var ide = new GameObject("Arcade BASIC IDE");
+            ide.AddComponent(editorType);
             SceneManager.MoveGameObjectToScene(ide, scene);
-
-            SwapInputModuleForActiveInputSystem(ide);
 
             EditorSceneManager.SaveScene(scene, savePath);
             EditorSceneManager.OpenScene(savePath, OpenSceneMode.Single);
         }
 
-        // The prefab's EventSystem ships with `StandaloneInputModule` (legacy input).
-        // If the project has Active Input Handling = "Input System Package" (or
-        // "Both"), Unity logs a warning unless we swap to InputSystemUIInputModule.
-        // Resolved via reflection so this code still compiles in projects that
-        // don't have the Input System package installed.
-        private static void SwapInputModuleForActiveInputSystem(GameObject ide)
+        // Locate ArcadeBasicCodeEditor via reflection so this Editor assembly
+        // doesn't need a hard reference to the Samples assembly (which may
+        // not be present until the user imports the sample).
+        private static System.Type FindEditorType()
         {
-            var inputSystemType = System.Type.GetType(
-                "UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
-            if (inputSystemType == null) return;
-
-            var legacy = ide.GetComponentInChildren<UnityEngine.EventSystems.StandaloneInputModule>(true);
-            if (legacy == null) return;
-
-            var host = legacy.gameObject;
-            Object.DestroyImmediate(legacy, true);
-            host.AddComponent(inputSystemType);
-        }
-
-        private static GameObject LocateIdePrefab()
-        {
-            const string knownPath =
-                "Packages/com.arcadebasic.interpreter/Samples/ArcadeBasic/Prefab/ArcadeBasicIDE.prefab";
-            var direct = AssetDatabase.LoadAssetAtPath<GameObject>(knownPath);
-            if (direct != null) return direct;
-
-            foreach (var guid in AssetDatabase.FindAssets("ArcadeBasicIDE t:Prefab"))
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
             {
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                if (path.EndsWith("/ArcadeBasicIDE.prefab", System.StringComparison.OrdinalIgnoreCase))
-                {
-                    var go = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-                    if (go != null) return go;
-                }
+                var t = asm.GetType("ArcadeBasic.Samples.ArcadeBasicCodeEditor");
+                if (t != null) return t;
             }
             return null;
         }

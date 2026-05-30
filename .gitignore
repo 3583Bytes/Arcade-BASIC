@@ -15,7 +15,7 @@ publish/
 *~
 # AOT stubs staged by unity/scripts/copy-stubs.sh — built artifacts, not source.
 # CI re-stages them from the per-RID AOT artifacts before zipping the package.
-unity/Samples/ArcadeBasic/Stubs/
+unity/Samples~/ArcadeBasic/Stubs/
 .DS_Store
 
 ## Test outputs

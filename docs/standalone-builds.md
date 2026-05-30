@@ -180,5 +180,5 @@ tail -c 12 factorial | xxd
 IDE in one shot — see the script for the full recipe. The Unity sample's
 "Build standalone" menu item uses the same pipeline, just driven from the
 in-Editor IDE instead of the command line; see
-[`unity/Samples/ArcadeBasic/README.md`](../unity/Samples/ArcadeBasic/README.md)
+[`unity/Samples~/ArcadeBasic/README.md`](../unity/Samples~/ArcadeBasic/README.md)
 for the Unity-side specifics.

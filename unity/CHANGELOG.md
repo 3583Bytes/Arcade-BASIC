@@ -10,7 +10,15 @@ All notable changes to the Unity package will be documented here. Versions follo
 ### Added
 - Initial Unity package: pre-built netstandard2.1 DLLs for the Arcade BASIC libraries.
 - `ArcadeBasic.BasicEngine` static class as a one-call embedding entry point.
-- `ArcadeBasic` sample: an in-game BASIC IDE — syntax-highlighted source pane, scrollable output transcript, single-line INPUT bar, File menu (New / Open / Save / Save As / Quit) and Run menu (Run / Compile / Build standalone / Stop / Clear Output), plus a Problems pane that mirrors the TUI IDE. **Auto-imported** with the package — open `Samples/ArcadeBasic/Scene/ArcadeBasicIDE.unity` or drop the `ArcadeBasicIDE` prefab into your own scene.
+- `Arcade BASIC IDE` sample: an in-game BASIC IDE built entirely at runtime by `ArcadeBasicCodeEditor.Awake()` (see `ArcadeBasicUIBuilder.cs`). No prefab, no scene asset, no GUID drift.
+  - **Menus**: File (New / Open / Save / Save As / Quit), Run (Run / Compile / Build standalone / Stop / Clear Output), Help (About).
+  - **Source pane**: gutter + syntax-highlighted TMP_InputField + scrollbar, all sharing one ScrollRect so the gutter scrolls with the code and stays clipped to the visible source. Avoids the TMP 3.0.x `UpdateScrollbar()` graphic-rebuild collision by using the ScrollRect's scrollbar instead of `TMP_InputField.verticalScrollbar`.
+  - **Output pane**: scrollable transcript with sticky-bottom auto-scroll (stays pinned to new output unless the user has scrolled up to read older lines).
+  - **INPUT bar**: permanently visible at the bottom of the Output pane (matches TUI IDE). Read-only and blank-prompted when idle; flips to editable + focused with a `? ` prompt when the program runs `INPUT` / `LINE INPUT`.
+  - **Problems pane**: bottom strip in the Source pane that auto-opens on diagnostics, with Copy + close (X) controls.
+  - **About modal**: centered dialog dismissed by clicking OK.
+  - **EventSystem**: auto-created if absent, picks `InputSystemUIInputModule` when the new Input System package is present, falls back to `StandaloneInputModule` otherwise.
+  - Import via **Package Manager → Samples → Import**, then run **Window → Arcade BASIC → Samples → Create BASIC IDE Scene**.
 - Unity editor integration (`Editor/` folder):
   - `Window → Arcade BASIC → Console` — REPL-style editor window with run + persistence.
   - `Assets → Create → Arcade BASIC → {Empty Program, Hello World, FOR Loop Demo, Function Demo}` — `.bas` templates.

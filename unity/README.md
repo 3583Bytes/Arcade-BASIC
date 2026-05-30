@@ -2,6 +2,8 @@
 
 Embed a complete ISO/IEC 10279:1991 BASIC interpreter in your Unity game.
 
+![Arcade BASIC Unity sample — startrek.bas loaded with the About dialog open](https://raw.githubusercontent.com/3583Bytes/Arcade-BASIC/main/screenshots/ArcadeBasicUnityIDEScreenshot.png)
+
 ## Install
 
 The published package ships pre-built `netstandard2.1` DLLs and a clean embedding API. Two install paths:
@@ -116,9 +118,13 @@ All of the above is in `Editor/` of the package and only compiled when Unity is 
 
 ## Sample
 
-The package ships an **ArcadeBasic** sample that is imported automatically — no Package Manager opt-in needed. Open `Samples/ArcadeBasic/Scene/ArcadeBasicIDE.unity` and press Play to get a full in-game IDE with menu bar, editor pane, output pane, INPUT line, and a Problems panel.
+The package ships an **Arcade BASIC IDE** sample — a full in-game IDE with three-menu bar (File / Run / Help), syntax-highlighted source pane with line gutter and scrollbar, scrollable output transcript with sticky-bottom auto-scroll, persistent INPUT bar at the bottom, Problems pane, About dialog, and Build Standalone support.
 
-See [`Samples/ArcadeBasic/README.md`](Samples/ArcadeBasic/README.md) for layout and customization notes.
+1. Open **Window → Package Manager → Arcade BASIC Interpreter → Samples** and click **Import** next to "Arcade BASIC IDE".
+2. Run **Window → Arcade BASIC → Samples → Create BASIC IDE Scene**. This builds a scene with a Main Camera and a GameObject hosting the `ArcadeBasicCodeEditor` script. The script constructs the entire Canvas + UI tree at runtime (see [`Samples~/ArcadeBasic/ArcadeBasicUIBuilder.cs`](Samples~/ArcadeBasic/ArcadeBasicUIBuilder.cs)) — no prefab, no scene asset, no GUID drift.
+3. Press Play.
+
+See [`Samples~/ArcadeBasic/README.md`](Samples~/ArcadeBasic/README.md) for layout and customization notes.
 
 ## Performance notes
 

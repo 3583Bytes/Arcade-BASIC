@@ -8,7 +8,9 @@
 
 > A modern interpreter, compiler, and IDE for **Full BASIC** (ISO/IEC 10279:1991, ANSI X3.113-1987). Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity game, or ship a `.bas` file as a self-contained native binary.
 
-![Arcade BASIC IDE — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicIDEScreenshot.png)
+| Terminal IDE (`arcade-basic-ide`) | Unity in-game IDE |
+|---|---|
+| ![Arcade BASIC TUI IDE — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicIDEScreenshot.png) | ![Arcade BASIC Unity sample — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicUnityIDEScreenshot.png) |
 
 ## In one minute
 
@@ -150,7 +152,7 @@ var result = BasicEngine.Run("LET X = 6 * 7 \n PRINT X", out string output);
 Console.WriteLine(output);  //  42
 ```
 
-For Unity, the [`unity/`](unity/) folder is a ready-to-use UPM package — `package.json`, `ArcadeBasic.asmdef`, and an `InGameConsole` sample with a one-click scene builder that drops an in-game REPL (TextMeshPro input + scrollable transcript + Run button) into your project. Install via UPM git URL or unzip a tagged release ZIP into your project's `Packages/` folder. See [`unity/README.md`](unity/README.md).
+For Unity, the [`unity/`](unity/) folder is a ready-to-use UPM package — `package.json`, `ArcadeBasic.asmdef`, and an **Arcade BASIC IDE** sample. The sample is a single MonoBehaviour (`ArcadeBasicCodeEditor`) that builds its entire UI at runtime — menu bar (File / Run / Help), syntax-highlighted source pane with line gutter and scrollbar, scrollable output transcript with sticky-bottom auto-scroll, persistent INPUT bar, Problems pane, and Build Standalone command. Install via UPM git URL or unzip a tagged release ZIP into your project's `Packages/` folder. See [`unity/README.md`](unity/README.md).
 
 ## Quick build from source
 
