@@ -9,10 +9,17 @@ on:
 permissions:
   contents: read
 
+# A new push to the same ref cancels an in-progress run, freeing the scarce
+# macOS runner slots instead of letting stale runs hold the queue.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

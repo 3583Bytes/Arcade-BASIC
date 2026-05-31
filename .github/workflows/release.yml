@@ -14,6 +14,12 @@ on:
 permissions:
   contents: write
 
+# Keyed on the ref, so distinct tags never cancel each other; only a re-push
+# of the same tag supersedes its in-progress run (freeing macOS runner slots).
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # -------------------------------------------------------------------------
   # Native AOT binaries — one per (OS, RID). Each runner produces a single
@@ -22,6 +28,7 @@ jobs:
   aot:
     name: AOT (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +102,7 @@ jobs:
   ide:
     name: IDE (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -166,6 +174,7 @@ jobs:
   unity:
     name: Unity package
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Wait for every per-RID AOT build to finish — we bundle the resulting
     # arcade-basic binaries into the Unity package's Samples~ folder so the
     # IDE's Build Standalone feature works as soon as the user imports the
@@ -238,6 +247,7 @@ jobs:
     name: Publish GitHub release
     needs: [aot, ide, unity]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
