@@ -65,6 +65,11 @@ internal sealed class SourcePane : FrameView
 
         _editor.UnwrappedCursorPosition += OnCursorMoved;
         _editor.TextChanged += OnTextChanged;
+        // Cursor-move and text-change events don't fire for scrolls that move the
+        // viewport without moving the caret (mouse wheel, PgUp/PgDn landing on the
+        // same logical line, etc.). DrawContent runs on every editor redraw, so
+        // re-syncing the gutter here keeps the line numbers glued to the source.
+        _editor.DrawContent += _ => SyncGutterScroll();
 
         _problems = new ProblemsPane
         {
@@ -164,7 +169,9 @@ internal sealed class SourcePane : FrameView
     private void SyncGutterScroll()
     {
         if (_syncingGutter) return;
+        if (_gutter.TopRow == _editor.TopRow) return;
         _gutter.TopRow = _editor.TopRow;
+        _gutter.SetNeedsDisplay();
     }
 
     // ---- Syntax highlighting -----------------------------------------------
