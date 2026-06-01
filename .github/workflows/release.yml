@@ -39,9 +39,6 @@ jobs:
           - os: macos-latest
             rid: osx-arm64
             ext: ''
-          - os: macos-13
-            rid: osx-x64
-            ext: ''
           - os: windows-latest
             rid: win-x64
             ext: '.exe'
@@ -112,9 +109,6 @@ jobs:
             ext: ''
           - os: macos-latest
             rid: osx-arm64
-            ext: ''
-          - os: macos-13
-            rid: osx-x64
             ext: ''
           - os: windows-latest
             rid: win-x64
@@ -218,7 +212,7 @@ jobs:
           STUBS="unity/Samples~/ArcadeBasic/Stubs"
           VER="${{ steps.ver.outputs.name }}"
           mkdir -p "$STUBS"
-          for rid in linux-x64 osx-arm64 osx-x64; do
+          for rid in linux-x64 osx-arm64; do
             cp "aot-artifacts/arcade-basic-$VER-$rid" "$STUBS/arcade-basic-$rid"
             chmod +x "$STUBS/arcade-basic-$rid"
           done
