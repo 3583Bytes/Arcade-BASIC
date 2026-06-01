@@ -44,6 +44,21 @@ install required — the runtime is bundled into the executable) for
 Every example in `/examples` is bundled into the binary and listed under
 **File ▸ Examples**.
 
+## Graphics & interactive input
+
+A program that uses the §13 graphics statements (`SET WINDOW`/`GRAPH …`) draws
+onto a **Graphics tab** — a Braille-cell canvas (2×4 dots per character cell).
+The tab appears automatically the moment a program draws.
+
+Both output surfaces have **their own `INPUT` field**: text programs read on the
+Output tab, graphics programs read on the field beneath the Graphics canvas. So
+an interactive draw → `INPUT` → redraw loop (e.g. [`kanban.bas`](../../examples/kanban.bas))
+stays on one surface instead of jumping between tabs. The program shows its
+prompts on the board with `GRAPH TEXT`; the field just collects the typed value.
+
+Try [`examples/graphics.bas`](../../examples/graphics.bas) (a static drawing) or
+[`examples/kanban.bas`](../../examples/kanban.bas) (an interactive board).
+
 ## Build standalone (F7)
 
 **Run ▸ Build standalone…** (or F7) compiles the current buffer to a single
@@ -75,9 +90,12 @@ your PATH; tagged releases ship both binaries for every supported RID.
 | `TuiShell.cs`           | Menus, status bar, layout, file ops.                              |
 | `SourcePane.cs`         | TextView + line-number gutter + highlight scheduling.             |
 | `OutputPane.cs`         | Read-only scrollback (size-capped) + the bottom input line for INPUT. |
-| `BrailleCanvas.cs`      | Graphics tab: a Braille-cell (2×4 dots/cell) canvas for §13 output. |
+| `BrailleCanvas.cs`      | Graphics tab canvas: a Braille-cell (2×4 dots/cell) bitmap for §13 output. |
+| `GraphicsPane.cs`       | Wraps the canvas + its own INPUT field (so graphics programs read here). |
 | `TuiGraphicsDevice.cs`  | Maps §13 graphics onto the canvas via the shared `Rasterizer`.    |
-| `RunController.cs`      | Task-based runner + thread-safe writer + main-loop drain pump.    |
+| `IInputSink.cs`         | The `BeginRead`/`CancelRead` contract both panes implement.       |
+| `InteractiveTextReader.cs` | `TextReader` for INPUT; marshals a read onto the active surface's field. |
+| `RunController.cs`      | Task runner + drain pump; routes INPUT to the active surface (graphics vs text). |
 | `SyntaxColorizer.cs`    | Token-kind → palette mapping (mirrors the Unity sample).          |
 | `CompileService.cs`     | Lex → parse → sema → bytecode-emit; powers F6 and F7.             |
 | `BuildService.cs`       | Append-bytecode-to-AOT-stub flow used by F7.                      |
@@ -90,8 +108,12 @@ your PATH; tagged releases ship both binaries for every supported RID.
 - **No AOT** — Terminal.Gui leans on reflection, so this binary isn't
   AOT-published. The CLI still is.
 - **BasicEngine** — every Run kicks off `ArcadeBasic.BasicEngine.Run` against
-  a thread-safe `TextWriter`. Cancellation is checked between statements;
-  the controller surfaces exit code 2 as `[cancelled]`.
+  a thread-safe `TextWriter` (and, for graphics, a `TuiGraphicsDevice`).
+  Cancellation is checked between statements; the controller surfaces exit
+  code 2 as `[cancelled]`.
+- **Crash capture** — an unhandled UI-thread exception is caught by
+  `TuiShell.Run`, which restores the terminal, prints the stack trace, and
+  writes it to `<temp>/arcade-basic-ide-error.log` instead of dying silently.
 - **Syntax highlighting** — classification logic and palette are in place
   (matches the Unity sample), but the per-token overlay in the editor still
   needs a `TextView.OnDrawContent` override. Tracked as a follow-up.

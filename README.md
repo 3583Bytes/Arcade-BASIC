@@ -78,7 +78,7 @@ All three execute the same surface of the language: arrays, MAT operations (tran
 
 ## Try the IDE
 
-**Arcade BASIC IDE** is a full-screen terminal IDE: a source pane with a line-number gutter, an output pane, a bottom input line for `INPUT`, examples bundled into the **File ▸ Examples** menu, and one-key Run/Stop.
+**Arcade BASIC IDE** is a full-screen terminal IDE: a source pane with a line-number gutter, an output pane with a bottom input line for `INPUT`, a **Graphics tab** (a Braille-cell canvas) with its own input line for interactive graphics programs, examples bundled into the **File ▸ Examples** menu, and one-key Run/Stop.
 
 ```sh
 # From source:
@@ -133,7 +133,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-13 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port and a Lunar Lander physics sim. Highlights:
+16 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, and a graphics Kanban board. Highlights:
 
 | Program | What it shows |
 |---|---|
@@ -143,6 +143,8 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`modules.bas`](examples/modules.bas) | `MODULE` blocks, `PUBLIC` vs private declarations |
 | [`fileio.bas`](examples/fileio.bas) | `OPEN` / `PRINT #` / `LINE INPUT #` / `CLOSE` |
 | [`formatted.bas`](examples/formatted.bas) | `PRINT USING` with picture strings |
+| [`graphics.bas`](examples/graphics.bas) | §13 graphics — `SET WINDOW`, `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` (render with `--svg`) |
+| [`kanban.bas`](examples/kanban.bas) | interactive graphics board — colored `GRAPH LINES` lanes + `GRAPH TEXT` cards |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 

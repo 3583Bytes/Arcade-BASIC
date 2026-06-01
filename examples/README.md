@@ -22,7 +22,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `modules.bas`    | MODULE block, PUBLIC vs private declarations    | ✓           | ✓           |
 | `pi.bas`         | Leibniz series, MOD, ABS, PI constant           | ✓           | ✓           |
 | `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | ✓           |
-| `kanban.bas`     | graphics board: colored GRAPH AREA columns + GRAPH TEXT cards, INPUT command loop, file save/load | ✓ | ✓ |
+| `kanban.bas`     | interactive graphics board: colored GRAPH LINES lane boxes + GRAPH TEXT cards, INPUT command loop, file save/load | ✓ | ✓ |
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 | `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |
