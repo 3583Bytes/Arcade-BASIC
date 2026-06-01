@@ -75,6 +75,8 @@ your PATH; tagged releases ship both binaries for every supported RID.
 | `TuiShell.cs`           | Menus, status bar, layout, file ops.                              |
 | `SourcePane.cs`         | TextView + line-number gutter + highlight scheduling.             |
 | `OutputPane.cs`         | Read-only scrollback (size-capped) + the bottom input line for INPUT. |
+| `BrailleCanvas.cs`      | Graphics tab: a Braille-cell (2×4 dots/cell) canvas for §13 output. |
+| `TuiGraphicsDevice.cs`  | Maps §13 graphics onto the canvas via the shared `Rasterizer`.    |
 | `RunController.cs`      | Task-based runner + thread-safe writer + main-loop drain pump.    |
 | `SyntaxColorizer.cs`    | Token-kind → palette mapping (mirrors the Unity sample).          |
 | `CompileService.cs`     | Lex → parse → sema → bytecode-emit; powers F6 and F7.             |

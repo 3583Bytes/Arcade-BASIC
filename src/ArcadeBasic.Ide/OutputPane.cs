@@ -11,7 +11,7 @@ namespace ArcadeBasic.Ide;
 /// a runaway program can't blow up memory — the oldest content is trimmed
 /// when the cap is exceeded.
 /// </summary>
-internal sealed class OutputPane : FrameView
+internal sealed class OutputPane : FrameView, IInputSink
 {
     private const int CharCap = 32_000;
 

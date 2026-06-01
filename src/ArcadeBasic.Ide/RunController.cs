@@ -13,27 +13,39 @@ namespace ArcadeBasic.Ide;
 internal sealed class RunController
 {
     private readonly OutputPane _output;
+    private readonly GraphicsPane _graphics;
     private readonly Action<RunState> _onStateChanged;
     private readonly Action<IReadOnlyList<string>> _onDiagnostics;
-    private readonly Action _onInputRequested;
+    private readonly Action<bool> _onInputRequested;
+    private readonly Action _onGraphicsDrawn;
 
     private CancellationTokenSource? _cts;
     private Task<BasicEngine.Result>? _task;
     private ThreadSafeWriter? _writer;
     private object? _pumpToken;
     private int _drainCursor;
+    private bool _graphicsShown;
 
     public RunController(
         OutputPane output,
+        GraphicsPane graphics,
         Action<RunState> onStateChanged,
         Action<IReadOnlyList<string>> onDiagnostics,
-        Action onInputRequested)
+        Action<bool> onInputRequested,
+        Action onGraphicsDrawn)
     {
         _output = output;
+        _graphics = graphics;
         _onStateChanged = onStateChanged;
         _onDiagnostics = onDiagnostics;
         _onInputRequested = onInputRequested;
+        _onGraphicsDrawn = onGraphicsDrawn;
     }
+
+    // Once a program has drawn anything, INPUT is served on the graphics
+    // surface (so the board and its prompt sit together); otherwise on the text
+    // output pane.
+    private IInputSink ActiveSink() => _graphics.Canvas.IsEmpty ? _output : _graphics;
 
     public enum RunState { Idle, Running, Cancelled, Failed, Succeeded }
 
@@ -51,18 +63,29 @@ internal sealed class RunController
         _cts = new CancellationTokenSource();
         _writer = new ThreadSafeWriter();
         _drainCursor = 0;
+        _graphicsShown = false;
+        _graphics.Canvas.ClearBuffer();
         _onStateChanged(RunState.Running);
 
         var token = _cts.Token;
         var writer = _writer;
+        var device = new TuiGraphicsDevice(_graphics.Canvas);
 
-        var stdin = new InteractiveTextReader(_output, _onInputRequested, token);
+        var stdin = new InteractiveTextReader(
+            beginRead: done =>
+            {
+                var useGraphics = !_graphics.Canvas.IsEmpty;
+                _onInputRequested(useGraphics);
+                ActiveSink().BeginRead(done);
+            },
+            cancelRead: () => ActiveSink().CancelRead(),
+            token);
 
         _task = Task.Run(() =>
         {
             try
             {
-                return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token);
+                return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token, graphics: device);
             }
             catch (Exception ex)
             {
@@ -73,6 +96,11 @@ internal sealed class RunController
         _pumpToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(80), _ =>
         {
             Drain();
+            if (!_graphics.Canvas.IsEmpty)
+            {
+                _graphics.Canvas.SetNeedsDisplay();
+                if (!_graphicsShown) { _graphicsShown = true; _onGraphicsDrawn(); }
+            }
             if (_task is { IsCompleted: true })
             {
                 Finish();
@@ -102,6 +130,11 @@ internal sealed class RunController
     private void Finish()
     {
         Drain();
+        if (!_graphics.Canvas.IsEmpty)
+        {
+            _graphics.Canvas.SetNeedsDisplay();
+            _onGraphicsDrawn();
+        }
 
         var task = _task!;
         var cts = _cts;

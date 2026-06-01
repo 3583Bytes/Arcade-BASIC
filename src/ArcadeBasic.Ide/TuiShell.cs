@@ -10,20 +10,27 @@ internal sealed class TuiShell
 {
     private readonly SourcePane _source = new();
     private readonly OutputPane _output = new();
+    private readonly GraphicsPane _graphics = new();
     private readonly RunController _runner;
     private readonly StatusItem _statusItem;
 
     private TabView _tabs = null!;
     private TabView.Tab _sourceTab = null!;
     private TabView.Tab _outputTab = null!;
+    private TabView.Tab _graphicsTab = null!;
 
     private string? _currentFilePath;
 
     private TuiShell()
     {
         _statusItem = new StatusItem(Key.Null, "Ready", null);
-        _runner = new RunController(_output, OnRunStateChanged, OnDiagnostics, OnInputRequested);
+        _runner = new RunController(_output, _graphics, OnRunStateChanged, OnDiagnostics, OnInputRequested, OnGraphicsDrawn);
         _source.Problems.StatusMessage += SetStatus;
+    }
+
+    private void OnGraphicsDrawn()
+    {
+        if (_graphicsTab is not null) _tabs.SelectedTab = _graphicsTab;
     }
 
     private void SetStatus(string message)
@@ -35,16 +42,33 @@ internal sealed class TuiShell
     public static int Run(string? initialFile)
     {
         Application.Init();
+        Exception? fatal = null;
         try
         {
             var shell = new TuiShell();
             shell.Build(initialFile);
-            Application.Run();
-            return 0;
+            // Capture any unhandled UI-thread exception instead of letting it
+            // tear the terminal down with no visible message. Returning false
+            // stops the loop so we exit cleanly and report it below.
+            Application.Run(ex => { fatal = ex; return false; });
+            return fatal is null ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            fatal = ex;
+            return 1;
         }
         finally
         {
-            Application.Shutdown();
+            Application.Shutdown();   // restore the terminal first
+            if (fatal is not null)
+            {
+                var log = Path.Combine(Path.GetTempPath(), "arcade-basic-ide-error.log");
+                try { File.WriteAllText(log, fatal.ToString()); } catch { /* best effort */ }
+                Console.Error.WriteLine("Arcade BASIC IDE hit an error and had to stop:");
+                Console.Error.WriteLine(fatal);
+                Console.Error.WriteLine($"(also written to {log})");
+            }
         }
     }
 
@@ -75,8 +99,14 @@ internal sealed class TuiShell
         _output.Width = Dim.Fill();
         _output.Height = Dim.Fill();
 
+        _graphics.X = 0;
+        _graphics.Y = 0;
+        _graphics.Width = Dim.Fill();
+        _graphics.Height = Dim.Fill();
+
         _sourceTab = new TabView.Tab("Source", _source);
         _outputTab = new TabView.Tab("Output", _output);
+        _graphicsTab = new TabView.Tab("Graphics", _graphics);
 
         _tabs = new TabView
         {
@@ -87,6 +117,7 @@ internal sealed class TuiShell
         };
         _tabs.AddTab(_sourceTab, true);
         _tabs.AddTab(_outputTab, false);
+        _tabs.AddTab(_graphicsTab, false);
 
         // TabView selects a tab but doesn't always push focus into the inner
         // editable view — without this the terminal cursor stays parked on the
@@ -301,9 +332,9 @@ internal sealed class TuiShell
         Application.Driver?.SetCursorVisibility(CursorVisibility.Default);
     }
 
-    private void OnInputRequested()
+    private void OnInputRequested(bool graphics)
     {
-        _tabs.SelectedTab = _outputTab;
+        _tabs.SelectedTab = graphics ? _graphicsTab : _outputTab;
     }
 
     private void OnRunStateChanged(RunController.RunState state)

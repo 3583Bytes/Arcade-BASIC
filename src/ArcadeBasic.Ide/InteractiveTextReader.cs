@@ -11,14 +11,17 @@ namespace ArcadeBasic.Ide;
 /// </summary>
 internal sealed class InteractiveTextReader : TextReader
 {
-    private readonly OutputPane _output;
-    private readonly Action _onInputRequested;
+    private readonly Action<Action<string?>> _beginRead;
+    private readonly Action _cancelRead;
     private readonly CancellationToken _cancel;
 
-    public InteractiveTextReader(OutputPane output, Action onInputRequested, CancellationToken cancel)
+    /// <param name="beginRead">Activates the active surface's input field and
+    /// reports the submitted text (or null if cancelled). Runs on the UI thread.</param>
+    /// <param name="cancelRead">Cancels a pending read. Runs on the UI thread.</param>
+    public InteractiveTextReader(Action<Action<string?>> beginRead, Action cancelRead, CancellationToken cancel)
     {
-        _output = output;
-        _onInputRequested = onInputRequested;
+        _beginRead = beginRead;
+        _cancelRead = cancelRead;
         _cancel = cancel;
     }
 
@@ -31,8 +34,7 @@ internal sealed class InteractiveTextReader : TextReader
 
         Application.MainLoop.Invoke(() =>
         {
-            _onInputRequested();
-            _output.BeginRead(text =>
+            _beginRead(text =>
             {
                 result = text;
                 done.Set();
@@ -42,7 +44,7 @@ internal sealed class InteractiveTextReader : TextReader
         // Stop should unblock the read by cancelling the input field.
         using var reg = _cancel.Register(() =>
         {
-            Application.MainLoop.Invoke(() => _output.CancelRead());
+            Application.MainLoop.Invoke(() => _cancelRead());
         });
 
         done.Wait();

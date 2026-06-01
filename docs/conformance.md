@@ -16,7 +16,7 @@ The spec uses "shall" for normative requirements and "should" for recommendation
 | File I/O (INTERNAL mode, BYTE mode, RANDOM organisation) | ❌ Not yet |
 | Editing module — `PRINT USING` | ✅ Implemented |
 | Editing module — formatted `INPUT` | ❌ Not yet |
-| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG backend; TUI/Unity backends pending) |
+| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG + terminal/braille backends; Unity backend pending) |
 | Fixed-decimal | ❌ Not yet (skipped per project plan unless asked) |
 | Real-time | ❌ Not in scope |
 
@@ -234,9 +234,10 @@ and `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`.
 (Cohen–Sutherland for lines, Sutherland–Hodgman for areas) and hands an
 `IGraphicsDevice` clipped vector primitives in the normalized device unit square.
 The interpreter and VM share that core, so graphics output is byte-identical
-between engines (asserted in `ArcadeBasic.Conformance.Tests`). The shipped
-backend is **SVG** (`arcade-basic run|vm file.bas --svg out.svg`); terminal-IDE
-(braille) and Unity (`Texture2D`) backends are planned.
+between engines (asserted in `ArcadeBasic.Conformance.Tests`). Shipped backends:
+**SVG** (`arcade-basic run|vm file.bas --svg out.svg`) and the **terminal IDE**
+(a Braille-cell canvas on a Graphics tab in `arcade-basic-ide`, sharing a
+`Rasterizer` in Runtime). A Unity (`Texture2D`) backend is planned.
 
 **IMPLEMENTATION-DEFINED:** the device transform (DEVICE WINDOW → DEVICE
 VIEWPORT) is a plain linear remap within the unit square; physical aspect-ratio
