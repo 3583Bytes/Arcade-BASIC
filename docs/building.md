@@ -57,21 +57,33 @@ build the CLI (`arcade-basic`) or a standalone `.bas` binary.
 
 ## 2. Runtime identifiers (RIDs)
 
-Publishing is per-target. Pick the RID for your platform:
+A **RID** (Runtime Identifier) names the target a binary is built for — its
+operating system and CPU architecture, in the form `<os>-<arch>`. Publishing is
+**per-target**: every `dotnet publish` command below takes `-r <RID>` (long form
+`--runtime <RID>`), and you substitute **one** concrete value from this table —
+the platform you want the binary to run on. There is no "build for all
+platforms" option; run the publish once per target.
 
-| Platform | RID | Binary suffix |
-|---|---|---|
-| Linux x64 | `linux-x64` | *(none)* |
-| Linux ARM64 | `linux-arm64` | *(none)* |
-| macOS Intel | `osx-x64` | *(none)* |
-| macOS Apple Silicon | `osx-arm64` | *(none)* |
-| Windows x64 | `win-x64` | `.exe` |
+| Platform | RID | Binary suffix | In tagged releases? |
+|---|---|---|:---:|
+| Linux x64 | `linux-x64` | *(none)* | yes |
+| Linux ARM64 | `linux-arm64` | *(none)* | no — build it yourself |
+| macOS Intel | `osx-x64` | *(none)* | no — build it yourself |
+| macOS Apple Silicon | `osx-arm64` | *(none)* | yes |
+| Windows x64 | `win-x64` | `.exe` | yes |
+
+So wherever a command shows `<RID>`, replace it literally — e.g. on an
+Apple-Silicon Mac: `dotnet publish ... -r osx-arm64`.
 
 > **Cross-compilation:** NativeAOT can **not** cross-compile to a different OS
 > (build Linux binaries on Linux, etc.). For a different *architecture* on the
-> same OS, build on a matching-arch machine — our release pipeline builds
-> `osx-x64` on an Intel runner and `osx-arm64` on an Apple-Silicon runner. The
-> self-contained IDE publish is more forgiving but is still best built per RID.
+> same OS, build on a matching-arch machine — e.g. the release pipeline builds
+> `osx-arm64` on an Apple-Silicon runner. The self-contained IDE publish is more
+> forgiving but is still best built per RID.
+>
+> **`osx-x64` (Intel Mac)** is a valid RID you can still build locally, but it is
+> **no longer produced by the release pipeline** — download a release only for
+> the platforms marked "yes" above; build the rest from source.
 
 ---
 
@@ -139,6 +151,11 @@ Smoke-test:
 The IDE is **not** AOT-compiled (Terminal.Gui relies on reflection), so it ships
 as a self-contained single-file binary with the .NET runtime bundled inside. No
 native toolchain required.
+
+`--runtime <RID>` is the target platform (see §2) — replace `<RID>` with your
+own, e.g. `win-x64`, `osx-arm64`, or `linux-x64`. Because the publish is
+`--self-contained`, that RID decides which platform's .NET runtime gets bundled
+into the single file, so the result runs on that target with no .NET installed.
 
 ```sh
 dotnet publish src/ArcadeBasic.Ide \
