@@ -22,6 +22,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `modules.bas`    | MODULE block, PUBLIC vs private declarations    | ✓           | ✓           |
 | `pi.bas`         | Leibniz series, MOD, ABS, PI constant           | ✓           | ✓           |
 | `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | ✓           |
+| `kanban.bas`     | string FUNCTION, GOSUB render, INPUT loop, file save/load | ✓ | ✓           |
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 
