@@ -46,6 +46,20 @@ public class InterpreterTests
         output.Trim().Should().Be("42");
     }
 
+    [Theory]
+    [InlineData("PRINT 1E-03", "0.001")]
+    [InlineData("PRINT 2.5E3", "2500")]
+    [InlineData("PRINT 6.022E2", "602.2")]
+    [InlineData("PRINT 1.5E-3 + 0.5", "0.5015")]
+    public void ScientificNotationLiteralsEvaluate(string source, string expected)
+    {
+        // Regression: literals like 1E-03 lex fine but used to crash at
+        // evaluation because BigDecimal.Parse defaulted to NumberStyles.Number
+        // (no AllowExponent). Now parsed with NumberStyles.Float.
+        var (output, _, _) = Run(source);
+        output.Trim().Should().Be(expected);
+    }
+
     [Fact]
     public void MultipleAssignmentsAndPrint()
     {
@@ -124,6 +138,36 @@ public class InterpreterTests
     {
         var (output, _, _) = Run("IF 1 < 0 THEN PRINT \"y\" ELSE PRINT \"n\"");
         output.Trim().Should().Be("n");
+    }
+
+    [Fact]
+    public void BareIfThenLineNumberJumps()
+    {
+        // "IF c THEN <line>" is implicit GOTO <line>.
+        const string src = """
+            10 LET X = 5
+            20 IF X > 0 THEN 100
+            30 PRINT "fell-through"
+            40 GOTO 110
+            100 PRINT "jumped"
+            110 END
+            """;
+        var (output, _, _) = Run(src);
+        output.Trim().Should().Be("jumped");
+    }
+
+    [Fact]
+    public void BareIfThenElseLineNumberTakesElse()
+    {
+        const string src = """
+            10 IF 1 < 0 THEN 100 ELSE 200
+            100 PRINT "then"
+            105 GOTO 210
+            200 PRINT "else"
+            210 END
+            """;
+        var (output, _, _) = Run(src);
+        output.Trim().Should().Be("else");
     }
 
     [Fact]
@@ -295,6 +339,126 @@ public class InterpreterTests
         lines[0].Trim().Should().Be("before");
         lines[1].Trim().Should().Be("in sub");
         lines[2].Trim().Should().Be("after");
+    }
+
+    [Theory]
+    [InlineData(1, "one")]
+    [InlineData(2, "two")]
+    [InlineData(3, "three")]
+    public void OnGotoSelectsTarget(int sel, string expected)
+    {
+        var src = $"""
+            10 LET I = {sel}
+            20 ON I GOTO 100, 200, 300
+            100 PRINT "one"
+            105 GOTO 900
+            200 PRINT "two"
+            205 GOTO 900
+            300 PRINT "three"
+            900 END
+            """;
+        var (output, _, _) = Run(src);
+        Lines(output)[0].Should().Be(expected);
+    }
+
+    [Fact]
+    public void OnGosubReturnsToNextStatement()
+    {
+        const string src = """
+            10 ON 2 GOSUB 100, 200
+            20 PRINT "back"
+            30 GOTO 900
+            100 PRINT "sub-one"
+            110 RETURN
+            200 PRINT "sub-two"
+            210 RETURN
+            900 END
+            """;
+        var lines = Lines(Run(src).Output);
+        lines[0].Should().Be("sub-two");
+        lines[1].Should().Be("back");
+    }
+
+    [Fact]
+    public void OnGotoOutOfRangeRunsElse()
+    {
+        const string src = """
+            10 ON 9 GOTO 100, 200 ELSE PRINT "else-branch"
+            20 PRINT "continued"
+            30 GOTO 900
+            100 PRINT "t1"
+            200 PRINT "t2"
+            900 END
+            """;
+        var lines = Lines(Run(src).Output);
+        lines[0].Should().Be("else-branch");
+        lines[1].Should().Be("continued");
+    }
+
+    [Fact]
+    public void OnGotoOutOfRangeWithoutElseIsCatchable()
+    {
+        // Spec §8.2: out-of-range index with no ELSE raises exception 10001.
+        const string src = """
+            10 WHEN EXCEPTION IN
+            20   ON 5 GOTO 100, 200
+            30 USE
+            40   PRINT "caught"; EXTYPE
+            50 END WHEN
+            60 GOTO 900
+            100 PRINT "t1"
+            200 PRINT "t2"
+            900 END
+            """;
+        Lines(Run(src).Output)[0].Should().Be("caught 10001");
+    }
+
+    [Fact]
+    public void OnGotoIndexIsRounded()
+    {
+        // 2.4 rounds to 2 → second target.
+        const string src = """
+            10 ON 2.4 GOTO 100, 200, 300
+            100 PRINT "one"
+            105 GOTO 900
+            200 PRINT "two"
+            205 GOTO 900
+            300 PRINT "three"
+            900 END
+            """;
+        Lines(Run(src).Output)[0].Should().Be("two");
+    }
+
+    [Fact]
+    public void GotoLabelOnNextContinuesLoop()
+    {
+        // A label on NEXT is a valid target; jumping to it runs the loop's
+        // increment/test (skips the rest of the body for that iteration).
+        const string src = """
+            10 FOR I = 1 TO 3
+            20   IF I = 2 THEN GOTO 40
+            30   PRINT "body"; I
+            40 NEXT I
+            50 PRINT "after"
+            """;
+        var lines = Lines(Run(src).Output);
+        lines[0].Should().Be("body 1");
+        lines[1].Should().Be("body 3");
+        lines[2].Should().Be("after");
+    }
+
+    [Fact]
+    public void GotoLabelOnEndIfFallsPastBlock()
+    {
+        const string src = """
+            10 IF 1 > 0 THEN
+            20   GOTO 40
+            30   PRINT "skipped"
+            40 END IF
+            50 PRINT "done"
+            """;
+        var lines = Lines(Run(src).Output);
+        lines.Should().ContainSingle().Which.Should().Be("done");
     }
 
     // -- Builtins -------------------------------------------------------

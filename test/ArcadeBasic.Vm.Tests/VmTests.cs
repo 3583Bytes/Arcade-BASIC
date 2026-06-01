@@ -51,6 +51,13 @@ public class VmTests
     public void IntegerArithmetic() =>
         Run("PRINT 1 + 2 * 3").Output.Trim().Should().Be("7");
 
+    [Theory]
+    [InlineData("PRINT 1E-03", "0.001")]
+    [InlineData("PRINT 2.5E3", "2500")]
+    [InlineData("PRINT 1.5E-3 + 0.5", "0.5015")]
+    public void ScientificNotationLiterals(string source, string expected) =>
+        Run(source).Output.Trim().Should().Be(expected);
+
     [Fact]
     public void DecimalArithmetic() =>
         Run("PRINT 0.1 + 0.2").Output.Trim().Should().Be("0.3");
@@ -1257,6 +1264,98 @@ public class VmTests
     {
         var (_, exit) = Run("RETURN");
         exit.Should().Be(1);
+    }
+
+    [Fact]
+    public void GotoLabelOnNextContinuesLoop()
+    {
+        const string src = """
+            10 FOR I = 1 TO 3
+            20   IF I = 2 THEN GOTO 40
+            30   PRINT "body"; I
+            40 NEXT I
+            50 PRINT "after"
+            """;
+        var lines = Run(src).Output.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+        lines.Should().Equal("body 1", "body 3", "after");
+    }
+
+    [Fact]
+    public void GotoLabelOnEndIfFallsPastBlock()
+    {
+        const string src = """
+            10 IF 1 > 0 THEN
+            20   GOTO 40
+            30   PRINT "skipped"
+            40 END IF
+            50 PRINT "done"
+            """;
+        Run(src).Output.Trim().Should().Be("done");
+    }
+
+    [Theory]
+    [InlineData(1, "one")]
+    [InlineData(3, "three")]
+    public void OnGotoSelectsTarget(int sel, string expected)
+    {
+        var src = $"""
+            10 LET I = {sel}
+            20 ON I GOTO 100, 200, 300
+            100 PRINT "one"
+            105 GOTO 900
+            200 PRINT "two"
+            205 GOTO 900
+            300 PRINT "three"
+            900 END
+            """;
+        Run(src).Output.Split('\n')[0].Trim().Should().Be(expected);
+    }
+
+    [Fact]
+    public void OnGosubReturnsToNextStatement()
+    {
+        const string src = """
+            10 ON 2 GOSUB 100, 200
+            20 PRINT "back"
+            30 GOTO 900
+            100 PRINT "sub-one"
+            110 RETURN
+            200 PRINT "sub-two"
+            210 RETURN
+            900 END
+            """;
+        Run(src).Output.Trim().Should().Be("sub-two\nback");
+    }
+
+    [Fact]
+    public void OnGotoOutOfRangeRunsElse()
+    {
+        const string src = """
+            10 ON 9 GOTO 100, 200 ELSE PRINT "else-branch"
+            20 PRINT "continued"
+            30 GOTO 900
+            100 PRINT "t1"
+            200 PRINT "t2"
+            900 END
+            """;
+        Run(src).Output.Trim().Should().Be("else-branch\ncontinued");
+    }
+
+    [Fact]
+    public void OnGotoOutOfRangeWithoutElseIsCatchable()
+    {
+        const string src = """
+            10 WHEN EXCEPTION IN
+            20   ON 5 GOTO 100, 200
+            30 USE
+            40   PRINT "caught"; EXTYPE
+            50 END WHEN
+            60 GOTO 900
+            100 PRINT "t1"
+            200 PRINT "t2"
+            900 END
+            """;
+        Run(src).Output.Split('\n')[0].Trim().Should().Be("caught 10001");
     }
 
     // -- PRINT TAB -----------------------------------------------------

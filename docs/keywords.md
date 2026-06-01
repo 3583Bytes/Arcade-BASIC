@@ -34,6 +34,7 @@ token. Examples use uppercase by convention.
 [EXIT](#exit)
 
 **Jumps:** [GOTO](#goto) · [GOSUB / RETURN](#gosub--return) ·
+[ON ... GOTO / GOSUB](#on--goto--gosub) ·
 [STOP](#stop) · [END](#end) · [RANDOMIZE](#randomize) · [RUN](#run)
 
 **Word-form operators:** [AND, OR, NOT, XOR, IMP, EQV](#logical-operators) ·
@@ -362,14 +363,19 @@ PRINT A; B; C; D           !  1   2   1   2
 ### `IF` / `THEN` / `ELSEIF` / `ELSE` / `END IF`
 
 Single-line and block forms. The single-line form puts the conditional
-statement (often `PRINT` or `GOTO`) directly after `THEN`. The block form
-opens with `THEN` at end-of-line and closes with `END IF`, optionally
-nesting `ELSEIF` and `ELSE`.
+statement (often `PRINT` or `GOTO`) directly after `THEN`. A bare line-number
+after `THEN` (or `ELSE`) is shorthand for an implicit `GOTO`: `IF X < 0 THEN 900`
+means `IF X < 0 THEN GOTO 900`. The block form opens with `THEN` at end-of-line
+and closes with `END IF`, optionally nesting `ELSEIF` and `ELSE`.
 
 ```basic
 ! Single-line form
 IF X > 0 THEN PRINT "positive"
 IF Y < 0 THEN PRINT "neg" ELSE PRINT "non-neg"
+
+! Bare line-number after THEN/ELSE is an implicit GOTO
+IF X < 0 THEN 900
+IF X = 0 THEN 100 ELSE 200
 
 ! Block form
 IF X = 1 THEN
@@ -464,7 +470,10 @@ END SUB
 ### `GOTO`
 
 Branch unconditionally to a line label. Labels are leading integers on a
-line. Forward and backward jumps both work.
+line. Forward and backward jumps both work. A label on a block terminator
+(`120 NEXT I`, `999 END IF`, …) is a valid target: jumping to a `NEXT`/`LOOP`
+runs the loop's increment/test next, and jumping to an `END IF`/`END SELECT`
+falls past the block.
 
 ```basic
 GOTO 200
@@ -484,6 +493,21 @@ PRINT "after"
 STOP
 100 PRINT "inside"
 RETURN
+```
+
+### `ON ... GOTO / GOSUB`
+
+Computed jump. The index expression is **rounded** to an integer that selects a
+1-based line-number from the list (`GO TO` / `GO SUB` two-word spellings also
+work). `ON ... GOSUB` pushes a return address like a plain `GOSUB`, so `RETURN`
+comes back to the statement after the `ON`. An optional `ELSE <statement>` runs
+when the index is out of range; without `ELSE`, an out-of-range index raises
+exception `10001`, catchable with [`WHEN ... USE`](#when--use).
+
+```basic
+ON CHOICE GOTO 100, 200, 300        ! CHOICE=2 jumps to line 200
+ON K GOSUB 1000, 2000, 3000         ! call the K-th subroutine, then continue
+ON N GOTO 100, 200 ELSE PRINT "out of range"
 ```
 
 ### `STOP`

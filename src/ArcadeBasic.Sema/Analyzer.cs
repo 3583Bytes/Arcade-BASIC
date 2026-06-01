@@ -317,6 +317,21 @@ public sealed class Analyzer
             case GotoStmt g: AnalyzeLabelTarget(g.LabelTarget, scope); break;
             case GosubStmt g: AnalyzeLabelTarget(g.LabelTarget, scope); break;
 
+            case OnJumpStmt on:
+            {
+                var idxTy = AnalyzeExpr(on.Index, scope);
+                ExpectType(on.Index, idxTy, BasicType.Numeric, "ON index");
+                foreach (var line in on.Targets)
+                {
+                    if (!_labels.ContainsKey(line))
+                    {
+                        _diags.Error(ErrUndefinedLineLabel, on.Span, $"line label {line} not found");
+                    }
+                }
+                if (on.ElseStmt is not null) AnalyzeStmt(on.ElseStmt, scope);
+                break;
+            }
+
             case ReturnStmt: case StopStmt: case EndStmt: case EndBlockStmt: case RunStmt:
             case RemStmt: case OptionBaseStmt: case OptionArithmeticStmt:
             case ExitStmt: case NextStmt: case LoopStmt:

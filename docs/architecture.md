@@ -116,7 +116,7 @@ Highlights:
 - **AST is `abstract record class` + sealed records** — pattern-matching with exhaustiveness in `switch` expressions across `Stmt`, `Expr`, `PrintItem`, `MatStmt`, etc.
 - **Single-line vs block `IF`** is disambiguated by whether `THEN` is followed by a newline (block) or a statement (single-line). Single-line `IF` supports `:`-chained statements in both `THEN` and `ELSE`.
 - **`:`-separated multi-statements** are parsed at the program/block level; `ParseLabeledStatement` consumes a label and a single statement, then peeks for `:` to continue on the same logical line.
-- **Block terminators** (`NEXT`, `END IF`, `LOOP`, `END SELECT`) may carry a leading label, which `ParseStatementBlock` consumes and discards — labels on block terminators don't survive into the AST. Place GOSUB/GOTO targets on a normal statement, not on the terminator.
+- **Block terminators** (`NEXT`, `END IF`, `LOOP`, `END SELECT`) may carry a leading label. `ParseStatementBlock` preserves it as a labeled no-op (`RemStmt`) appended to the end of the block body, so the label survives as a valid GOTO/GOSUB target — a jump lands at the end of the body and then the loop's increment/test runs (`NEXT`/`LOOP`) or control falls past the block (`END IF`/`END SELECT`). This is the same effect as the older `<label> REM` workaround, applied automatically.
 
 ### ArcadeBasic.Sema
 

@@ -59,6 +59,18 @@ public class SerializationTests
     }
 
     [Fact]
+    public void RoundTripScientificNotationConstants()
+    {
+        // The constant pool stores BigDecimal.ToString(), which expands to plain
+        // decimal (no exponent), so deserialization parses it back faithfully
+        // even for extreme magnitudes written in scientific notation.
+        var compiled = Compile("PRINT 1E-03\nPRINT 1E308\nPRINT 6.022E2");
+        var bytes = BytecodeSerializer.Serialize(compiled);
+        var back = BytecodeSerializer.Deserialize(bytes);
+        RunCompiled(back).Should().Be(RunCompiled(compiled));
+    }
+
+    [Fact]
     public void TrailerFramingAppendAndDetect()
     {
         var tmp = Path.Combine(Path.GetTempPath(), "fb-trailer-" + Guid.NewGuid().ToString("N"));

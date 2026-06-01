@@ -152,6 +152,32 @@ public class ParserTests
     }
 
     [Fact]
+    public void OnGotoParsesTargetsAndKind()
+    {
+        var stmt = SingleStmt<OnJumpStmt>("ON X GOTO 100, 200, 300");
+        stmt.IsGosub.Should().BeFalse();
+        stmt.Targets.Should().Equal(100, 200, 300);
+        stmt.ElseStmt.Should().BeNull();
+    }
+
+    [Fact]
+    public void OnGosubWithElseParses()
+    {
+        var stmt = SingleStmt<OnJumpStmt>("ON A + 1 GOSUB 1000, 2000 ELSE PRINT \"oops\"");
+        stmt.IsGosub.Should().BeTrue();
+        stmt.Targets.Should().Equal(1000, 2000);
+        stmt.ElseStmt.Should().BeOfType<PrintStmt>();
+    }
+
+    [Fact]
+    public void OnGoToTwoWordFormParses()
+    {
+        var stmt = SingleStmt<OnJumpStmt>("ON I GO TO 10, 20");
+        stmt.IsGosub.Should().BeFalse();
+        stmt.Targets.Should().Equal(10, 20);
+    }
+
+    [Fact]
     public void Dim()
     {
         var stmt = SingleStmt<DimStmt>("DIM A(10), B(2 TO 5, 1 TO 10), S$(20)");
@@ -228,6 +254,25 @@ public class ParserTests
         stmt.ThenBlock.Should().HaveCount(1);
         stmt.ElseBlock.Should().NotBeNull();
         stmt.ElseBlock!.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void BareIfThenLineNumberIsImplicitGoto()
+    {
+        // ISO 10279 shorthand: "IF c THEN 1990" == "IF c THEN GOTO 1990".
+        var stmt = SingleStmt<IfStmt>("IF X > 0 THEN 1990");
+        stmt.ThenBlock.Should().HaveCount(1);
+        stmt.ThenBlock[0].Should().BeOfType<GotoStmt>();
+        stmt.ElseBlock.Should().BeNull();
+    }
+
+    [Fact]
+    public void BareIfThenElseLineNumbersAreImplicitGotos()
+    {
+        var stmt = SingleStmt<IfStmt>("IF X > 0 THEN 100 ELSE 200");
+        stmt.ThenBlock.Should().ContainSingle().Which.Should().BeOfType<GotoStmt>();
+        stmt.ElseBlock.Should().NotBeNull();
+        stmt.ElseBlock!.Should().ContainSingle().Which.Should().BeOfType<GotoStmt>();
     }
 
     [Fact]
@@ -497,12 +542,18 @@ public class ParserTests
         var (prog, diags) = Parse(src);
         diags.HasErrors.Should().BeFalse();
         // The 8 source lines collapse to 6 program-level statements: the FOR
-        // block consumes its body (LET F=F*I) and trailing NEXT.
+        // block consumes its body and trailing NEXT.
         prog.Statements.Should().HaveCount(6);
         prog.Statements[0].Should().BeOfType<RemStmt>();
         prog.Statements[1].Should().BeOfType<InputStmt>();
         prog.Statements[2].Should().BeOfType<AssignStmt>();
-        prog.Statements[3].Should().BeOfType<ForStmt>().Which.Body.Should().HaveCount(1);
+        // The body holds "LET F = F * I" plus a labeled no-op that preserves the
+        // line label (150) sitting on the terminating NEXT, so it stays a valid
+        // jump target.
+        var forBody = prog.Statements[3].Should().BeOfType<ForStmt>().Which.Body;
+        forBody.Should().HaveCount(2);
+        forBody[0].Should().BeOfType<AssignStmt>();
+        forBody[1].Should().BeOfType<RemStmt>().Which.Label.Should().Be(150);
         prog.Statements[4].Should().BeOfType<PrintStmt>();
         prog.Statements[5].Should().BeOfType<EndStmt>();
     }

@@ -43,6 +43,19 @@ public sealed record class GotoStmt(SourceSpan Span, Expr LabelTarget) : Stmt(Sp
 /// <summary>GOSUB label</summary>
 public sealed record class GosubStmt(SourceSpan Span, Expr LabelTarget) : Stmt(Span);
 
+/// <summary>
+/// ON index GOTO/GOSUB l1, l2, ... [ELSE stmt]. The rounded index selects the
+/// 1-based target line-number. <see cref="IsGosub"/> distinguishes the GOSUB
+/// form (pushes a return address). If the index is out of range, <see
+/// cref="ElseStmt"/> runs when present, otherwise a §8.2 exception is raised.
+/// </summary>
+public sealed record class OnJumpStmt(
+    SourceSpan Span,
+    Expr Index,
+    IReadOnlyList<int> Targets,
+    bool IsGosub,
+    Stmt? ElseStmt) : Stmt(Span);
+
 /// <summary>RETURN — from GOSUB, FUNCTION, or SUB.</summary>
 public sealed record class ReturnStmt(SourceSpan Span) : Stmt(Span);
 

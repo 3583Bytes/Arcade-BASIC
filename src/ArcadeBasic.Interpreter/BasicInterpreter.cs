@@ -230,6 +230,28 @@ public sealed partial class BasicInterpreter
                     var n = (int)EvalNumeric(g.LabelTarget, frame);
                     return new FlowControl.Gosub(n);
                 }
+            case OnJumpStmt on:
+                {
+                    // Spec §8.2: the index is *rounded* (not truncated like a plain
+                    // GOTO target) to select a 1-based line-number from the list.
+                    // Use the same rounding as the ROUND builtin (banker's), so the
+                    // VM (which lowers this through ROUND) matches byte-for-byte.
+                    var idx = (int)BigDecimal.Round(
+                        EvalNumeric(on.Index, frame), 0, RoundingMode.MidpointToEven);
+                    if (idx >= 1 && idx <= on.Targets.Count)
+                    {
+                        var label = on.Targets[idx - 1];
+                        // Reuse the existing jump signals: Gosub pushes a return
+                        // address (the statement after this one) and RETURN pops it,
+                        // and both propagate out of nested blocks via the driver loop.
+                        return on.IsGosub ? new FlowControl.Gosub(label) : new FlowControl.Goto(label);
+                    }
+                    // Out of range: run ELSE if present (its own flow propagates;
+                    // a non-jumping ELSE falls through to the next line), else raise.
+                    if (on.ElseStmt is not null) return ExecStmt(on.ElseStmt, frame);
+                    throw new BasicRuntimeException(10001,
+                        $"ON index {idx} is out of range 1..{on.Targets.Count} and there is no ELSE clause");
+                }
             case ReturnStmt: return new FlowControl.Return();
             case StopStmt: return FlowControl.Stopped;
             case EndStmt: return FlowControl.Ended;
@@ -291,7 +313,7 @@ public sealed partial class BasicInterpreter
         switch (expr)
         {
             case NumberExpr n:
-                return new NumericValue(BigDecimal.Parse(n.Text, CultureInfo.InvariantCulture));
+                return new NumericValue(BigDecimal.Parse(n.Text, NumberStyles.Float, CultureInfo.InvariantCulture));
 
             case StringExpr s:
                 return new StringValue(s.Value);

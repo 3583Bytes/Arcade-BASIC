@@ -124,6 +124,7 @@ public sealed partial class BasicParser
             TokenKind.KwRestore => ParseRestore(),
             TokenKind.KwGoto or TokenKind.KwGo => ParseGoto(),
             TokenKind.KwGosub => ParseGosub(),
+            TokenKind.KwOn => ParseOn(),
             TokenKind.KwReturn => ParseReturn(),
             TokenKind.KwStop => ParseStop(),
             TokenKind.KwEnd => ParseEnd(),
@@ -459,6 +460,57 @@ public sealed partial class BasicParser
         return new GosubStmt(SpanFrom(start, target.Span), target);
     }
 
+    private Stmt? ParseOn()
+    {
+        var start = Advance(); // ON
+        var index = ParseExpression();
+        if (index is null) return null;
+
+        // GOTO / GO TO / GOSUB / GO SUB
+        bool isGosub;
+        if (Match(TokenKind.KwGo))
+        {
+            if (Match(TokenKind.KwTo)) isGosub = false;
+            else if (Match(TokenKind.KwSub)) isGosub = true;
+            else
+            {
+                ErrorAt(Peek(), ErrExpectedToken, "expected 'TO' or 'SUB' after 'GO' in ON statement");
+                return null;
+            }
+        }
+        else if (Match(TokenKind.KwGoto)) isGosub = false;
+        else if (Match(TokenKind.KwGosub)) isGosub = true;
+        else
+        {
+            ErrorAt(Peek(), ErrExpectedToken, "expected GOTO or GOSUB after the ON index");
+            return null;
+        }
+
+        // Comma-separated list of line-number literals.
+        var targets = new List<int>();
+        do
+        {
+            if (!Check(TokenKind.NumericLiteral) || !int.TryParse(Peek().Text, out var line))
+            {
+                ErrorAt(Peek(), ErrExpectedToken,
+                    $"expected a line-number in the ON ... {(isGosub ? "GOSUB" : "GOTO")} list");
+                return null;
+            }
+            Advance();
+            targets.Add(line);
+        } while (Match(TokenKind.Comma));
+
+        // Optional ELSE <imperative-statement>.
+        Stmt? elseStmt = null;
+        if (Match(TokenKind.KwElse))
+        {
+            elseStmt = ParseStatement();
+            if (elseStmt is null) return null;
+        }
+
+        return new OnJumpStmt(SpanFrom(start, Previous().Span), index, targets, isGosub, elseStmt);
+    }
+
     private ReturnStmt ParseReturn()
     {
         var t = Advance();
@@ -629,7 +681,7 @@ public sealed partial class BasicParser
         // One statement (or chain via colon) until ELSE or end-of-line.
         while (!AtStatementEnd() && !Check(TokenKind.KwElse))
         {
-            var s = ParseStatement();
+            var s = ParseThenElseStatement();
             if (s is null) return null;
             thenStmts.Add(s);
             if (!Match(TokenKind.Colon)) break;
@@ -641,7 +693,7 @@ public sealed partial class BasicParser
             var els = new List<Stmt>();
             while (!AtStatementEnd())
             {
-                var s = ParseStatement();
+                var s = ParseThenElseStatement();
                 if (s is null) return null;
                 els.Add(s);
                 if (!Match(TokenKind.Colon)) break;
@@ -650,6 +702,23 @@ public sealed partial class BasicParser
         }
 
         return new IfStmt(SpanFrom(start, Previous().Span), cond, thenStmts, [], elseStmts);
+    }
+
+    /// <summary>
+    /// A statement in the THEN/ELSE arm of a single-line IF. A bare line-number
+    /// here is the ISO 10279 shorthand for an implicit GOTO: <c>IF c THEN 1990</c>
+    /// means <c>IF c THEN GOTO 1990</c>. No statement otherwise begins with a
+    /// numeric literal, so this is unambiguous.
+    /// </summary>
+    private Stmt? ParseThenElseStatement()
+    {
+        if (Check(TokenKind.NumericLiteral))
+        {
+            var tok = Advance();
+            return new GotoStmt(tok.Span, new NumberExpr(tok.Span, tok.Text));
+        }
+
+        return ParseStatement();
     }
 
     private Stmt? ParseBlockIf(Token start, Expr cond)
@@ -1084,10 +1153,22 @@ public sealed partial class BasicParser
             var headKind = PeekKind(labelOffset);
             if (stoppers.Contains(headKind))
             {
-                // Consume the leading label, if any, so the caller's
-                // ExpectKind sees the stopper directly. The label value is
-                // discarded — block terminators don't need it on the AST.
-                if (labelOffset == 1) Advance();
+                // A line label on a block terminator ("120 NEXT I", "999 END IF")
+                // is preserved as a labeled no-op at the end of the block body so
+                // it stays a valid GOTO/GOSUB target. This is exactly the
+                // long-standing "<label> REM" workaround done automatically: a jump
+                // to the label lands at the end of the body, then the loop's
+                // increment/test runs (FOR/DO) or control falls past the block
+                // (IF/SELECT/...). Consume the label so the caller's ExpectKind
+                // sees the stopper directly.
+                if (labelOffset == 1)
+                {
+                    var labelTok = Advance();
+                    stmts.Add(new RemStmt(labelTok.Span, string.Empty)
+                    {
+                        Label = int.Parse(labelTok.Text),
+                    });
+                }
                 break;
             }
 

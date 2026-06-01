@@ -41,7 +41,7 @@ Items marked ❌ Not yet are scoped for later phases; the parser and analyzer re
 - **Keywords are case-insensitive.** `PRINT`, `print`, `Print`, `PrInT` are all the same token. Identifiers are case-preserving but compared case-insensitively in sema, so `foo` and `FOO` refer to the same variable.
 - **Comments:** both `REM ...` and `! ...` to end-of-line. The `!` form is an ISO 10279 addition over Minimal BASIC.
 - **Line labels.** Leading integers on a logical line become labels (used as GOTO/GOSUB/RESTORE targets). Optional per ISO. Embedded numeric literals later in the line are not labels.
-- **DEVIATION:** **Numeric literals in scientific notation (`1E-03`) are not lexed.** Use the decimal form (`0.001`) instead. The lexer treats the letter after a digit as the start of a new token. Adding `E[+-]?digits` support is a one-method change in `Lexer.cs`; not done yet because none of our example programs need it after manual conversion.
+- **Scientific notation.** Numeric literals with an exponent (`1E-03`, `2.5E3`, `6.022E2`) are lexed and evaluated. Literals are parsed with `NumberStyles.Float` in both the interpreter and the compiler, so `run`, `vm`, and `build` agree.
 
 ## Statements
 
@@ -53,7 +53,7 @@ PRINT / PRINT USING / PRINT #channel /
 INPUT / INPUT #channel / LINE INPUT / LINE INPUT #channel
 READ / DATA / RESTORE
 GOTO / GO TO / GOSUB / RETURN
-ON ... GOTO          — see below (DEVIATION)
+ON i GOTO / ON i GOSUB (with optional ELSE)
 STOP / END / RUN
 RANDOMIZE [seed]
 REM / !
@@ -75,24 +75,31 @@ MODULE / END MODULE
 PUBLIC / PRIVATE
 ```
 
-### DEVIATION: `ON i GOTO` / `ON i GOSUB`
+### `ON i GOTO` / `ON i GOSUB`
 
-The lexer/parser **do not yet support the `ON i GOTO L1,L2,...` form.** The standard requires it. Workaround: expand into a chain of `IF i = k THEN GOTO Lk` statements. The Star Trek example (`examples/startrek.bas`) shows the pattern; comments mark each expanded block.
+Supported, including the `GO TO`/`GO SUB` two-word spellings and the optional
+`ELSE <statement>` clause: `ON i GOTO L1, L2, ... [ELSE stmt]`. The index is
+**rounded** (banker's rounding, matching the `ROUND` builtin) to select the
+1-based target. An out-of-range index runs the `ELSE` statement if present;
+otherwise it raises exception **10001** (§8.2), which `WHEN`/`USE` can catch.
 
-This is on the list to fix; the parser change is small but the AST node + sema resolution needs to thread through label-list semantics.
+`ON i GOSUB` pushes the return address like a plain `GOSUB`, so `RETURN` comes
+back to the statement after the `ON`. The bytecode VM lowers the statement to a
+compare-and-jump chain (the index rounded via the `ROUND` builtin), so `run`,
+`vm`, and `build` produce identical output.
 
-### DEVIATION: Bare `IF cond THEN <line>`
+### Bare `IF cond THEN <line>`
 
-`IF cond THEN 1990` (where `1990` is intended as a GOTO target) is rejected by the parser. Write `IF cond THEN GOTO 1990`. ISO permits the bare-line-number form as a shorthand for implicit GOTO; we don't.
+`IF cond THEN 1990` is supported as the ISO shorthand for an implicit `GOTO`: a bare line-number in the THEN (or ELSE) arm of a single-line `IF` parses to a `GotoStmt`. `IF cond THEN 100 ELSE 200` works too. No statement otherwise begins with a numeric literal, so the form is unambiguous.
 
-### DEVIATION: Labels on block terminators are discarded
+### Labels on block terminators
 
-`100 NEXT I` — the `100` label is parsed but not retained on the AST node. Same for `END IF`, `LOOP`, `END SELECT`, etc. GOTO/GOSUB targets must land on a non-terminator statement. Anchor them with a `REM` if you need the label to survive:
+A line label on a block terminator (`120 NEXT I`, `999 END IF`, `LOOP`, `END SELECT`, …) is retained and is a valid `GOTO`/`GOSUB` target. The parser preserves it as a labeled no-op at the end of the block body — exactly the old `<label> REM` workaround, applied automatically. Jump semantics follow from where that no-op sits:
 
-```basic
-100 REM end of loop
-    NEXT I
-```
+- on `NEXT` / `LOOP`: the jump lands at the end of the loop body, so the loop's increment/test runs next (i.e. "continue this iteration"), matching flat-BASIC behaviour.
+- on `END IF` / `END SELECT` / `END WHEN`: the jump falls past the block.
+
+Cross-section jumps (e.g. into an `END IF` label from inside an `ELSE` arm) are the one rough edge — the label is anchored to the last sub-block — but these are vanishingly rare and were previously rejected outright.
 
 ## Expressions
 

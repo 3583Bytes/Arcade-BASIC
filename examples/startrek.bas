@@ -10,8 +10,10 @@ REM **** PORTED TO FULL BASIC (ISO/IEC 10279) - 2026.
 REM
 REM Notes on this port:
 REM   - Line numbers preserved as labels exactly where the original used them.
-REM   - "ON i GOTO L1,L2,..." expanded to explicit IF-THEN-GOTO chains.
-REM   - "IF cond THEN <line>" rewritten as "IF cond THEN GOTO <line>".
+REM   - "ON i GOTO L1,L2,..." used directly (ELSE handles the out-of-range
+REM     computer-menu fall-through).
+REM   - "IF cond THEN <line>" is supported, but the explicit "THEN GOTO <line>"
+REM     form is retained here for readability.
 REM   - Inline FOR loops split across lines (parser requires newline after FOR).
 REM
 OPTION BASE 1
@@ -199,16 +201,7 @@ LET Z3 = 0
 2060 INPUT "COMMAND"; A$
 2080 FOR I = 1 TO 9
        IF LEFT$(A$, 3) <> MID$(A1$, 3*I-2, 3) THEN GOTO 2155
-       REM ON I GOTO 2300, 1980, 4000, 4260, 4700, 5530, 5690, 7290, 6270
-       IF I = 1 THEN GOTO 2300
-       IF I = 2 THEN GOTO 1980
-       IF I = 3 THEN GOTO 4000
-       IF I = 4 THEN GOTO 4260
-       IF I = 5 THEN GOTO 4700
-       IF I = 6 THEN GOTO 5530
-       IF I = 7 THEN GOTO 5690
-       IF I = 8 THEN GOTO 7290
-       IF I = 9 THEN GOTO 6270
+       ON I GOTO 2300, 1980, 4000, 4260, 4700, 5530, 5690, 7290, 6270
 2155   REM continue command-dispatch loop
      NEXT I
 2160 PRINT "ENTER ONE OF THE FOLLOWING:"
@@ -621,15 +614,7 @@ LET Z3 = 0
 6820   FOR J = (I-1)*24 + 1 TO (I-1)*24 + 22 STEP 3
          PRINT " "; MID$(Q$, J, 3);
        NEXT J
-       REM ON I GOTO 6850, 6900, 6960, 7020, 7070, 7120, 7180, 7240
-6830   IF I = 1 THEN GOTO 6850
-       IF I = 2 THEN GOTO 6900
-       IF I = 3 THEN GOTO 6960
-       IF I = 4 THEN GOTO 7020
-       IF I = 5 THEN GOTO 7070
-       IF I = 6 THEN GOTO 7120
-       IF I = 7 THEN GOTO 7180
-       IF I = 8 THEN GOTO 7240
+6830   ON I GOTO 6850, 6900, 6960, 7020, 7070, 7120, 7180, 7240
 6850   PRINT "        STARDATE          "; INT(T*10)*0.1
        GOTO 7260
 6900   PRINT "        CONDITION          "; C$
@@ -655,13 +640,8 @@ LET Z3 = 0
      IF A < 0 THEN GOTO 1990
 7350 PRINT
      LET H8 = 1
-     REM ON A+1 GOTO 7540, 7900, 8070, 8500, 8150, 7400
-     IF A+1 = 1 THEN GOTO 7540
-     IF A+1 = 2 THEN GOTO 7900
-     IF A+1 = 3 THEN GOTO 8070
-     IF A+1 = 4 THEN GOTO 8500
-     IF A+1 = 5 THEN GOTO 8150
-     IF A+1 = 6 THEN GOTO 7400
+     REM Out-of-range command falls through to the menu printed below.
+     ON A+1 GOTO 7540, 7900, 8070, 8500, 8150, 7400 ELSE REM show menu
 7360 PRINT "FUNCTIONS AVAILABLE FROM LIBRARY-COMPUTER:"
 7370 PRINT "   0 = CUMULATIVE GALACTIC RECORD"
 7372 PRINT "   1 = STATUS REPORT"

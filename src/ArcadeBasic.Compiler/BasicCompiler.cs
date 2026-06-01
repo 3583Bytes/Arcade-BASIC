@@ -274,6 +274,57 @@ public sealed class BasicCompiler
         throw new UnsupportedFeatureException("computed GOTO/GOSUB target not supported by VM");
     }
 
+    /// <summary>
+    /// Lower ON index GOTO/GOSUB l1,...,ln [ELSE s] to a compare-and-jump chain
+    /// over existing primitives — no dedicated opcode. The index is rounded via
+    /// the ROUND builtin so it matches the tree-walker (which rounds with the
+    /// same banker's mode) byte-for-byte. For each target k the chain re-tests
+    /// ROUND(index) == k (mirroring how SELECT CASE re-evaluates its subject).
+    /// </summary>
+    private void CompileOnJump(OnJumpStmt on)
+    {
+        var jumpsToEnd = new List<int>();
+        for (var k = 0; k < on.Targets.Count; k++)
+        {
+            CompileExpr(on.Index);
+            EmitBuiltinCall("ROUND", 1);
+            EmitLoadInt(k + 1);
+            _current.Emit(Opcode.Eq);
+            var notEqual = _current.EmitJumpPlaceholder(Opcode.JumpIfFalse);
+
+            var label = on.Targets[k];
+            if (on.IsGosub)
+            {
+                var pc = _current.Emit(Opcode.GosubFlow);
+                _current.EmitU32(0); // backfilled with absolute target PC
+                _pendingLabelJumps.Add((pc, label, IsGosub: true));
+                // After the subroutine returns, skip the rest of the chain.
+                jumpsToEnd.Add(_current.EmitJumpPlaceholder(Opcode.Jump));
+            }
+            else
+            {
+                var pc = _current.EmitJumpPlaceholder(Opcode.Jump);
+                _pendingLabelJumps.Add((pc, label, IsGosub: false));
+                // GOTO transfers control away — nothing returns to this chain.
+            }
+
+            _current.PatchJump(notEqual);
+        }
+
+        // Index out of range: run the ELSE statement, else raise §8.2 (10001).
+        if (on.ElseStmt is not null)
+        {
+            CompileStatement(on.ElseStmt);
+        }
+        else
+        {
+            EmitLoadInt(10001);
+            _current.Emit(Opcode.Cause);
+        }
+
+        foreach (var j in jumpsToEnd) _current.PatchJump(j);
+    }
+
     private void CompileStatement(Stmt stmt)
     {
         switch (stmt)
@@ -337,6 +388,7 @@ public sealed class BasicCompiler
                     _pendingLabelJumps.Add((pc, labelNum, IsGosub: false));
                     break;
                 }
+            case OnJumpStmt on: CompileOnJump(on); break;
             case GosubStmt gs:
                 {
                     var labelNum = ResolveLabelTarget(gs.LabelTarget);
@@ -1122,7 +1174,7 @@ public sealed class BasicCompiler
         {
             case NumberExpr n:
                 {
-                    var bd = BigDecimal.Parse(n.Text);
+                    var bd = BigDecimal.Parse(n.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
                     if (bd == BigDecimal.Zero) _current.Emit(Opcode.LoadZero);
                     else if (bd == BigDecimal.One) _current.Emit(Opcode.LoadOne);
                     else if (bd == -BigDecimal.One) _current.Emit(Opcode.LoadMinusOne);
