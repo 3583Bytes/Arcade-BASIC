@@ -4,11 +4,14 @@ using Singulink.Numerics;
 namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Picture-string formatter for Phase-8a "editing" module — implements the
-/// portion of ISO 10279's PRINT USING / FORMAT$ that's most-used in practice:
+/// Picture-string formatter for the "editing" module — implements the portion
+/// of ISO 10279's PRINT USING / FORMAT$ that's most-used in practice:
 ///
-///   <c>#</c>   — digit (space if no digit)
-///   <c>0</c>   — digit (zero-fill)
+///   <c>#</c>   — digit position (space if no digit)
+///   <c>0</c>   — digit position (zero-fill)
+///   <c>*</c>   — digit position (asterisk-fill, for cheque protection)
+///   <c>$</c>   — digit position with a floating currency sign
+///   <c>,</c>   — group the integer part with thousands separators
 ///   <c>.</c>   — decimal point
 ///   <c>+</c>   — sign placeholder, '+' if non-negative
 ///   <c>-</c>   — sign placeholder, ' ' if non-negative
@@ -18,14 +21,24 @@ namespace ArcadeBasic.Runtime;
 ///
 /// Everything else passes through as literal text. If a value's magnitude
 /// can't fit in its numeric field, the field is filled with '*' characters
-/// (overflow indicator). Deferred to a later refinement: thousands separator
-/// (','), floating currency ('$$'), asterisk-fill ('**'), exponent ('^^^^').
+/// (overflow indicator). The exponent field ('^^^^', scaled notation) is not
+/// implemented.
 /// </summary>
 public static class PictureFormat
 {
     public abstract record class Part;
     public sealed record class LiteralPart(string Text) : Part;
-    public sealed record class NumberPart(int IntDigits, int FracDigits, bool ZeroFill, SignKind LeadingSign, SignKind TrailingSign) : Part;
+
+    /// <summary>
+    /// A numeric field. <paramref name="FillChar"/> is ' ' (from '#'), '0', or
+    /// '*'. <paramref name="Grouping"/> inserts thousands separators in the
+    /// integer part. <paramref name="FloatingDollar"/> prints a single '$'
+    /// immediately left of the most-significant digit.
+    /// </summary>
+    public sealed record class NumberPart(
+        int IntDigits, int FracDigits, char FillChar, bool Grouping, bool FloatingDollar,
+        SignKind LeadingSign, SignKind TrailingSign) : Part;
+
     public sealed record class StringPart(int Width, char Justify) : Part;
 
     public enum SignKind
@@ -66,10 +79,12 @@ public static class PictureFormat
                 continue;
             }
 
-            // Numeric field: starts with #, 0, or +/- followed by # or 0.
+            // Numeric field: starts with a digit position (# or 0), or a
+            // sign / floating char ('$') / fill char ('*') that is *followed*
+            // by another digit position — so a lone '$' or '*' stays literal.
             if (c == '#' || c == '0'
-                || ((c == '+' || c == '-') && i + 1 < format.Length
-                    && (format[i + 1] == '#' || format[i + 1] == '0')))
+                || ((c == '+' || c == '-' || c == '$' || c == '*')
+                    && i + 1 < format.Length && IsDigitPlace(format[i + 1])))
             {
                 FlushLiteral();
                 var (np, len) = ParseNumberField(format, i);
@@ -86,6 +101,8 @@ public static class PictureFormat
         return parts;
     }
 
+    private static bool IsDigitPlace(char c) => c is '#' or '0' or '*' or '$';
+
     private static (NumberPart Part, int Length) ParseNumberField(string format, int start)
     {
         var i = start;
@@ -95,10 +112,18 @@ public static class PictureFormat
 
         var intDigits = 0;
         var zeroFill = false;
-        while (i < format.Length && (format[i] == '#' || format[i] == '0'))
+        var starFill = false;
+        var floatingDollar = false;
+        var grouping = false;
+        while (i < format.Length)
         {
-            if (format[i] == '0') zeroFill = true;
-            intDigits++;
+            var c = format[i];
+            if (c == '#') { intDigits++; }
+            else if (c == '0') { intDigits++; zeroFill = true; }
+            else if (c == '*') { intDigits++; starFill = true; }
+            else if (c == '$') { intDigits++; floatingDollar = true; }
+            else if (c == ',') { grouping = true; }
+            else break;
             i++;
         }
 
@@ -120,7 +145,9 @@ public static class PictureFormat
             else if (format[i] == '-') { trailingSign = SignKind.SpaceForPositive; i++; }
         }
 
-        return (new NumberPart(intDigits, fracDigits, zeroFill, leadingSign, trailingSign), i - start);
+        // Fill precedence: '*' (cheque protection) wins over '0' over ' '.
+        var fillChar = starFill ? '*' : (zeroFill ? '0' : ' ');
+        return (new NumberPart(intDigits, fracDigits, fillChar, grouping, floatingDollar, leadingSign, trailingSign), i - start);
     }
 
     /// <summary>Apply parsed parts to a sequence of values, cycling format parts when items remain.</summary>
@@ -206,65 +233,72 @@ public static class PictureFormat
         if (dot < 0) { intPart = str; fracPart = ""; }
         else { intPart = str[..dot]; fracPart = str[(dot + 1)..]; }
 
-        // Pad fractional part with trailing zeros if shorter than required.
-        if (fracPart.Length < np.FracDigits)
-        {
-            fracPart += new string('0', np.FracDigits - fracPart.Length);
-        }
-        // Truncate fractional if longer (rounding above should cover this).
-        if (fracPart.Length > np.FracDigits)
-        {
-            fracPart = fracPart[..np.FracDigits];
-        }
+        if (fracPart.Length < np.FracDigits) fracPart += new string('0', np.FracDigits - fracPart.Length);
+        if (fracPart.Length > np.FracDigits) fracPart = fracPart[..np.FracDigits];
 
-        // Has explicit sign slot? If yes, integer width is digits-only.
-        // Otherwise, a negative number consumes one of the integer slots for the '-'.
         var hasExplicitSign = np.LeadingSign != SignKind.None || np.TrailingSign != SignKind.None;
 
-        // Field overflow check.
-        var maxIntDigitsAvailable = hasExplicitSign ? np.IntDigits : (negative ? np.IntDigits - 1 : np.IntDigits);
-        if (intPart.Length > maxIntDigitsAvailable)
+        // A negative number with no explicit sign slot floats a '-' that
+        // consumes one integer digit slot (like the floating '$').
+        var floatingMinus = negative && !hasExplicitSign;
+        var capacity = np.IntDigits - (floatingMinus ? 1 : 0);
+
+        if (intPart.Length > capacity)
         {
-            var totalWidth = np.IntDigits + (np.FracDigits > 0 ? 1 + np.FracDigits : 0)
-                + (hasExplicitSign ? 1 : 0);
-            return new string('*', totalWidth);
+            return new string('*', OverflowWidth(np, hasExplicitSign));
         }
 
-        var sb = new StringBuilder();
-
-        if (hasExplicitSign)
+        string intRegion;
+        if (np.FillChar == '0')
         {
-            // Pad digits with the chosen fill char.
-            var intPad = np.IntDigits - intPart.Length;
-            var intFill = np.ZeroFill ? '0' : ' ';
-            var paddedInt = new string(intFill, intPad) + intPart;
-            var sign = ResolveSign(negative, np.LeadingSign != SignKind.None ? np.LeadingSign : np.TrailingSign);
-            if (np.LeadingSign != SignKind.None) sb.Append(sign);
-            sb.Append(paddedInt);
-            if (np.FracDigits > 0) { sb.Append('.'); sb.Append(fracPart); }
-            if (np.TrailingSign != SignKind.None) sb.Append(sign);
+            // Zero-fill: pad to the full digit width first, then group.
+            var padded = intPart.PadLeft(np.IntDigits, '0');
+            var prefix = (floatingMinus ? "-" : "") + (np.FloatingDollar ? "$" : "");
+            intRegion = prefix + (np.Grouping ? InsertGrouping(padded) : padded);
         }
         else
         {
-            // Negative: emit "<spaces>-<digits>", consuming one of the integer slots.
-            // Positive: emit "<fill><digits>" (zero-fill or space-fill).
-            if (negative)
-            {
-                var pad = np.IntDigits - 1 - intPart.Length;
-                sb.Append(' ', pad);
-                sb.Append('-');
-                sb.Append(intPart);
-            }
-            else
-            {
-                var pad = np.IntDigits - intPart.Length;
-                sb.Append(np.ZeroFill ? '0' : ' ', pad);
-                sb.Append(intPart);
-            }
-            if (np.FracDigits > 0) { sb.Append('.'); sb.Append(fracPart); }
+            // Space / asterisk fill: group the actual digits, float the sign and
+            // '$' immediately left of the most-significant digit, and pad the
+            // unused leading digit slots with the fill character.
+            var grouped = np.Grouping ? InsertGrouping(intPart) : intPart;
+            var floatPrefix = (floatingMinus ? "-" : "") + (np.FloatingDollar ? "$" : "");
+            var pad = capacity - intPart.Length;
+            intRegion = new string(np.FillChar, pad) + floatPrefix + grouped;
         }
 
+        var sb = new StringBuilder();
+        if (np.LeadingSign != SignKind.None) sb.Append(ResolveSign(negative, np.LeadingSign));
+        sb.Append(intRegion);
+        if (np.FracDigits > 0) { sb.Append('.'); sb.Append(fracPart); }
+        if (np.TrailingSign != SignKind.None) sb.Append(ResolveSign(negative, np.TrailingSign));
         return sb.ToString();
+    }
+
+    /// <summary>Insert thousands separators into a run of decimal digits.</summary>
+    private static string InsertGrouping(string digits)
+    {
+        if (digits.Length <= 3) return digits;
+        var sb = new StringBuilder();
+        var first = digits.Length % 3;
+        if (first == 0) first = 3;
+        sb.Append(digits, 0, first);
+        for (var k = first; k < digits.Length; k += 3)
+        {
+            sb.Append(',');
+            sb.Append(digits, k, 3);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Character width of an overflowed numeric field (filled with '*').</summary>
+    private static int OverflowWidth(NumberPart np, bool hasExplicitSign)
+    {
+        var commas = np.Grouping && np.IntDigits > 1 ? (np.IntDigits - 1) / 3 : 0;
+        return np.IntDigits + commas
+            + (np.FloatingDollar ? 1 : 0)
+            + (hasExplicitSign ? 1 : 0)
+            + (np.FracDigits > 0 ? 1 + np.FracDigits : 0);
     }
 
     private static char ResolveSign(bool negative, SignKind kind) => (kind, negative) switch

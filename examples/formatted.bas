@@ -10,6 +10,7 @@ NEXT I
 
 PRINT
 LET TOTAL = 12345.67
-PRINT USING "balance: $$,$$$.##  (placeholder demo)": TOTAL
-PRINT USING "balance: +#####.##": TOTAL
+PRINT USING "balance:  $$,$$$.##": TOTAL    ! floating currency + thousands grouping
+PRINT USING "grouped:  ###,###":   123456   ! thousands separators
+PRINT USING "cheque:   **,***.##": 42.5      ! asterisk fill (cheque protection)
 END

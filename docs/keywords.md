@@ -254,16 +254,20 @@ PRINT "no newline";        ! suppresses the trailing newline
 
 ### `PRINT USING`
 
-Formatted output via a picture string. Common fields: `#` (digit, zero-padded
-at sign position), `.` (decimal point), `,` (thousands separator), `$` (dollar
-sign), `+` (explicit sign), `^^^^` (exponential), `\\..\\` (string field),
-literal characters anywhere else.
+Formatted output via a picture string. Numeric fields: `#` (digit, space if
+absent), `0` (zero-fill), `*` (asterisk-fill), `$` (floating currency), `,`
+(thousands grouping), `.` (decimal point), `+`/`-` (sign). String fields:
+`<####` / `>####` / `=####` (left / right / centre, width = count of `#`). Any
+other characters are literal. A value too big for its field overflows to `*`.
+The `^^^^` exponent field is not implemented.
 
 ```basic
 PRINT USING "###": 42                       !  42
 PRINT USING "###.##": 3.14159               !   3.14
 PRINT USING " ##  ##.##": 7, 7 / 2          !   7   3.50
-PRINT USING "$$,$$$.##": 12345.67           !  $12,345.67
+PRINT USING "##,###": 12345                  ! 12,345
+PRINT USING "$$,$$$.##": 12345.67           ! $12,345.67
+PRINT USING "*****": 42                       ! ***42
 PRINT USING ">###########": "TABULATED"     ! right-aligned string field
 ```
 

@@ -754,6 +754,16 @@ public class VmTests
         Run("PRINT USING \"###.##\": 3.14159").Output.Should().Be("  3.14\n");
     }
 
+    [Theory]
+    [InlineData("PRINT USING \"##,###\": 12345", "12,345")]
+    [InlineData("PRINT USING \"$$,$$$.##\": 12345.67", "$12,345.67")]
+    [InlineData("PRINT USING \"*****\": 42", "***42")]
+    public void PrintUsingAdvancedFields(string source, string expected)
+    {
+        // Grouping / floating currency / asterisk-fill must match the tree-walker.
+        Run(source).Output.TrimEnd('\n', '\r').Should().Be(expected);
+    }
+
     [Fact]
     public void PrintUsingStringField()
     {

@@ -188,21 +188,39 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 ## PRINT USING (Editing module)
 
-Picture-string formatting per ISO §15. Supported format characters:
+Picture-string formatting (ISO §10.4). The picture language is a pragmatic
+subset; it is **not** the literal ISO grammar (e.g. zero-fill is `0` rather than
+the spec's `%`, and string fields use `<`/`>`/`=` rather than the spec's
+justifier + floating-character form). Supported format characters:
 
-- `#` decimal digit (space if no digit)
-- `0` decimal digit (zero if no digit)
+**Numeric fields**
+
+- `#` digit position (space if no digit)
+- `0` digit position (zero-fill)
+- `*` digit position (asterisk-fill — cheque protection)
+- `$` digit position with a floating currency sign (one `$` prints immediately left of the most-significant digit)
+- `,` group the integer part with thousands separators
 - `.` decimal point
-- `,` thousands separator
-- `+` `-` sign
-- `*` fill character
-- `$` currency
-- `\...\` string field (length = chars inside)
-- `&` variable-length string
+- `+` / `-` sign placeholder (leading or trailing). A negative value with no sign placeholder floats a `-` next to the leading digit.
+
+A value whose integer part exceeds the field's digit positions overflows and the
+field is filled with `*`. Fill precedence when a field mixes characters is
+`*` over `0` over space.
+
+**String fields**
+
+- `<####` left-justified, `>####` right-justified, `=####` centred; width = number of `#`.
 
 Multiple values are emitted by re-applying the picture; `Apply` cycles the parsed parts list.
 
-**DEVIATION:** The `^^^^` exponent field is not implemented.
+```basic
+PRINT USING "##,###":     12345      ! 12,345
+PRINT USING "$$,$$$.##":  12345.67   ! $12,345.67
+PRINT USING "*****":      42         ! ***42
+```
+
+**DEVIATION:** The `^^^^` exponent (scaled-notation) field is not implemented; a
+picture containing `^` treats it as literal text.
 
 ## CLI / tooling
 

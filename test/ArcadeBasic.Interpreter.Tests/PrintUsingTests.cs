@@ -78,6 +78,50 @@ public class PrintUsingTests
         output.Should().StartWith("**");
     }
 
+    // -- Advanced numeric fields: grouping, currency, fill --------------
+
+    [Fact]
+    public void ThousandsGrouping()
+    {
+        Run("PRINT USING \"#,###\": 1234").TrimEnd().Should().Be("1,234");
+        Run("PRINT USING \"##,###\": 12345").TrimEnd().Should().Be("12,345");
+    }
+
+    [Fact]
+    public void GroupingOverflowFillsAsterisks()
+    {
+        // 12345 is 5 digits but "#,###" has only 4 digit positions.
+        Run("PRINT USING \"#,###\": 12345").TrimEnd().Should().Be("*****");
+    }
+
+    [Fact]
+    public void FloatingDollar()
+    {
+        Run("PRINT USING \"$$,$$$.##\": 12345.67").TrimEnd().Should().Be("$12,345.67");
+        Run("PRINT USING \"$$$$.##\": 12.5").TrimEnd().Should().Be("  $12.50");
+    }
+
+    [Fact]
+    public void AsteriskFill()
+    {
+        Run("PRINT USING \"*****\": 42").TrimEnd().Should().Be("***42");
+        Run("PRINT USING \"**###.##\": 12.5").TrimEnd().Should().Be("***12.50");
+    }
+
+    [Fact]
+    public void FloatingDollarWithNegative()
+    {
+        // Floating '-' and floating '$' both sit next to the leading digit.
+        Run("PRINT USING \"$$$$\": -12").TrimEnd().Should().Be(" -$12");
+    }
+
+    [Fact]
+    public void LoneDollarStaysLiteral()
+    {
+        // A '$' not followed by a digit position is literal text.
+        Run("PRINT USING \"$ ##\": 5").TrimEnd().Should().Be("$  5");
+    }
+
     // -- String formatting ----------------------------------------------
 
     [Fact]
