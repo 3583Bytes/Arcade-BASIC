@@ -45,10 +45,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Run each example through both engines. The Conformance.Tests suite
+          # already asserts byte-identical run/vm output in-process; this also
+          # smoke-tests the CLI `run` and `vm` commands end-to-end.
           for ex in hello factorial fibonacci primes strings pi; do
-            echo "::group::run examples/${ex}.bas"
-            dotnet run --project src/ArcadeBasic.Cli --configuration Release --no-build -- run examples/${ex}.bas
-            echo "::endgroup::"
+            for engine in run vm; do
+              echo "::group::${engine} examples/${ex}.bas"
+              dotnet run --project src/ArcadeBasic.Cli --configuration Release --no-build -- ${engine} examples/${ex}.bas
+              echo "::endgroup::"
+            done
           done
 
       - name: REPL smoke test

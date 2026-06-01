@@ -165,4 +165,4 @@ For a behaviour question, the most useful issue includes:
 - What `dotnet run -- run <file>` actually prints.
 - What you expected, with a citation to ISO 10279 if it's a spec-conformance question.
 
-Pull requests for features should land tests in the same PR. Pull requests for bug fixes should include a regression test that fails before the fix and passes after. Sema/interpreter changes should also run the example programs in `examples/` end-to-end — they're the integration coverage we don't have a CI job for yet.
+Pull requests for features should land tests in the same PR. Pull requests for bug fixes should include a regression test that fails before the fix and passes after. The example programs in `examples/` are integration coverage: `ArcadeBasic.Conformance.Tests` runs each one through both engines and asserts the tree-walker and the bytecode VM agree byte-for-byte (deterministic examples) and that every example compiles on the VM, and CI smoke-runs them through both `run` and `vm`. If you add a statement or builtin, add an example or extend an existing one so that parity net covers it.
