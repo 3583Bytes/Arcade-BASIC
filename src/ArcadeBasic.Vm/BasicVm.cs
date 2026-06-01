@@ -40,11 +40,15 @@ public sealed class BasicVm
 
     private readonly record struct HandlerFrame(int UsePc, int StackBaseline);
 
-    public BasicVm(BcProgram program, TextWriter @out, TextReader @in)
+    private readonly IGraphicsDevice _graphics;
+    private readonly GraphicsState _gfx = new();
+
+    public BasicVm(BcProgram program, TextWriter @out, TextReader @in, IGraphicsDevice? graphics = null)
     {
         _program = program;
         _out = @out;
         _in = @in;
+        _graphics = graphics ?? NullGraphicsDevice.Instance;
     }
 
     public int Run()
@@ -107,6 +111,101 @@ public sealed class BasicVm
                     while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
                     return true;
                 case Opcode.Nop: break;
+
+                // -- Graphics (§13): drive the same GraphicsState as the tree-walker --
+                case Opcode.GfxSetBounds:
+                    {
+                        var kind = (int)ReadU32(code, ref pc);
+                        var t = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        var b = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        var r = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        var l = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        switch (kind)
+                        {
+                            case 0: _gfx.SetWindow(l, r, b, t); break;
+                            case 1: _gfx.SetViewport(l, r, b, t); break;
+                            case 2: if (_gfx.SetDeviceWindow(l, r, b, t)) _graphics.Clear(); break;
+                            case 3: if (_gfx.SetDeviceViewport(l, r, b, t)) _graphics.Clear(); break;
+                        }
+                        break;
+                    }
+                case Opcode.GfxSetClip:
+                    {
+                        var v = ((StringValue)stack.Pop()).V.Trim().ToUpperInvariant();
+                        if (v == "ON") _gfx.ClipEnabled = true;
+                        else if (v == "OFF") _gfx.ClipEnabled = false;
+                        break;
+                    }
+                case Opcode.GfxSetStyle:
+                    {
+                        var prim = (int)ReadU32(code, ref pc);
+                        var n = GraphicsState.ToIndex(((NumericValue)stack.Pop()).V);
+                        if (prim == 0) { _gfx.PointStyle = n; _graphics.SetPointStyle(n); }
+                        else { _gfx.LineStyle = n; _graphics.SetLineStyle(n); }
+                        break;
+                    }
+                case Opcode.GfxSetColor:
+                    {
+                        var tgt = (GfxColorTarget)(int)ReadU32(code, ref pc);
+                        var n = GraphicsState.ToIndex(((NumericValue)stack.Pop()).V);
+                        switch (tgt)
+                        {
+                            case GfxColorTarget.Point: _gfx.PointColor = n; break;
+                            case GfxColorTarget.Line: _gfx.LineColor = n; break;
+                            case GfxColorTarget.Text: _gfx.TextColor = n; break;
+                            case GfxColorTarget.Area: _gfx.AreaColor = n; break;
+                        }
+                        _graphics.SetColor(tgt, n);
+                        break;
+                    }
+                case Opcode.GfxClear: _graphics.Clear(); break;
+                case Opcode.GfxDraw:
+                    {
+                        var geom = (int)ReadU32(code, ref pc);
+                        var count = (int)ReadU32(code, ref pc);
+                        var pts = new GfxPoint[count];
+                        for (var i = count - 1; i >= 0; i--)
+                        {
+                            var y = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                            var x = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                            pts[i] = new GfxPoint(x, y);
+                        }
+                        switch (geom)
+                        {
+                            case 0: _gfx.EmitPoints(pts, _graphics); break;
+                            case 1: _gfx.EmitLines(pts, _graphics); break;
+                            case 2: _gfx.EmitArea(pts, _graphics); break;
+                        }
+                        break;
+                    }
+                case Opcode.GfxText:
+                    {
+                        var hasImage = (int)ReadU32(code, ref pc);
+                        var itemCount = (int)ReadU32(code, ref pc);
+                        string text;
+                        if (hasImage == 0)
+                        {
+                            text = ((StringValue)stack.Pop()).V;
+                        }
+                        else
+                        {
+                            var items = new Value[itemCount];
+                            for (var i = itemCount - 1; i >= 0; i--) items[i] = stack.Pop();
+                            var image = ((StringValue)stack.Pop()).V;
+                            text = PictureFormat.Apply(PictureFormat.Parse(image), items);
+                        }
+                        var ay = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        var ax = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        _gfx.EmitText(new GfxPoint(ax, ay), text, _graphics);
+                        break;
+                    }
+                case Opcode.GfxAskValue:
+                    {
+                        var q = (GfxQuery)(int)ReadU32(code, ref pc);
+                        var index = (int)ReadU32(code, ref pc);
+                        stack.Push(_gfx.Query(q, index, _graphics));
+                        break;
+                    }
 
                 case Opcode.Pop: stack.Pop(); break;
                 case Opcode.Dup: stack.Push(stack.Peek()); break;

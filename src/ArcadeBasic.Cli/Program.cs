@@ -256,12 +256,13 @@ static int RunBuild(ReadOnlySpan<string> args)
 
 static int RunVm(ReadOnlySpan<string> args)
 {
-    if (args.Length != 1)
+    var files = ParseSvgOption(args, out var svgPath);
+    if (files.Count != 1)
     {
-        Console.Error.WriteLine("usage: arcade-basic vm <file>");
+        Console.Error.WriteLine("usage: arcade-basic vm <file> [--svg <out.svg>]");
         return 2;
     }
-    var path = args[0];
+    var path = files[0];
     if (!File.Exists(path))
     {
         Console.Error.WriteLine($"file not found: {path}");
@@ -297,8 +298,15 @@ static int RunVm(ReadOnlySpan<string> args)
         return 1;
     }
 
-    var vm = new BasicVm(compiled, Console.Out, Console.In);
-    return vm.Run();
+    var svg = svgPath is null ? null : new SvgGraphicsDevice();
+    var vm = new BasicVm(compiled, Console.Out, Console.In, svg);
+    var exit = vm.Run();
+    if (svg is not null && svgPath is not null)
+    {
+        File.WriteAllText(svgPath, svg.ToSvg());
+        Console.Error.WriteLine($"wrote {svgPath}");
+    }
+    return exit;
 }
 
 static int RunAnalyze(ReadOnlySpan<string> args)
@@ -355,13 +363,14 @@ static int RunAnalyze(ReadOnlySpan<string> args)
 
 static int RunProgram(ReadOnlySpan<string> args)
 {
-    if (args.Length < 1)
+    var files = ParseSvgOption(args, out var svgPath);
+    if (files.Count < 1)
     {
-        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...]");
+        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...] [--svg <out.svg>]");
         return 2;
     }
 
-    foreach (var path in args)
+    foreach (var path in files)
     {
         if (!File.Exists(path))
         {
@@ -379,8 +388,8 @@ static int RunProgram(ReadOnlySpan<string> args)
     SourceFile? mainFile = null;
     var moduleFiles = new List<ArcadeBasic.Parser.Ast.Program>();
 
-    var mainPath = args[0];
-    foreach (var path in args)
+    var mainPath = files[0];
+    foreach (var path in files)
     {
         var content = File.ReadAllText(path);
         var file = new SourceFile(path, content);
@@ -417,8 +426,29 @@ static int RunProgram(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
-    var interp = new BasicInterpreter(combined, info, Console.Out, Console.In);
-    return interp.Run();
+    var svg = svgPath is null ? null : new SvgGraphicsDevice();
+    var interp = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg);
+    var exit = interp.Run();
+    if (svg is not null && svgPath is not null)
+    {
+        File.WriteAllText(svgPath, svg.ToSvg());
+        Console.Error.WriteLine($"wrote {svgPath}");
+    }
+    return exit;
+}
+
+/// <summary>Extract an optional "--svg &lt;path&gt;" option, returning the
+/// remaining (file) arguments.</summary>
+static List<string> ParseSvgOption(ReadOnlySpan<string> args, out string? svgPath)
+{
+    svgPath = null;
+    var rest = new List<string>();
+    for (var i = 0; i < args.Length; i++)
+    {
+        if (args[i] == "--svg" && i + 1 < args.Length) { svgPath = args[++i]; }
+        else rest.Add(args[i]);
+    }
+    return rest;
 }
 
 static int RunBigDecimalSpike()

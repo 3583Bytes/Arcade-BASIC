@@ -50,6 +50,10 @@ token. Examples use uppercase by convention.
 **Exceptions:** [WHEN ... USE](#when--use) · [CAUSE EXCEPTION](#cause-exception) ·
 [RETRY](#retry) · [CONTINUE](#continue)
 
+**Graphics (§13):** [SET WINDOW / VIEWPORT / DEVICE …](#graphics) · [SET CLIP](#graphics) ·
+[SET … STYLE / COLOR](#graphics) · [ASK …](#graphics) · [CLEAR](#graphics) ·
+[GRAPH POINTS / LINES / AREA / TEXT](#graphics)
+
 ---
 
 ## Declarations
@@ -857,19 +861,59 @@ PRINT "done"
 
 ---
 
+## Graphics
+
+ECMA-116 §13 graphics. Output goes to a pluggable device; the CLI can render to
+SVG with `--svg`:
+
+```sh
+arcade-basic run examples/graphics.bas --svg out.svg
+```
+
+Drawing happens in **problem (world) coordinates** that you choose with `SET
+WINDOW`; they're mapped into the `[0,1]` viewport, clipped, and handed to the
+backend. The `run` and `vm` engines produce identical output.
+
+```basic
+SET WINDOW 0, 360, -1, 1        ! world coordinate range (left,right,bottom,top)
+SET VIEWPORT 0, 1, 0, 1         ! where it lands in normalized device space
+SET DEVICE WINDOW 0, 1, 0, 1    ! (advanced) sub-rectangle of the surface
+SET DEVICE VIEWPORT 0, 1, 0, 1  ! (advanced) target rectangle on the device
+SET CLIP "ON"                   ! clip drawing to the viewport ("ON"/"OFF")
+
+SET LINE STYLE 2                ! 1 solid, 2 dashed, 3 dotted
+SET POINT STYLE 3              ! 1 dot, 2 plus, 3 asterisk
+SET LINE COLOR 4               ! also POINT / TEXT / AREA COLOR
+CLEAR                          ! clear the display
+
+GRAPH LINES: 0,0; 10,5; 20,0   ! connected segments (≥2 points)
+GRAPH POINTS: 1,1; 2,2          ! markers
+GRAPH AREA: 0,0; 4,0; 2,3       ! filled polygon (≥3 points)
+GRAPH TEXT, AT 1,1: "label"     ! text; also: GRAPH TEXT, AT x,y, USING img$: v
+
+ASK WINDOW L, R, B, T           ! read back current settings into variables
+ASK DEVICE SIZE W, H, U$        ! device width/height + unit ("METERS"/"OTHER")
+ASK MAX COLOR M                 ! capability queries; optional " STATUS s" clause
+```
+
+To build a curve or any shape with a variable number of vertices, drive `GRAPH`
+from a loop (coordinate expressions may reference variables) — see
+[`examples/graphics.bas`](../examples/graphics.bas).
+
 ## Notes on coverage
 
 - Every keyword above is **implemented end-to-end** — parser → semantic
   analysis → tree-walker → bytecode VM. The bytecode `vm` and `build`
   paths produce byte-identical output to the tree-walking `run` path on
   every example program.
-- A handful of keywords are reserved by the lexer for future
-  spec features (DISPLAY, GRAPH, PLOT, DRAW, POLYGON, VIEWPORT, WINDOW,
-  TRANSFORM, MASK, MARGIN, ZONEWIDTH, PIC, PICTURE, FORMAT, TEMPLATE,
-  TIMEOUT, BREAK, TRACE, COLLATE, native types like FIXED/REAL/STRING/
-  NUMERIC, FILES/FILETYPE, RANDOM, REWRITE, RSET, SET/ASK, …) — the
-  parser will reject statements built around them with a clear error.
-  See [conformance.md](conformance.md) for the full deviation list.
+- The §13 graphics statements (`SET`/`ASK`/`GRAPH`/`CLEAR` — see
+  [Graphics](#graphics) below) are implemented. A handful of other keywords are
+  still reserved by the lexer for future spec features (DISPLAY, PLOT, DRAW,
+  POLYGON, TRANSFORM, MASK, MARGIN, ZONEWIDTH, PIC, PICTURE, FORMAT, TEMPLATE,
+  TIMEOUT, BREAK, TRACE, COLLATE, native types like FIXED/REAL/STRING/NUMERIC,
+  FILES/FILETYPE, RANDOM, REWRITE, RSET, …) — the parser rejects statements
+  built around them with a clear error. See [conformance.md](conformance.md)
+  for the full deviation list.
 - Function names like `SIN`, `COS`, `LEN`, `MID$`, `CHR$`, `RND`,
   `EXTYPE`, etc. are **builtins**, not keywords — they're resolved by
   name at semantic analysis time and can in principle be shadowed (avoid).

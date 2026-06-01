@@ -54,6 +54,7 @@ Console.WriteLine(output);   //  42
 ## What you can do with it
 
 - **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
+- **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping; `arcade-basic run examples/graphics.bas --svg out.svg` renders to SVG (terminal and Unity backends are in progress).
 - **Edit and run BASIC in a TUI IDE.** `arcade-basic-ide` opens a full-screen Terminal.Gui editor with line numbers, syntax classification, a problems pane, and one-key Run/Stop. See [Try the IDE](#try-the-ide).
 - **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
 - **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into Unity (Mono and IL2CPP), Xamarin, .NET Framework, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.

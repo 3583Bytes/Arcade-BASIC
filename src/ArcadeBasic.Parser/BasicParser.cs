@@ -147,6 +147,10 @@ public sealed partial class BasicParser
             TokenKind.KwMat => ParseMat(),
             TokenKind.KwOpen => ParseOpenStmt(),
             TokenKind.KwClose => ParseCloseStmt(),
+            TokenKind.KwSet => ParseSetGraphics(),
+            TokenKind.KwAsk => ParseAskGraphics(),
+            TokenKind.KwClear => ParseClear(),
+            TokenKind.KwGraph => ParseGraph(),
             TokenKind.KwWhen => ParseWhen(),
             TokenKind.KwHandler => ParseHandler(),
             TokenKind.KwCause => ParseCause(),
@@ -1178,12 +1182,226 @@ public sealed partial class BasicParser
         return stmts;
     }
 
+    // -- Graphics (§13) --------------------------------------------------
+
+    private Stmt ParseClear() => new ClearStmt(Advance().Span);
+
+    private Stmt? ParseSetGraphics()
+    {
+        var start = Advance(); // SET
+        var k = Peek().Kind;
+        switch (k)
+        {
+            case TokenKind.KwWindow: Advance(); return ParseBounds(start, GfxRectKind.Window);
+            case TokenKind.KwViewport: Advance(); return ParseBounds(start, GfxRectKind.Viewport);
+            case TokenKind.KwDevice:
+                Advance();
+                if (Match(TokenKind.KwWindow)) return ParseBounds(start, GfxRectKind.DeviceWindow);
+                if (Match(TokenKind.KwViewport)) return ParseBounds(start, GfxRectKind.DeviceViewport);
+                ErrorAt(Peek(), ErrExpectedToken, "expected WINDOW or VIEWPORT after SET DEVICE");
+                return null;
+            case TokenKind.KwClip:
+            {
+                Advance();
+                var e = ParseExpression();
+                return e is null ? null : new SetClipStmt(SpanFrom(start, Previous().Span), e);
+            }
+            case TokenKind.KwPoint:
+            case TokenKind.KwLine:
+            {
+                var prim = k == TokenKind.KwPoint ? GfxStyleKind.Point : GfxStyleKind.Line;
+                Advance();
+                if (Match(TokenKind.KwStyle))
+                {
+                    var e = ParseExpression();
+                    return e is null ? null : new SetStyleStmt(SpanFrom(start, Previous().Span), prim, e);
+                }
+                if (Match(TokenKind.KwColor))
+                {
+                    var e = ParseExpression();
+                    var tgt = prim == GfxStyleKind.Point ? GfxColorKind.Point : GfxColorKind.Line;
+                    return e is null ? null : new SetColorStmt(SpanFrom(start, Previous().Span), tgt, e);
+                }
+                ErrorAt(Peek(), ErrExpectedToken, "expected STYLE or COLOR");
+                return null;
+            }
+            case TokenKind.KwText:
+            case TokenKind.KwArea:
+            {
+                var tgt = k == TokenKind.KwText ? GfxColorKind.Text : GfxColorKind.Area;
+                Advance();
+                if (!ExpectKind(TokenKind.KwColor, "'COLOR'")) return null;
+                var e = ParseExpression();
+                return e is null ? null : new SetColorStmt(SpanFrom(start, Previous().Span), tgt, e);
+            }
+            default:
+                ErrorAt(Peek(), ErrExpectedToken,
+                    "expected WINDOW, VIEWPORT, DEVICE, CLIP, POINT, LINE, TEXT, or AREA after SET");
+                return null;
+        }
+    }
+
+    private SetBoundsStmt? ParseBounds(Token start, GfxRectKind kind)
+    {
+        var l = ParseExpression(); if (l is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var r = ParseExpression(); if (r is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var b = ParseExpression(); if (b is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var t = ParseExpression(); if (t is null) return null;
+        return new SetBoundsStmt(SpanFrom(start, Previous().Span), kind, l, r, b, t);
+    }
+
+    private Stmt? ParseAskGraphics()
+    {
+        var start = Advance(); // ASK
+        var k = Peek().Kind;
+        GfxAskObject obj;
+
+        // MAX is a builtin function name, not a reserved word, so it arrives as
+        // an identifier: ASK MAX COLOR / ASK MAX POINT STYLE / ASK MAX LINE STYLE.
+        if (k == TokenKind.Identifier && string.Equals(Peek().Text, "MAX", StringComparison.OrdinalIgnoreCase))
+        {
+            Advance();
+            if (Match(TokenKind.KwColor)) obj = GfxAskObject.MaxColor;
+            else if (Match(TokenKind.KwPoint)) { if (!ExpectKind(TokenKind.KwStyle, "'STYLE'")) return null; obj = GfxAskObject.MaxPointStyle; }
+            else if (Match(TokenKind.KwLine)) { if (!ExpectKind(TokenKind.KwStyle, "'STYLE'")) return null; obj = GfxAskObject.MaxLineStyle; }
+            else { ErrorAt(Peek(), ErrExpectedToken, "expected COLOR, POINT STYLE, or LINE STYLE after ASK MAX"); return null; }
+            return FinishAsk(start, obj);
+        }
+
+        switch (k)
+        {
+            case TokenKind.KwWindow: Advance(); obj = GfxAskObject.Window; break;
+            case TokenKind.KwViewport: Advance(); obj = GfxAskObject.Viewport; break;
+            case TokenKind.KwClip: Advance(); obj = GfxAskObject.Clip; break;
+            case TokenKind.KwDevice:
+                Advance();
+                if (Match(TokenKind.KwWindow)) obj = GfxAskObject.DeviceWindow;
+                else if (Match(TokenKind.KwViewport)) obj = GfxAskObject.DeviceViewport;
+                else if (Match(TokenKind.KwSize)) obj = GfxAskObject.DeviceSize;
+                else { ErrorAt(Peek(), ErrExpectedToken, "expected WINDOW, VIEWPORT, or SIZE after ASK DEVICE"); return null; }
+                break;
+            case TokenKind.KwPoint:
+                Advance();
+                if (Match(TokenKind.KwStyle)) obj = GfxAskObject.PointStyle;
+                else if (Match(TokenKind.KwColor)) obj = GfxAskObject.PointColor;
+                else { ErrorAt(Peek(), ErrExpectedToken, "expected STYLE or COLOR after ASK POINT"); return null; }
+                break;
+            case TokenKind.KwLine:
+                Advance();
+                if (Match(TokenKind.KwStyle)) obj = GfxAskObject.LineStyle;
+                else if (Match(TokenKind.KwColor)) obj = GfxAskObject.LineColor;
+                else { ErrorAt(Peek(), ErrExpectedToken, "expected STYLE or COLOR after ASK LINE"); return null; }
+                break;
+            case TokenKind.KwText:
+                Advance();
+                if (!ExpectKind(TokenKind.KwColor, "'COLOR'")) return null;
+                obj = GfxAskObject.TextColor; break;
+            case TokenKind.KwArea:
+                Advance();
+                if (!ExpectKind(TokenKind.KwColor, "'COLOR'")) return null;
+                obj = GfxAskObject.AreaColor; break;
+            default:
+                ErrorAt(Peek(), ErrExpectedToken, "expected a graphics object after ASK");
+                return null;
+        }
+
+        return FinishAsk(start, obj);
+    }
+
+    /// <summary>Parse the target variable list and optional STATUS clause of an ASK.</summary>
+    private Stmt? FinishAsk(Token start, GfxAskObject obj)
+    {
+        var targets = new List<Expr>();
+        var first = ParseExpression(); if (first is null) return null;
+        targets.Add(first);
+        while (Match(TokenKind.Comma))
+        {
+            var e = ParseExpression(); if (e is null) return null;
+            targets.Add(e);
+        }
+        Expr? status = null;
+        if (Match(TokenKind.KwStatus))
+        {
+            status = ParseExpression(); if (status is null) return null;
+        }
+        return new AskGfxStmt(SpanFrom(start, Previous().Span), obj, targets, status);
+    }
+
+    private Stmt? ParseGraph()
+    {
+        var start = Advance(); // GRAPH
+        var k = Peek().Kind;
+        if (k is TokenKind.KwPoints or TokenKind.KwLines or TokenKind.KwArea)
+        {
+            var geom = k switch
+            {
+                TokenKind.KwPoints => GfxGeometry.Points,
+                TokenKind.KwLines => GfxGeometry.Lines,
+                _ => GfxGeometry.Area,
+            };
+            Advance();
+            if (!ExpectKind(TokenKind.Colon, "':'")) return null;
+            var pts = ParsePointList();
+            return pts is null ? null : new GraphStmt(SpanFrom(start, Previous().Span), geom, pts);
+        }
+        if (k == TokenKind.KwText)
+        {
+            Advance(); // TEXT
+            if (!ExpectKind(TokenKind.Comma, "',' before AT")) return null;
+            if (!ExpectKind(TokenKind.KwAt, "'AT'")) return null;
+            var x = ParseExpression(); if (x is null) return null;
+            if (!ExpectKind(TokenKind.Comma, "','")) return null;
+            var y = ParseExpression(); if (y is null) return null;
+            if (Match(TokenKind.Colon))
+            {
+                var s = ParseExpression();
+                return s is null ? null : new GraphTextStmt(SpanFrom(start, Previous().Span), x, y, null, [s]);
+            }
+            if (Match(TokenKind.Comma))
+            {
+                if (!ExpectKind(TokenKind.KwUsing, "'USING'")) return null;
+                var image = ParseExpression(); if (image is null) return null;
+                if (!ExpectKind(TokenKind.Colon, "':'")) return null;
+                var items = new List<Expr>();
+                var it = ParseExpression(); if (it is null) return null;
+                items.Add(it);
+                while (Match(TokenKind.Comma))
+                {
+                    var e = ParseExpression(); if (e is null) return null;
+                    items.Add(e);
+                }
+                return new GraphTextStmt(SpanFrom(start, Previous().Span), x, y, image, items);
+            }
+            ErrorAt(Peek(), ErrExpectedToken, "expected ':' or ', USING' in GRAPH TEXT");
+            return null;
+        }
+        ErrorAt(Peek(), ErrExpectedToken, "expected POINTS, LINES, AREA, or TEXT after GRAPH");
+        return null;
+    }
+
+    private List<GfxCoord>? ParsePointList()
+    {
+        var pts = new List<GfxCoord>();
+        while (true)
+        {
+            var x = ParseExpression(); if (x is null) return null;
+            if (!ExpectKind(TokenKind.Comma, "','")) return null;
+            var y = ParseExpression(); if (y is null) return null;
+            pts.Add(new GfxCoord(x, y));
+            if (!Match(TokenKind.Semicolon)) break;
+        }
+        return pts;
+    }
+
     private Stmt? UnsupportedStatement()
     {
         var t = Peek();
         ErrorAt(t, ErrExpectedStatement,
             $"unsupported or unrecognized statement (starts with {t.Kind})",
-            "MAT, OPEN/CLOSE, WHEN/USE/HANDLER, MODULE, and graphics statements are not yet implemented");
+            "this statement form is not yet implemented");
         return null;
     }
 

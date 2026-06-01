@@ -16,7 +16,7 @@ The spec uses "shall" for normative requirements and "should" for recommendation
 | File I/O (INTERNAL mode, BYTE mode, RANDOM organisation) | ❌ Not yet |
 | Editing module — `PRINT USING` | ✅ Implemented |
 | Editing module — formatted `INPUT` | ❌ Not yet |
-| Graphics + Picture (SVG backend) | ❌ Not yet |
+| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG backend; TUI/Unity backends pending) |
 | Fixed-decimal | ❌ Not yet (skipped per project plan unless asked) |
 | Real-time | ❌ Not in scope |
 
@@ -221,6 +221,34 @@ PRINT USING "*****":      42         ! ***42
 
 **DEVIATION:** The `^^^^` exponent (scaled-notation) field is not implemented; a
 picture containing `^` treats it as literal text.
+
+## Graphics (§13)
+
+The coordinate-systems, attributes, and graphic-output sections are implemented:
+`SET WINDOW/VIEWPORT/DEVICE WINDOW/DEVICE VIEWPORT/CLIP`, `ASK …` (with optional
+`STATUS`), `CLEAR`, `SET {POINT|LINE} STYLE`, `SET {POINT|LINE|TEXT|AREA} COLOR`,
+and `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`.
+
+**Architecture:** a device-independent core (`GraphicsState` in
+`ArcadeBasic.Runtime`) performs all coordinate mapping and clipping
+(Cohen–Sutherland for lines, Sutherland–Hodgman for areas) and hands an
+`IGraphicsDevice` clipped vector primitives in the normalized device unit square.
+The interpreter and VM share that core, so graphics output is byte-identical
+between engines (asserted in `ArcadeBasic.Conformance.Tests`). The shipped
+backend is **SVG** (`arcade-basic run|vm file.bas --svg out.svg`); terminal-IDE
+(braille) and Unity (`Texture2D`) backends are planned.
+
+**IMPLEMENTATION-DEFINED:** the device transform (DEVICE WINDOW → DEVICE
+VIEWPORT) is a plain linear remap within the unit square; physical aspect-ratio
+preservation is delegated to the backend, which knows its real pixel geometry.
+`ASK DEVICE SIZE` / `MAX COLOR` / `MAX … STYLE` report the active backend's
+capabilities (the null backend used by a plain `run` reports a 16-colour, 3-style
+device).
+
+**DEVIATION:** invalid `SET` bounds (zero/negative size, or out of `[0,1]` where
+required) are treated as the spec's nonfatal "continue with current values" by
+leaving the current value unchanged; no catchable exception is raised for them in
+this phase. The `^`-style picture exponent is unrelated; see PRINT USING.
 
 ## CLI / tooling
 

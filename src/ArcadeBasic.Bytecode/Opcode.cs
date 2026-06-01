@@ -225,6 +225,18 @@ public enum Opcode : byte
     StoreElement,          // operand: u32 slot, u32 rank — stack (top last): value, sub_0, ..., sub_{rank-1}
     StoreElementOuter,     // operand: u32 depth, u32 slot, u32 rank
 
+    // -- Graphics (§13) --
+    // Operands flow through the stack; opcodes drive the same shared
+    // GraphicsState the tree-walker uses, so output is byte-identical.
+    GfxSetBounds,          // operand: u32 rectKind (matches Parser.Ast.GfxRectKind) — stack (top last): left, right, bottom, top
+    GfxSetClip,            // stack: onOff (string)
+    GfxSetStyle,           // operand: u32 prim (0=point,1=line) — stack: index
+    GfxSetColor,           // operand: u32 target (matches GfxColorTarget) — stack: index
+    GfxClear,              // CLEAR
+    GfxDraw,               // operand: u32 geometry (0=points,1=lines,2=area), u32 count — stack: x0,y0, x1,y1, … (2*count)
+    GfxText,               // operand: u32 hasImage (0/1), u32 itemCount — stack: atX, atY, then [text] or [image, items…]
+    GfxAskValue,           // operand: u32 query (matches GfxQuery), u32 index — pushes the queried value
+
     // -- Misc --
     Stop,                  // STOP statement
     End,                   // END statement

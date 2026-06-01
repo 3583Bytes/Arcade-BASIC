@@ -25,6 +25,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `kanban.bas`     | string FUNCTION, GOSUB render, INPUT loop, file save/load | ✓ | ✓           |
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
+| `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |
 
 A ✓ in the **Bytecode VM** column means the example also runs via
 `arcade-basic vm <file>` with output byte-identical to the tree-walker

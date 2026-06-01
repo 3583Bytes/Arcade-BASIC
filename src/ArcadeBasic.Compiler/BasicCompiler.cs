@@ -372,6 +372,22 @@ public sealed class BasicCompiler
             case PrintFileStmt pf: CompilePrintFile(pf); break;
             case InputFileStmt ifs: CompileInputFile(ifs); break;
             case LineInputFileStmt lif: CompileLineInputFile(lif); break;
+            case SetBoundsStmt sb: CompileSetBounds(sb); break;
+            case SetClipStmt sc: CompileExpr(sc.OnOff); _current.Emit(Opcode.GfxSetClip); break;
+            case SetStyleStmt ss:
+                CompileExpr(ss.Index);
+                _current.Emit(Opcode.GfxSetStyle);
+                _current.EmitU32((uint)(int)ss.Prim);
+                break;
+            case SetColorStmt scl:
+                CompileExpr(scl.Index);
+                _current.Emit(Opcode.GfxSetColor);
+                _current.EmitU32((uint)(int)scl.Target);
+                break;
+            case ClearStmt: _current.Emit(Opcode.GfxClear); break;
+            case GraphStmt g: CompileGraph(g); break;
+            case GraphTextStmt gt: CompileGraphText(gt); break;
+            case AskGfxStmt ag: CompileAskGfx(ag); break;
             case DataStmt:
                 // DATA was collected by sema into _info.DataPool at compile time;
                 // there's no runtime opcode to emit for the DATA statement itself.
@@ -440,6 +456,89 @@ public sealed class BasicCompiler
                 break;
             default:
                 throw new UnsupportedFeatureException("invalid assignment target");
+        }
+    }
+
+    // -- Graphics (§13) lowering -----------------------------------------
+
+    private void CompileSetBounds(SetBoundsStmt sb)
+    {
+        CompileExpr(sb.Left);
+        CompileExpr(sb.Right);
+        CompileExpr(sb.Bottom);
+        CompileExpr(sb.Top);
+        _current.Emit(Opcode.GfxSetBounds);
+        _current.EmitU32((uint)(int)sb.Object);
+    }
+
+    private void CompileGraph(GraphStmt g)
+    {
+        foreach (var c in g.Points) { CompileExpr(c.X); CompileExpr(c.Y); }
+        _current.Emit(Opcode.GfxDraw);
+        _current.EmitU32((uint)(int)g.Kind);
+        _current.EmitU32((uint)g.Points.Count);
+    }
+
+    private void CompileGraphText(GraphTextStmt gt)
+    {
+        CompileExpr(gt.AtX);
+        CompileExpr(gt.AtY);
+        if (gt.Image is null)
+        {
+            CompileExpr(gt.Items[0]);
+            _current.Emit(Opcode.GfxText);
+            _current.EmitU32(0u);
+            _current.EmitU32(0u);
+        }
+        else
+        {
+            CompileExpr(gt.Image);
+            foreach (var it in gt.Items) CompileExpr(it);
+            _current.Emit(Opcode.GfxText);
+            _current.EmitU32(1u);
+            _current.EmitU32((uint)gt.Items.Count);
+        }
+    }
+
+    private void CompileAskGfx(AskGfxStmt ag)
+    {
+        var q = (uint)(int)ag.Object; // GfxAskObject ordinal == GfxQuery ordinal
+        for (var i = 0; i < ag.Targets.Count; i++)
+        {
+            _current.Emit(Opcode.GfxAskValue);
+            _current.EmitU32(q);
+            _current.EmitU32((uint)i);
+            EmitStoreToTarget(ag.Targets[i]);
+        }
+        if (ag.Status is not null)
+        {
+            _current.Emit(Opcode.LoadZero);
+            EmitStoreToTarget(ag.Status);
+        }
+    }
+
+    /// <summary>Emit a store of the value already on top of the stack into an
+    /// assignable target (scalar variable or array element).</summary>
+    private void EmitStoreToTarget(Expr target)
+    {
+        switch (target)
+        {
+            case NameRefExpr nr:
+                switch (_info.Resolve(nr))
+                {
+                    case ResolvedVariable rv: EmitStoreSymbolSlot(rv.Symbol.OwnerScope!, rv.Symbol.Slot); break;
+                    case ResolvedParam rp: EmitStoreSymbolSlot(rp.Symbol.OwnerScope!, rp.Symbol.Slot); break;
+                    default: throw new UnsupportedFeatureException($"ASK target '{nr.Name}' is not assignable");
+                }
+                break;
+            case CallOrIndexExpr c:
+                if (_info.Resolve(c) is not ResolvedArrayAccess ra)
+                    throw new UnsupportedFeatureException($"ASK target '{c.Name}' is not an array element");
+                foreach (var arg in c.Args) CompileExpr(arg);
+                EmitStoreElement(ra.Symbol.OwnerScope!, ra.Symbol.Slot, c.Args.Count);
+                break;
+            default:
+                throw new UnsupportedFeatureException("invalid ASK target");
         }
     }
 

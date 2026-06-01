@@ -28,6 +28,7 @@ public sealed class Analyzer
     public const string ErrCannotCall = "FB0307";
     public const string WarnImplicitVariable = "FB0308";
     public const string ErrInvalidStringOp = "FB0309";
+    public const string ErrGraphics = "FB0310";
 
     private readonly DiagnosticBag _diags;
     private readonly Dictionary<Expr, ResolvedRef> _resolutions = new(ReferenceEqualityComparer.Instance);
@@ -331,6 +332,51 @@ public sealed class Analyzer
                 if (on.ElseStmt is not null) AnalyzeStmt(on.ElseStmt, scope);
                 break;
             }
+
+            case SetBoundsStmt sb:
+                ExpectType(sb.Left, AnalyzeExpr(sb.Left, scope), BasicType.Numeric, "graphics boundary");
+                ExpectType(sb.Right, AnalyzeExpr(sb.Right, scope), BasicType.Numeric, "graphics boundary");
+                ExpectType(sb.Bottom, AnalyzeExpr(sb.Bottom, scope), BasicType.Numeric, "graphics boundary");
+                ExpectType(sb.Top, AnalyzeExpr(sb.Top, scope), BasicType.Numeric, "graphics boundary");
+                break;
+            case SetClipStmt sc:
+                ExpectType(sc.OnOff, AnalyzeExpr(sc.OnOff, scope), BasicType.String, "CLIP value");
+                break;
+            case SetStyleStmt ss:
+                ExpectType(ss.Index, AnalyzeExpr(ss.Index, scope), BasicType.Numeric, "style index");
+                break;
+            case SetColorStmt scl:
+                ExpectType(scl.Index, AnalyzeExpr(scl.Index, scope), BasicType.Numeric, "color index");
+                break;
+            case ClearStmt:
+                break;
+            case GraphStmt g:
+                foreach (var pt in g.Points)
+                {
+                    ExpectType(pt.X, AnalyzeExpr(pt.X, scope), BasicType.Numeric, "graphics X coordinate");
+                    ExpectType(pt.Y, AnalyzeExpr(pt.Y, scope), BasicType.Numeric, "graphics Y coordinate");
+                }
+                if (g.Kind == GfxGeometry.Lines && g.Points.Count < 2)
+                    _diags.Error(ErrGraphics, g.Span, "GRAPH LINES needs at least two points");
+                if (g.Kind == GfxGeometry.Area && g.Points.Count < 3)
+                    _diags.Error(ErrGraphics, g.Span, "GRAPH AREA needs at least three points");
+                break;
+            case GraphTextStmt gt:
+                ExpectType(gt.AtX, AnalyzeExpr(gt.AtX, scope), BasicType.Numeric, "GRAPH TEXT X");
+                ExpectType(gt.AtY, AnalyzeExpr(gt.AtY, scope), BasicType.Numeric, "GRAPH TEXT Y");
+                if (gt.Image is null)
+                {
+                    ExpectType(gt.Items[0], AnalyzeExpr(gt.Items[0], scope), BasicType.String, "GRAPH TEXT string");
+                }
+                else
+                {
+                    ExpectType(gt.Image, AnalyzeExpr(gt.Image, scope), BasicType.String, "GRAPH TEXT USING image");
+                    foreach (var it in gt.Items) AnalyzeExpr(it, scope);
+                }
+                break;
+            case AskGfxStmt ag:
+                AnalyzeAskGfx(ag, scope);
+                break;
 
             case ReturnStmt: case StopStmt: case EndStmt: case EndBlockStmt: case RunStmt:
             case RemStmt: case OptionBaseStmt: case OptionArithmeticStmt:
@@ -639,6 +685,50 @@ public sealed class Analyzer
         {
             _diags.Error(ErrTypeMismatch, a.Span,
                 $"cannot assign {rhsType.ToString().ToLowerInvariant()} value to {lhsType.ToString().ToLowerInvariant()} target");
+        }
+    }
+
+    private void AnalyzeAskGfx(AskGfxStmt ag, Scope scope)
+    {
+        foreach (var t in ag.Targets) AnalyzeAssignableTarget(t, scope);
+        if (ag.Status is not null)
+        {
+            AnalyzeAssignableTarget(ag.Status, scope);
+            ExpectType(ag.Status, TypeOfTarget(ag.Status), BasicType.Numeric, "STATUS variable");
+        }
+
+        int expected;
+        switch (ag.Object)
+        {
+            case GfxAskObject.Window or GfxAskObject.Viewport
+                or GfxAskObject.DeviceWindow or GfxAskObject.DeviceViewport:
+                expected = 4;
+                foreach (var t in ag.Targets)
+                    ExpectType(t, TypeOfTarget(t), BasicType.Numeric, "ASK boundary variable");
+                break;
+            case GfxAskObject.DeviceSize:
+                expected = 3;
+                if (ag.Targets.Count == 3)
+                {
+                    ExpectType(ag.Targets[0], TypeOfTarget(ag.Targets[0]), BasicType.Numeric, "ASK DEVICE SIZE width");
+                    ExpectType(ag.Targets[1], TypeOfTarget(ag.Targets[1]), BasicType.Numeric, "ASK DEVICE SIZE height");
+                    ExpectType(ag.Targets[2], TypeOfTarget(ag.Targets[2]), BasicType.String, "ASK DEVICE SIZE unit");
+                }
+                break;
+            case GfxAskObject.Clip:
+                expected = 1;
+                ExpectType(ag.Targets[0], TypeOfTarget(ag.Targets[0]), BasicType.String, "ASK CLIP variable");
+                break;
+            default:
+                expected = 1;
+                ExpectType(ag.Targets[0], TypeOfTarget(ag.Targets[0]), BasicType.Numeric, "ASK result variable");
+                break;
+        }
+
+        if (ag.Targets.Count != expected)
+        {
+            _diags.Error(ErrGraphics, ag.Span,
+                $"ASK {ag.Object} expects {expected} target variable(s), got {ag.Targets.Count}");
         }
     }
 

@@ -248,7 +248,8 @@ public static class BuiltinImpls
     }
 
     private static BigDecimal FromDouble(double d) =>
-        BigDecimal.Parse(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture));
+        BigDecimal.Parse(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
 
     private static int CountRunes(string s)
     {

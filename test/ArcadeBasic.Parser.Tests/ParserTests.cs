@@ -177,6 +177,47 @@ public class ParserTests
         stmt.Targets.Should().Equal(10, 20);
     }
 
+    // -- Graphics (§13) -------------------------------------------------
+
+    [Fact]
+    public void SetDeviceViewportParsesTwoWordObject()
+    {
+        var stmt = SingleStmt<SetBoundsStmt>("SET DEVICE VIEWPORT 0, 0.5, 0, 0.5");
+        stmt.Object.Should().Be(GfxRectKind.DeviceViewport);
+    }
+
+    [Fact]
+    public void SetLineColorParses()
+    {
+        var stmt = SingleStmt<SetColorStmt>("SET LINE COLOR 3");
+        stmt.Target.Should().Be(GfxColorKind.Line);
+    }
+
+    [Fact]
+    public void GraphLinesPointListParses()
+    {
+        var stmt = SingleStmt<GraphStmt>("GRAPH LINES: 1,2; 3,4; 5,6");
+        stmt.Kind.Should().Be(GfxGeometry.Lines);
+        stmt.Points.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void GraphTextWithAtParses()
+    {
+        var stmt = SingleStmt<GraphTextStmt>("GRAPH TEXT, AT 2, 3: \"hi\"");
+        stmt.Image.Should().BeNull();
+        stmt.Items.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void AskMaxColorParsesDespiteMaxBeingABuiltin()
+    {
+        // MAX stays a builtin function name; ASK MAX COLOR is still recognised.
+        var stmt = SingleStmt<AskGfxStmt>("ASK MAX COLOR M");
+        stmt.Object.Should().Be(GfxAskObject.MaxColor);
+        stmt.Targets.Should().HaveCount(1);
+    }
+
     [Fact]
     public void Dim()
     {

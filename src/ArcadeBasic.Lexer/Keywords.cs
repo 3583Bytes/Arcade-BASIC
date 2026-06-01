@@ -36,6 +36,7 @@ internal static class Keywords
 
             // Statement / structural keywords
             ["ACCESS"] = TokenKind.KwAccess,
+            ["AREA"] = TokenKind.KwArea,
             ["AS"] = TokenKind.KwAs,
             ["ASK"] = TokenKind.KwAsk,
             ["AT"] = TokenKind.KwAt,
@@ -51,6 +52,7 @@ internal static class Keywords
             ["CLIP"] = TokenKind.KwClip,
             ["CLOSE"] = TokenKind.KwClose,
             ["COLLATE"] = TokenKind.KwCollate,
+            ["COLOR"] = TokenKind.KwColor,
             ["CON"] = TokenKind.KwCon,
             ["CONDITION"] = TokenKind.KwCondition,
             ["CONTINUE"] = TokenKind.KwContinue,
@@ -60,6 +62,7 @@ internal static class Keywords
             ["DECLARE"] = TokenKind.KwDeclare,
             ["DEF"] = TokenKind.KwDef,
             ["DELETE"] = TokenKind.KwDelete,
+            ["DEVICE"] = TokenKind.KwDevice,
             ["DIM"] = TokenKind.KwDim,
             ["DISPLAY"] = TokenKind.KwDisplay,
             ["DO"] = TokenKind.KwDo,
@@ -169,6 +172,7 @@ internal static class Keywords
             ["STOP"] = TokenKind.KwStop,
             ["STREAM"] = TokenKind.KwStream,
             ["STRING"] = TokenKind.KwString,
+            ["STYLE"] = TokenKind.KwStyle,
             ["SUB"] = TokenKind.KwSub,
             ["SUFFICIENT"] = TokenKind.KwSufficient,
             ["TEMPLATE"] = TokenKind.KwTemplate,

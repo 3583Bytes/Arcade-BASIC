@@ -30,14 +30,18 @@ public sealed partial class BasicInterpreter
     private int _dataCursor;
     private int _optionBase;
     private readonly ChannelTable _channels = new();
+    private readonly IGraphicsDevice _graphics;
+    private readonly GraphicsState _gfx = new();
 
-    public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in, CancellationToken cancel = default)
+    public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in,
+        CancellationToken cancel = default, IGraphicsDevice? graphics = null)
     {
         _program = program;
         _info = info;
         _out = @out;
         _in = @in;
         _cancel = cancel;
+        _graphics = graphics ?? NullGraphicsDevice.Instance;
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
     }
 
@@ -252,6 +256,15 @@ public sealed partial class BasicInterpreter
                     throw new BasicRuntimeException(10001,
                         $"ON index {idx} is out of range 1..{on.Targets.Count} and there is no ELSE clause");
                 }
+            case SetBoundsStmt sb: return ExecSetBounds(sb, frame);
+            case SetClipStmt sc: return ExecSetClip(sc, frame);
+            case SetStyleStmt ss: return ExecSetStyle(ss, frame);
+            case SetColorStmt scl: return ExecSetColor(scl, frame);
+            case ClearStmt: _graphics.Clear(); return FlowControl.Continue;
+            case GraphStmt g: return ExecGraph(g, frame);
+            case GraphTextStmt gt: return ExecGraphText(gt, frame);
+            case AskGfxStmt ag: return ExecAskGfx(ag, frame);
+
             case ReturnStmt: return new FlowControl.Return();
             case StopStmt: return FlowControl.Stopped;
             case EndStmt: return FlowControl.Ended;
