@@ -235,9 +235,12 @@ and `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`.
 `IGraphicsDevice` clipped vector primitives in the normalized device unit square.
 The interpreter and VM share that core, so graphics output is byte-identical
 between engines (asserted in `ArcadeBasic.Conformance.Tests`). Shipped backends:
-**SVG** (`arcade-basic run|vm file.bas --svg out.svg`) and the **terminal IDE**
-(a Braille-cell canvas on a Graphics tab in `arcade-basic-ide`, sharing a
-`Rasterizer` in Runtime). A Unity (`Texture2D`) backend is planned.
+**SVG** (`arcade-basic run|vm file.bas --svg out.svg`); the **terminal IDE**
+(a Braille-cell canvas on a Graphics tab in `arcade-basic-ide`); and a **console
+Braille + ANSI** backend (`AnsiGraphicsDevice` in Runtime) used by `arcade-basic
+run`/`vm` and standalone binaries on an interactive terminal — so graphics
+programs run anywhere, not just the IDE. All three share a `Rasterizer` in
+Runtime. A Unity (`Texture2D`) backend is planned.
 
 **IMPLEMENTATION-DEFINED:** the device transform (DEVICE WINDOW → DEVICE
 VIEWPORT) is a plain linear remap within the unit square; physical aspect-ratio

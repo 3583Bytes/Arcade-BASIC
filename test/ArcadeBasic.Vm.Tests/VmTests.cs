@@ -41,6 +41,38 @@ public class VmTests
         return (sw.ToString(), exit);
     }
 
+    // -- Terminal graphics backend --------------------------------------
+
+    [Fact]
+    public void GraphicsRenderBrailleToTheAnsiTerminalDevice()
+    {
+        // End-to-end: a graphics program through the VM + AnsiGraphicsDevice
+        // should paint a braille frame (on the alternate screen) before it reads
+        // input — this is what makes a standalone graphics binary show anything.
+        const string source =
+            "SET WINDOW 0, 10, 0, 10\n" +
+            "GRAPH LINES: 0, 0; 10, 10\n" +
+            "LINE INPUT A$\n";
+        var file = new SourceFile("g.bas", source);
+        var diags = new DiagnosticBag();
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var info = Analyzer.Analyze(program, diags);
+        diags.HasErrors.Should().BeFalse();
+        var compiled = BasicCompiler.Compile(program, info);
+
+        var gfxOut = new StringWriter();
+        var device = new ArcadeBasic.Runtime.AnsiGraphicsDevice(gfxOut, () => (40, 20));
+        var input = new ArcadeBasic.Runtime.PresentingTextReader(new StringReader("x\n"), device);
+        var exit = new BasicVm(compiled, new StringWriter { NewLine = "\n" }, input, device).Run();
+
+        exit.Should().Be(0);
+        var rendered = gfxOut.ToString();
+        rendered.Should().Contain("\x1b[?1049h");                       // entered the alternate screen
+        rendered.Any(c => c >= '⠀' && c <= '⣿').Should().BeTrue();      // painted at least one braille glyph
+        input.LineReadCount.Should().Be(1);                             // presented before the read
+    }
+
     // -- Literals & arithmetic ------------------------------------------
 
     [Fact]

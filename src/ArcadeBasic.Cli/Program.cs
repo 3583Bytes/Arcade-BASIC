@@ -5,6 +5,7 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Interpreter;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
+using ArcadeBasic.Runtime;
 using ArcadeBasic.Sema;
 using ArcadeBasic.Vm;
 using Singulink.Numerics;
@@ -22,8 +23,8 @@ using Singulink.Numerics;
             try
             {
                 var compiled = BytecodeSerializer.Deserialize(payload);
-                var vm = new BasicVm(compiled, Console.Out, Console.In);
-                return vm.Run();
+                return RunWithConsoleGraphics((input, gfx) =>
+                    new BasicVm(compiled, Console.Out, input, gfx).Run());
             }
             catch (Exception ex)
             {
@@ -298,15 +299,16 @@ static int RunVm(ReadOnlySpan<string> args)
         return 1;
     }
 
-    var svg = svgPath is null ? null : new SvgGraphicsDevice();
-    var vm = new BasicVm(compiled, Console.Out, Console.In, svg);
-    var exit = vm.Run();
-    if (svg is not null && svgPath is not null)
+    if (svgPath is not null)
     {
+        var svg = new SvgGraphicsDevice();
+        var exit = new BasicVm(compiled, Console.Out, Console.In, svg).Run();
         File.WriteAllText(svgPath, svg.ToSvg());
         Console.Error.WriteLine($"wrote {svgPath}");
+        return exit;
     }
-    return exit;
+    return RunWithConsoleGraphics((input, gfx) =>
+        new BasicVm(compiled, Console.Out, input, gfx).Run());
 }
 
 static int RunAnalyze(ReadOnlySpan<string> args)
@@ -426,15 +428,34 @@ static int RunProgram(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
-    var svg = svgPath is null ? null : new SvgGraphicsDevice();
-    var interp = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg);
-    var exit = interp.Run();
-    if (svg is not null && svgPath is not null)
+    if (svgPath is not null)
     {
+        var svg = new SvgGraphicsDevice();
+        var exit = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg).Run();
         File.WriteAllText(svgPath, svg.ToSvg());
         Console.Error.WriteLine($"wrote {svgPath}");
+        return exit;
     }
-    return exit;
+    return RunWithConsoleGraphics((input, gfx) =>
+        new BasicInterpreter(combined, info, Console.Out, input, default, gfx).Run());
+}
+
+/// <summary>Run an engine with terminal graphics when stdout/stdin are an
+/// interactive terminal: a presenting reader shows each frame before input, and
+/// the terminal is always restored afterward. Falls back to the no-op device
+/// (today's behaviour) when not interactive.</summary>
+static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, int> run)
+{
+    var device = ConsoleGraphics.TryCreate();
+    TextReader input = device is null ? Console.In : new PresentingTextReader(Console.In, device);
+    try
+    {
+        return run(input, device);
+    }
+    finally
+    {
+        ConsoleGraphics.Finish(device, input);
+    }
 }
 
 /// <summary>Extract an optional "--svg &lt;path&gt;" option, returning the

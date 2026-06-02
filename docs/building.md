@@ -248,6 +248,15 @@ binary, producing one self-contained executable (see
 ./hello
 ```
 
+> **Graphics programs run standalone too.** A §13 graphics program (e.g.
+> `examples/kanban.bas`) renders in the terminal when run via `arcade-basic
+> run`/`vm` or as a standalone binary — the CLI draws with a Braille + ANSI
+> backend (the same picture the IDE shows, written straight to the terminal).
+> It activates only on an interactive terminal; piped/redirected output falls
+> back to no rendering (use `--svg <file>` for headless output). Needs a
+> terminal with Braille-glyph and ANSI/VT support (Windows Terminal, modern
+> macOS/Linux terminals).
+
 ### From the IDE (F7)
 
 The IDE itself isn't AOT'd, so it can't bundle *itself*. It needs a native
