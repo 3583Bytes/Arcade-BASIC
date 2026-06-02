@@ -286,6 +286,26 @@ public sealed partial class BasicInterpreter
         return FlowControl.Continue;
     }
 
+    private FlowControl ExecSleep(SleepStmt slp, ActivationRecord frame)
+    {
+        // SLEEP is the frame boundary in a real-time loop: present the frame
+        // drawn so far (the console backend paints here; the IDE redraws on its
+        // own pump), then pause.
+        _graphics.Flush();
+        var secs = (double)EvalNumeric(slp.Seconds, frame);
+        if (secs <= 0) return FlowControl.Continue;
+        // Sleep in short slices so a cancellation (e.g. the IDE's Stop) is
+        // observed promptly rather than after the full delay.
+        var remaining = (int)Math.Min(secs * 1000.0, int.MaxValue);
+        while (remaining > 0 && !_cancel.IsCancellationRequested)
+        {
+            var slice = Math.Min(remaining, 50);
+            System.Threading.Thread.Sleep(slice);
+            remaining -= slice;
+        }
+        return FlowControl.Continue;
+    }
+
     // -- DIM -------------------------------------------------------------
 
     private FlowControl ExecDim(DimStmt dim, ActivationRecord frame)
@@ -585,6 +605,10 @@ public sealed partial class BasicInterpreter
                 return _currentException is null
                     ? StringValue.Empty
                     : new StringValue(_currentException.Text);
+            case "INKEY":
+                // Non-blocking keyboard poll — reads from the injected keyboard
+                // source, not the static builtin registry.
+                return new StringValue(_keyboard.ReadKey());
         }
 
         if (!BuiltinImpls.All.TryGetValue(b.Name, out var fn))

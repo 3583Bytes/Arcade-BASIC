@@ -339,6 +339,7 @@ public sealed class BasicCompiler
             case OptionBaseStmt: break;
             case OptionArithmeticStmt: break;
             case RandomizeStmt: break;
+            case SleepStmt slp: CompileExpr(slp.Seconds); _current.Emit(Opcode.Sleep); break;
             case ReturnStmt: _current.Emit(Opcode.Return); break;
             case IfStmt ifs: CompileIf(ifs); break;
             case ForStmt f: CompileFor(f); break;

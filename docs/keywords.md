@@ -8,7 +8,10 @@ Keywords are case-insensitive: `PRINT`, `print`, and `Print` are the same
 token. Examples use uppercase by convention.
 
 > **Companion docs:** [`architecture.md`](architecture.md) for the pipeline,
-> [`conformance.md`](conformance.md) for ISO 10279 deviations,
+> [`conformance.md`](conformance.md) for ISO 10279 deviations and the
+> [**Extensions** table](conformance.md#extensions-beyond-isoecma-full-basic)
+> (which keyword/function belongs to which spec — e.g. `INKEY$` is a Microsoft
+> BASIC extension, not ISO Full BASIC),
 > [`../examples/README.md`](../examples/README.md) for full programs that
 > exercise these features together.
 
@@ -35,7 +38,7 @@ token. Examples use uppercase by convention.
 
 **Jumps:** [GOTO](#goto) · [GOSUB / RETURN](#gosub--return) ·
 [ON ... GOTO / GOSUB](#on--goto--gosub) ·
-[STOP](#stop) · [END](#end) · [RANDOMIZE](#randomize) · [RUN](#run)
+[STOP](#stop) · [END](#end) · [RANDOMIZE](#randomize) · [RUN](#run) · [SLEEP](#sleep)
 
 **Word-form operators:** [AND, OR, NOT, XOR, IMP, EQV](#logical-operators) ·
 [MOD, REMAINDER](#mod--remainder) ·
@@ -563,6 +566,22 @@ in modern style.
 ```basic
 PRINT "boot"
 RUN                        ! starts over (clears X, etc.)
+```
+
+### `SLEEP`
+
+Pause execution for a number of seconds (fractional allowed). Paces real-time
+loops — pair it with the `INKEY$` function (non-blocking keyboard) for games.
+**Extension:** Microsoft BASIC (QuickBASIC), not ISO/ECMA Full BASIC — see the
+[Extensions table](conformance.md#extensions-beyond-isoecma-full-basic).
+
+```basic
+DO
+  LET K$ = INKEY$          ! "" if no key is waiting
+  IF K$ = "q" THEN EXIT DO
+  ! ... update + redraw ...
+  SLEEP 0.05               ! ~20 frames/second
+LOOP
 ```
 
 ---

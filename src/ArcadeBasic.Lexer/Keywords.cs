@@ -167,6 +167,7 @@ internal static class Keywords
             ["SKIP"] = TokenKind.KwSkip,
             ["SOUND"] = TokenKind.KwSound,
             ["STANDARD"] = TokenKind.KwStandard,
+            ["SLEEP"] = TokenKind.KwSleep,
             ["STATUS"] = TokenKind.KwStatus,
             ["STEP"] = TokenKind.KwStep,
             ["STOP"] = TokenKind.KwStop,

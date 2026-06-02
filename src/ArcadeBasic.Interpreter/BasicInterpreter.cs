@@ -32,9 +32,10 @@ public sealed partial class BasicInterpreter
     private readonly ChannelTable _channels = new();
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
+    private readonly IKeyboard _keyboard;
 
     public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in,
-        CancellationToken cancel = default, IGraphicsDevice? graphics = null)
+        CancellationToken cancel = default, IGraphicsDevice? graphics = null, IKeyboard? keyboard = null)
     {
         _program = program;
         _info = info;
@@ -42,6 +43,7 @@ public sealed partial class BasicInterpreter
         _in = @in;
         _cancel = cancel;
         _graphics = graphics ?? NullGraphicsDevice.Instance;
+        _keyboard = keyboard ?? NullKeyboard.Instance;
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
     }
 
@@ -275,6 +277,7 @@ public sealed partial class BasicInterpreter
             case OptionBaseStmt ob: _optionBase = ob.Base; return FlowControl.Continue;
             case OptionArithmeticStmt: return FlowControl.Continue;
             case RandomizeStmt rnd: return ExecRandomize(rnd, frame);
+            case SleepStmt slp: return ExecSleep(slp, frame);
             case DimStmt dim: return ExecDim(dim, frame);
             case IfStmt ifs: return ExecIf(ifs, frame);
             case ForStmt f: return ExecFor(f, frame);

@@ -26,6 +26,10 @@ internal sealed class RunController
     private int _drainCursor;
     private bool _graphicsShown;
 
+    private readonly TuiKeyboard _keyboard = new();
+    private Func<KeyEvent, bool>? _prevRootKey;
+    private volatile bool _readActive;   // true while a LINE INPUT / INPUT read is pending
+
     public RunController(
         OutputPane output,
         GraphicsPane graphics,
@@ -65,27 +69,31 @@ internal sealed class RunController
         _drainCursor = 0;
         _graphicsShown = false;
         _graphics.Canvas.ClearBuffer();
+        _keyboard.Clear();
+        InstallKeyHook();
         _onStateChanged(RunState.Running);
 
         var token = _cts.Token;
         var writer = _writer;
         var device = new TuiGraphicsDevice(_graphics.Canvas);
+        var keyboard = _keyboard;
 
         var stdin = new InteractiveTextReader(
             beginRead: done =>
             {
                 var useGraphics = !_graphics.Canvas.IsEmpty;
                 _onInputRequested(useGraphics);
-                ActiveSink().BeginRead(done);
+                _readActive = true;                       // route keys to the input field, not INKEY$
+                ActiveSink().BeginRead(result => { _readActive = false; done(result); });
             },
-            cancelRead: () => ActiveSink().CancelRead(),
+            cancelRead: () => { _readActive = false; ActiveSink().CancelRead(); },
             token);
 
         _task = Task.Run(() =>
         {
             try
             {
-                return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token, graphics: device);
+                return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token, graphics: device, keyboard: keyboard);
             }
             catch (Exception ex)
             {
@@ -116,6 +124,40 @@ internal sealed class RunController
         catch (ObjectDisposedException) { /* racing with Finish */ }
     }
 
+    // While a program runs, capture game keys (printable + arrows) globally and
+    // feed them to INKEY$ — independent of which view has focus. Esc, function
+    // keys, and Ctrl-combos pass through untouched so Stop and IDE shortcuts keep
+    // working; during a LINE INPUT read, keys go to the input field instead.
+    private void InstallKeyHook()
+    {
+        _prevRootKey = Application.RootKeyEvent;
+        Application.RootKeyEvent = OnRootKey;
+    }
+
+    private void RemoveKeyHook()
+    {
+        Application.RootKeyEvent = _prevRootKey;
+        _prevRootKey = null;
+    }
+
+    private bool OnRootKey(KeyEvent ke)
+    {
+        if (_task is null || _readActive) return _prevRootKey?.Invoke(ke) ?? false;
+        var key = MapGameKey(ke);
+        if (key.Length == 0) return _prevRootKey?.Invoke(ke) ?? false;   // Esc/F-keys/Ctrl → passthrough
+        _keyboard.Enqueue(key);
+        return true;   // consume so the keypress doesn't leak into the editor
+    }
+
+    private static string MapGameKey(KeyEvent ke) => ke.Key switch
+    {
+        Key.CursorUp => "\0" + (char)72,
+        Key.CursorDown => "\0" + (char)80,
+        Key.CursorLeft => "\0" + (char)75,
+        Key.CursorRight => "\0" + (char)77,
+        _ => ke.KeyValue is >= 32 and < 127 ? ((char)ke.KeyValue).ToString() : string.Empty,
+    };
+
     private void Drain()
     {
         if (_writer is null) return;
@@ -129,6 +171,8 @@ internal sealed class RunController
 
     private void Finish()
     {
+        RemoveKeyHook();
+        _readActive = false;
         Drain();
         if (!_graphics.Canvas.IsEmpty)
         {

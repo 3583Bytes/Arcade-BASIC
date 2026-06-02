@@ -139,6 +139,8 @@ System:              DATE$ TIME$
 Array introspection: LBOUND UBOUND
 Exception accessors: EXTYPE EXLINE EXTEXT$
 Constants:           PI EPS INF MAXNUM
+
+Extensions (non-ISO): INKEY$   ← Microsoft BASIC (see "Extensions" below)
 ```
 
 **IMPLEMENTATION-DEFINED:** `RND` takes 0 or 1 arguments. The argument is **ignored**; every call advances the underlying PRNG. ISO permits dialect-specific behaviour; MS-BASIC's `RND(0) = last value` is not implemented.
@@ -155,6 +157,23 @@ Constants:           PI EPS INF MAXNUM
 `EPS`/`INF`/`MAXNUM` are conservative placeholders, not derived from the BigDecimal type's actual limits.
 
 **IMPLEMENTATION-DEFINED:** Trigonometric and exponential functions evaluate through `double` and parse back to `BigDecimal`. Result accuracy is ~15 significant decimal digits (double precision), well above ISO's recommended 6. Pure-decimal big-precision implementations would be slower and aren't necessary for any conformance test we have.
+
+## Extensions beyond ISO/ECMA Full BASIC
+
+Everything above is ISO/IEC 10279 (ECMA-116) Full BASIC. A few features come from
+other dialects and are **not** part of that standard; they're tracked here so it
+stays clear which keyword belongs to which specification. Each is tagged with its
+source.
+
+| Feature | Source | Notes |
+|---|---|---|
+| `INKEY$` | **Microsoft BASIC** (GW-BASIC / QuickBASIC) | Niladic string function; **non-blocking** keyboard poll. Returns `""` when no key is waiting, a 1-char string for a normal key, or `CHR$(0)` + a key code for special keys (arrows: 72/80/75/77 — Up/Down/Left/Right). ISO Full BASIC explicitly excludes real-time input (§14), so this is a deliberate arcade extension. Reads from the active keyboard backend (console for `run`/`vm`/standalone; the IDE captures keys globally while a program runs). With no interactive keyboard (piped input, headless) it always returns `""`. |
+| `SLEEP <seconds>` | **Microsoft BASIC** (QuickBASIC), extended | Pause execution for the given number of seconds; **fractional seconds are allowed** (QuickBASIC only took whole seconds). Pairs with `INKEY$` to pace a real-time loop. Also acts as the frame boundary — the console graphics backend presents the current frame at each `SLEEP`. A cancellation (the IDE's Stop) interrupts a long `SLEEP` promptly. |
+
+> **Reserved-but-unimplemented:** `WAIT` is reserved in the lexer but has no
+> behaviour (in Microsoft BASIC `WAIT port, mask` is a hardware port-wait, *not*
+> a delay — `SLEEP` above is the delay statement). The standard
+> `INPUT … TIMEOUT/ELAPSED` (§10.2) is also not yet implemented.
 
 ## Arrays + MAT
 

@@ -42,13 +42,16 @@ public sealed class BasicVm
 
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
+    private readonly IKeyboard _keyboard;
 
-    public BasicVm(BcProgram program, TextWriter @out, TextReader @in, IGraphicsDevice? graphics = null)
+    public BasicVm(BcProgram program, TextWriter @out, TextReader @in,
+        IGraphicsDevice? graphics = null, IKeyboard? keyboard = null)
     {
         _program = program;
         _out = @out;
         _in = @in;
         _graphics = graphics ?? NullGraphicsDevice.Instance;
+        _keyboard = keyboard ?? NullKeyboard.Instance;
     }
 
     public int Run()
@@ -111,6 +114,15 @@ public sealed class BasicVm
                     while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
                     return true;
                 case Opcode.Nop: break;
+                case Opcode.Sleep:
+                    {
+                        // Frame boundary: present what's drawn, then pause.
+                        _graphics.Flush();
+                        var secs = (double)((NumericValue)stack.Pop()).V;
+                        if (secs > 0)
+                            System.Threading.Thread.Sleep((int)Math.Min(secs * 1000.0, int.MaxValue));
+                        break;
+                    }
 
                 // -- Graphics (§13): drive the same GraphicsState as the tree-walker --
                 case Opcode.GfxSetBounds:
@@ -386,6 +398,10 @@ public sealed class BasicVm
                             stack.Push(_currentException is null
                                 ? StringValue.Empty
                                 : new StringValue(_currentException.Text));
+                        }
+                        else if (string.Equals(name, "INKEY", StringComparison.OrdinalIgnoreCase))
+                        {
+                            stack.Push(new StringValue(_keyboard.ReadKey()));   // non-blocking key poll
                         }
                         else if (BuiltinImpls.All.TryGetValue(name, out var fn))
                         {

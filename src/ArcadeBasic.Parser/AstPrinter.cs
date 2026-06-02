@@ -82,6 +82,10 @@ public static class AstPrinter
                 sb.AppendLine($"{label}Randomize");
                 if (s.Seed is not null) PrintExpr(sb, s.Seed, depth + 1, "seed");
                 break;
+            case SleepStmt s:
+                sb.AppendLine($"{label}Sleep");
+                PrintExpr(sb, s.Seconds, depth + 1, "seconds");
+                break;
             case RemStmt s: sb.AppendLine($"{label}Rem  \"{s.Comment}\""); break;
             case DimStmt s:
                 sb.AppendLine($"{label}Dim");

@@ -109,6 +109,45 @@ public class GraphicsTests
         Assert.Contains("TEXT", i);    // the label
     }
 
+    [Fact]
+    public void InvadersRendersIdenticallyOnBothEngines()
+    {
+        // The game is driven by INKEY$; feeding both engines the same scripted
+        // key sequence must yield byte-identical primitive streams (no RND, so it
+        // is deterministic). Also exercises SLEEP on both engines.
+        var path = Path.Combine(ExamplesDir(), "invaders.bas");
+        var source = File.ReadAllText(path);
+        var file = new SourceFile("invaders.bas", source);
+        var diags = new DiagnosticBag();
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var info = Analyzer.Analyze(program, diags);
+        Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
+
+        // idle, fire, idle, left, idle, right, idle, quit
+        string[] script = { "", " ", "", "a", "", "d", "", "q" };
+
+        var ir = new RecordingGraphicsDevice();
+        var iExit = new BasicInterpreter(program, info, new StringWriter(), TextReader.Null, default, ir, new ScriptKeyboard(script)).Run();
+
+        var vr = new RecordingGraphicsDevice();
+        var vExit = new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), TextReader.Null, vr, new ScriptKeyboard(script)).Run();
+
+        Assert.Equal(0, iExit);
+        Assert.Equal(0, vExit);
+        Assert.Equal(ir.Transcript, vr.Transcript);
+        Assert.NotEmpty(ir.Transcript);
+        Assert.Contains("AREA", ir.Transcript);   // aliens + ship are filled areas
+        Assert.Contains("TEXT", ir.Transcript);    // the HUD
+    }
+
+    private sealed class ScriptKeyboard : IKeyboard
+    {
+        private readonly Queue<string> _keys;
+        public ScriptKeyboard(IEnumerable<string> keys) => _keys = new Queue<string>(keys);
+        public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
+    }
+
     private static string ExamplesDir()
     {
         var dir = AppContext.BaseDirectory;

@@ -26,6 +26,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 | `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |
+| `invaders.bas`   | Space Invaders — real-time game using `INKEY$` (keyboard) + `SLEEP` (frame delay) + §13 graphics | ✓ | ✓ |
 
 A ✓ in the **Bytecode VM** column means the example also runs via
 `arcade-basic vm <file>` with output byte-identical to the tree-walker

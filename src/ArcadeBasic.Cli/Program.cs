@@ -23,8 +23,8 @@ using Singulink.Numerics;
             try
             {
                 var compiled = BytecodeSerializer.Deserialize(payload);
-                return RunWithConsoleGraphics((input, gfx) =>
-                    new BasicVm(compiled, Console.Out, input, gfx).Run());
+                return RunWithConsoleGraphics((input, gfx, kb) =>
+                    new BasicVm(compiled, Console.Out, input, gfx, kb).Run());
             }
             catch (Exception ex)
             {
@@ -307,8 +307,8 @@ static int RunVm(ReadOnlySpan<string> args)
         Console.Error.WriteLine($"wrote {svgPath}");
         return exit;
     }
-    return RunWithConsoleGraphics((input, gfx) =>
-        new BasicVm(compiled, Console.Out, input, gfx).Run());
+    return RunWithConsoleGraphics((input, gfx, kb) =>
+        new BasicVm(compiled, Console.Out, input, gfx, kb).Run());
 }
 
 static int RunAnalyze(ReadOnlySpan<string> args)
@@ -436,21 +436,24 @@ static int RunProgram(ReadOnlySpan<string> args)
         Console.Error.WriteLine($"wrote {svgPath}");
         return exit;
     }
-    return RunWithConsoleGraphics((input, gfx) =>
-        new BasicInterpreter(combined, info, Console.Out, input, default, gfx).Run());
+    return RunWithConsoleGraphics((input, gfx, kb) =>
+        new BasicInterpreter(combined, info, Console.Out, input, default, gfx, kb).Run());
 }
 
 /// <summary>Run an engine with terminal graphics when stdout/stdin are an
 /// interactive terminal: a presenting reader shows each frame before input, and
 /// the terminal is always restored afterward. Falls back to the no-op device
 /// (today's behaviour) when not interactive.</summary>
-static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, int> run)
+static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, IKeyboard?, int> run)
 {
     var device = ConsoleGraphics.TryCreate();
+    // A console device means an interactive terminal, so INKEY$ gets a live
+    // keyboard too (works even for a text-mode game that draws nothing).
+    IKeyboard? keyboard = device is null ? null : new ConsoleKeyboard();
     TextReader input = device is null ? Console.In : new PresentingTextReader(Console.In, device);
     try
     {
-        return run(input, device);
+        return run(input, device, keyboard);
     }
     finally
     {

@@ -26,6 +26,36 @@ public class InterpreterTests
         return (output.ToString(), exit, diags);
     }
 
+    [Fact]
+    public void InkeyReadsFromTheKeyboardSource()
+    {
+        const string source =
+            "PRINT \"[\" & INKEY$ & \"]\"\n" +
+            "PRINT \"[\" & INKEY$ & \"]\"\n";
+        var file = new SourceFile("k.bas", source);
+        var diags = new DiagnosticBag();
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var info = Analyzer.Analyze(program, diags);
+        diags.HasErrors.Should().BeFalse();
+
+        var output = new StringWriter { NewLine = "\n" };
+        var kb = new QueueKeyboard("a");
+        new BasicInterpreter(program, info, output, new StringReader(""), default, null, kb).Run();
+        output.ToString().Should().Be("[a]\n[]\n");
+    }
+
+    private sealed class QueueKeyboard : ArcadeBasic.Runtime.IKeyboard
+    {
+        private readonly Queue<string> _keys;
+        public QueueKeyboard(params string[] keys) => _keys = new Queue<string>(keys);
+        public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
+    }
+
+    [Fact]
+    public void SleepRunsAsADelay() =>
+        Run("PRINT \"a\"\nSLEEP 0\nPRINT \"b\"").Output.Trim().Should().Be("a\nb");
+
     /// <summary>Splits and trims; drops empty lines (so trailing newlines don't leak into Last()).</summary>
     private static string[] Lines(string s) =>
         s.Split('\n').Select(l => l.TrimEnd('\r', ' ')).Where(l => l.Length > 0).ToArray();

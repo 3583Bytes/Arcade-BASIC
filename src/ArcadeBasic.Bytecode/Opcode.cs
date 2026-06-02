@@ -240,5 +240,6 @@ public enum Opcode : byte
     // -- Misc --
     Stop,                  // STOP statement
     End,                   // END statement
+    Sleep,                 // SLEEP statement — stack: seconds (numeric); pauses execution
     Nop,
 }

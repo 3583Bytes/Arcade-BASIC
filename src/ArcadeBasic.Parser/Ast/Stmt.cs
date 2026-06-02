@@ -86,6 +86,9 @@ public sealed record class RunStmt(SourceSpan Span) : Stmt(Span);
 /// <summary>RANDOMIZE [seed]</summary>
 public sealed record class RandomizeStmt(SourceSpan Span, Expr? Seed) : Stmt(Span);
 
+/// <summary>SLEEP seconds — pause execution (Microsoft BASIC extension; fractional seconds allowed).</summary>
+public sealed record class SleepStmt(SourceSpan Span, Expr Seconds) : Stmt(Span);
+
 /// <summary>REM comment line. Comment text retained for formatter use.</summary>
 public sealed record class RemStmt(SourceSpan Span, string Comment) : Stmt(Span);
 

@@ -130,6 +130,7 @@ public sealed partial class BasicParser
             TokenKind.KwEnd => ParseEnd(),
             TokenKind.KwRun => ParseRun(),
             TokenKind.KwRandomize => ParseRandomize(),
+            TokenKind.KwSleep => ParseSleep(),
             TokenKind.KwRem => ParseRem(),
             TokenKind.KwDim => ParseDim(),
             TokenKind.KwOption => ParseOption(),
@@ -557,6 +558,14 @@ public sealed partial class BasicParser
             seed = ParseExpression();
         }
         return new RandomizeStmt(SpanFrom(start, Previous().Span), seed);
+    }
+
+    private Stmt? ParseSleep()
+    {
+        var start = Advance(); // SLEEP
+        var seconds = ParseExpression();
+        if (seconds is null) return null;
+        return new SleepStmt(SpanFrom(start, Previous().Span), seconds);
     }
 
     private RemStmt ParseRem()

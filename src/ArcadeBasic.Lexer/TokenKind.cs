@@ -193,6 +193,7 @@ public enum TokenKind
     KwSkip,
     KwSound,
     KwStandard,
+    KwSleep,
     KwStatus,
     KwStep,
     KwStop,

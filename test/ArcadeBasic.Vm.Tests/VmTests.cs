@@ -73,6 +73,39 @@ public class VmTests
         input.LineReadCount.Should().Be(1);                             // presented before the read
     }
 
+    [Fact]
+    public void InkeyReadsFromTheKeyboardSource()
+    {
+        // INKEY$ is niladic and non-blocking; it must pull from the injected
+        // keyboard, returning "" when nothing is waiting.
+        const string source =
+            "PRINT \"[\" & INKEY$ & \"]\"\n" +
+            "PRINT \"[\" & INKEY$ & \"]\"\n";
+        var file = new SourceFile("k.bas", source);
+        var diags = new DiagnosticBag();
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var info = Analyzer.Analyze(program, diags);
+        diags.HasErrors.Should().BeFalse();
+        var compiled = BasicCompiler.Compile(program, info);
+
+        var kb = new QueueKeyboard("a");   // one key buffered, then empty
+        var sw = new StringWriter { NewLine = "\n" };
+        new BasicVm(compiled, sw, new StringReader(""), graphics: null, keyboard: kb).Run();
+        sw.ToString().Should().Be("[a]\n[]\n");
+    }
+
+    private sealed class QueueKeyboard : ArcadeBasic.Runtime.IKeyboard
+    {
+        private readonly Queue<string> _keys;
+        public QueueKeyboard(params string[] keys) => _keys = new Queue<string>(keys);
+        public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
+    }
+
+    [Fact]
+    public void SleepRunsAsADelay() =>
+        Run("PRINT \"a\"\nSLEEP 0\nPRINT \"b\"").Output.Trim().Should().Be("a\nb");
+
     // -- Literals & arithmetic ------------------------------------------
 
     [Fact]

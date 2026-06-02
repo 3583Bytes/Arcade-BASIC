@@ -77,6 +77,12 @@ internal static class Builtins
         yield return new BuiltinSymbol("TIME", IsString: true,
             new BuiltinSignature(0, 0, []));
 
+        // INKEY$ — non-blocking keyboard poll (Microsoft BASIC extension, not
+        // ISO/ECMA Full BASIC). Niladic string function; the engines evaluate it
+        // against their keyboard source rather than the static builtin registry.
+        yield return new BuiltinSymbol("INKEY", IsString: true,
+            new BuiltinSignature(0, 0, []));
+
         // Bound queries (used with array names)
         yield return new BuiltinSymbol("LBOUND", IsString: false,
             new BuiltinSignature(1, 2, [BuiltinArgType.Any, BuiltinArgType.Numeric]));

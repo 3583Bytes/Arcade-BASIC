@@ -390,6 +390,9 @@ public sealed class Analyzer
                     ExpectType(rnd.Seed, ty, BasicType.Numeric, "RANDOMIZE seed");
                 }
                 break;
+            case SleepStmt slp:
+                ExpectType(slp.Seconds, AnalyzeExpr(slp.Seconds, scope), BasicType.Numeric, "SLEEP seconds");
+                break;
 
             case DimStmt dim:
                 // Bounds expressions evaluated at runtime; resolve names here.
