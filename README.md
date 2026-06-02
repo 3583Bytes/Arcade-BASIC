@@ -60,6 +60,7 @@ Console.WriteLine(output);   //  42
 ## What you can do with it
 
 - **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
+- **Write real-time games.** `INKEY$` (non-blocking keyboard) and `SLEEP` (frame delay) drive a game loop; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) on the Braille console — in the IDE, the CLI, or a standalone binary. (Both are Microsoft-BASIC extensions, flagged as such in the docs.)
 - **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping. Render to SVG (`arcade-basic run examples/graphics.bas --svg out.svg`), live in **any terminal** (the CLI and standalone binaries draw with a Braille + ANSI backend), or on the **Graphics tab** in the IDE; a Unity backend is in progress.
 - **Edit and run BASIC in a TUI IDE.** `arcade-basic-ide` opens a full-screen Terminal.Gui editor with line numbers, syntax classification, a problems pane, and one-key Run/Stop. See [Try the IDE](#try-the-ide).
 - **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
@@ -133,7 +134,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-16 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, and a graphics Kanban board. Highlights:
+17 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, and a real-time Space Invaders. Highlights:
 
 | Program | What it shows |
 |---|---|
@@ -145,6 +146,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`formatted.bas`](examples/formatted.bas) | `PRINT USING` with picture strings |
 | [`graphics.bas`](examples/graphics.bas) | §13 graphics — `SET WINDOW`, `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` (render with `--svg`) |
 | [`kanban.bas`](examples/kanban.bas) | interactive graphics board — colored `GRAPH LINES` lanes + `GRAPH TEXT` cards |
+| [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `INKEY$` (keyboard) + `SLEEP` (frame delay) + §13 graphics |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 

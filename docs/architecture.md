@@ -153,6 +153,8 @@ Domain types shared by both the interpreter and the VM:
 - **`BuiltinImpls`** — concrete implementations of `SQR`, `SIN`, `LEN`, `MID$`, etc., keyed by name in an `IReadOnlyDictionary`.
 - **`BasicFile`** — abstraction over a `Stream` for DISPLAY/INTERNAL/BYTE mode files.
 - **`PictureFormat`** — parser and applier for `PRINT USING` picture strings.
+- **§13 graphics core** — `GraphicsState` (window/viewport/clip + coordinate mapping and Cohen–Sutherland / Sutherland–Hodgman clipping), `Rasterizer` (Bresenham + scanline fill), and the `IGraphicsDevice` seam with backends `NullGraphicsDevice`, `RecordingGraphicsDevice` (tests), `AnsiGraphicsDevice` (Braille + ANSI terminal). See *device seams* below.
+- **`IKeyboard`** — the seam behind `INKEY$` (non-blocking key poll); `NullKeyboard` is the default.
 
 ### ArcadeBasic.Interpreter
 
@@ -212,6 +214,30 @@ This matters because the spec is silent on character set, and "byte position" se
 BASIC's `GOTO`, `GOSUB`, `EXIT`, `WHEN`/`USE`/`RETRY`/`CONTINUE` are all modelled as `FlowControl` return values from every statement. `RETRY` and `CONTINUE` (resume the IN body) can't be modelled by .NET unwinding semantics, so we don't use exceptions at all for control flow.
 
 `BasicRuntimeException` exists for genuine implementation errors (division by zero, INPUT type mismatch when the stream is exhausted, etc.) and gets converted to `FlowControl.Cause` at the statement boundary so user `WHEN` handlers can catch it.
+
+### Device seams: graphics and keyboard
+
+The §13 graphics module and `INKEY$` both reach the outside world through small
+interfaces injected into *both* engines, so all the device-independent logic
+lives once in `ArcadeBasic.Runtime` and the interpreter and VM stay byte-for-byte
+identical (the same pattern as `MatOps`/`PictureFormat`).
+
+- **`IGraphicsDevice`** — the core (`GraphicsState`) does all coordinate mapping
+  and clipping, then hands the backend already-clipped vector primitives in the
+  normalized `[0,1]` device square. Backends: `NullGraphicsDevice` (default),
+  `SvgGraphicsDevice` (`--svg`), `AnsiGraphicsDevice` (Braille + ANSI terminal —
+  CLI/standalone), and the IDE's `TuiGraphicsDevice` (Terminal.Gui canvas).
+  `RecordingGraphicsDevice` captures the primitive stream so the conformance
+  suite can assert interpreter == VM. `SLEEP` calls `Flush()`, which is the frame
+  boundary that makes the terminal backends present each frame of a game loop.
+- **`IKeyboard`** — a non-blocking `ReadKey()` behind `INKEY$`; `ConsoleKeyboard`
+  (CLI/standalone, via `Console.ReadKey`) and `TuiKeyboard` (the IDE captures keys
+  with a global hook while a program runs) supply real keys, `NullKeyboard`
+  yields `""` when there's no interactive keyboard.
+
+Both interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
+value types crossing the boundary), so the same code path serves the CLI,
+standalone binaries, the IDE, and a future Unity backend.
 
 ### Frame storage: slot-indexed activation records
 

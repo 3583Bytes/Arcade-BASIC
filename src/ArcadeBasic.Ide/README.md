@@ -62,8 +62,15 @@ an interactive draw → `INPUT` → redraw loop (e.g. [`kanban.bas`](../../examp
 stays on one surface instead of jumping between tabs. The program shows its
 prompts on the board with `GRAPH TEXT`; the field just collects the typed value.
 
-Try [`examples/graphics.bas`](../../examples/graphics.bas) (a static drawing) or
-[`examples/kanban.bas`](../../examples/kanban.bas) (an interactive board).
+For **real-time** programs, `INKEY$` (non-blocking keyboard) reads keys captured
+globally while a program runs — printable keys and the arrows reach the game,
+while **Esc** stops the run and the menu/shortcut keys keep working. Pair it with
+`SLEEP` to pace a game loop.
+
+Try [`examples/graphics.bas`](../../examples/graphics.bas) (a static drawing),
+[`examples/kanban.bas`](../../examples/kanban.bas) (an interactive board), or
+[`examples/invaders.bas`](../../examples/invaders.bas) (a real-time game — run it,
+then move with **A/D** or the arrows, fire with **Space**, quit with **Q**).
 
 ## Build standalone (F7)
 
@@ -99,6 +106,7 @@ your PATH; tagged releases ship both binaries for every supported RID.
 | `BrailleCanvas.cs`      | Graphics tab canvas: a Braille-cell (2×4 dots/cell) bitmap for §13 output. |
 | `GraphicsPane.cs`       | Wraps the canvas + its own INPUT field (so graphics programs read here). |
 | `TuiGraphicsDevice.cs`  | Maps §13 graphics onto the canvas via the shared `Rasterizer`.    |
+| `TuiKeyboard.cs`        | `IKeyboard` for `INKEY$`: a global key hook (active during a run) feeds keys to the program. |
 | `IInputSink.cs`         | The `BeginRead`/`CancelRead` contract both panes implement.       |
 | `InteractiveTextReader.cs` | `TextReader` for INPUT; marshals a read onto the active surface's field. |
 | `RunController.cs`      | Task runner + drain pump; routes INPUT to the active surface (graphics vs text). |
