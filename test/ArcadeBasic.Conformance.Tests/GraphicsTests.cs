@@ -127,11 +127,19 @@ public class GraphicsTests
         // idle, fire, idle, left, idle, right, idle, quit
         string[] script = { "", " ", "", "a", "", "d", "", "q" };
 
+        // The game persists a high score to invaders.score on quit; start both
+        // engines from the same (absent) state so the run is deterministic.
+        try { File.Delete("invaders.score"); } catch { /* ignore */ }
+
         var ir = new RecordingGraphicsDevice();
         var iExit = new BasicInterpreter(program, info, new StringWriter(), TextReader.Null, default, ir, new ScriptKeyboard(script)).Run();
 
+        try { File.Delete("invaders.score"); } catch { /* ignore */ }
+
         var vr = new RecordingGraphicsDevice();
         var vExit = new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), TextReader.Null, vr, new ScriptKeyboard(script)).Run();
+
+        try { File.Delete("invaders.score"); } catch { /* ignore */ }
 
         Assert.Equal(0, iExit);
         Assert.Equal(0, vExit);

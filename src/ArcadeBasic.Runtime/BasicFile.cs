@@ -11,6 +11,10 @@ public abstract class BasicFile : IDisposable
     public abstract bool CanRead { get; }
     public abstract bool CanWrite { get; }
 
+    /// <summary>True if opened RECTYPE INTERNAL — exact-value records accessed
+    /// via WRITE #/READ # rather than the text PRINT #/INPUT # statements.</summary>
+    public bool IsInternal { get; set; }
+
     /// <summary>Read a complete logical record (a line in DISPLAY mode).</summary>
     public abstract string? ReadLine();
 

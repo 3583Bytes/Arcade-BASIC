@@ -148,6 +148,7 @@ public sealed partial class BasicParser
             TokenKind.KwMat => ParseMat(),
             TokenKind.KwOpen => ParseOpenStmt(),
             TokenKind.KwClose => ParseCloseStmt(),
+            TokenKind.KwWrite => ParseWriteFile(),
             TokenKind.KwSet => ParseSetGraphics(),
             TokenKind.KwAsk => ParseAskGraphics(),
             TokenKind.KwClear => ParseClear(),
@@ -370,9 +371,10 @@ public sealed partial class BasicParser
         return new LineInputStmt(SpanFrom(start, target.Span), prompt, promptIsSemi, target);
     }
 
-    private ReadStmt? ParseRead()
+    private Stmt? ParseRead()
     {
         var start = Advance(); // READ
+        if (Check(TokenKind.Hash)) return ParseReadFile(start);   // READ #ch: ... (file input)
         var targets = new List<Expr>();
         do
         {

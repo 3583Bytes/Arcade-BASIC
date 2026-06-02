@@ -544,10 +544,11 @@ public sealed class BasicVm
                         var access = ReadU32(code, ref pc);
                         var organization = ReadU32(code, ref pc);
                         var create = ReadU32(code, ref pc);
+                        var rectype = ReadU32(code, ref pc);
                         _ = organization; // SEQUENTIAL and STREAM both map to DisplayFile; RANDOM is unsupported.
                         var name = ((StringValue)stack.Pop()).V;
                         var channel = (int)((NumericValue)stack.Pop()).V;
-                        OpenChannel(channel, name, access, create);
+                        OpenChannel(channel, name, access, create, rectype);
                         break;
                     }
                 case Opcode.Close:
@@ -623,6 +624,33 @@ public sealed class BasicVm
                             ?? throw new BasicRuntimeException(7020, $"LINE INPUT #{channel}: end of file");
                         var desc = new InputTargetDesc(depth, slot, IsString: true, rank);
                         AssignInputTarget(ResolveOuter(frame, programFrame, depth), desc, indices, new StringValue(line));
+                        break;
+                    }
+                case Opcode.WriteFile:
+                    {
+                        var itemCount = (int)ReadU32(code, ref pc);
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var values = new Value[itemCount];
+                        for (var i = itemCount - 1; i >= 0; i--) values[i] = stack.Pop();
+                        PerformWriteFile(channel, values);
+                        break;
+                    }
+                case Opcode.ReadFile:
+                    {
+                        var targetCount = (int)ReadU32(code, ref pc);
+                        var descs = new InputTargetDesc[targetCount];
+                        for (var i = 0; i < targetCount; i++)
+                        {
+                            descs[i] = new InputTargetDesc(
+                                Depth: (int)ReadU32(code, ref pc),
+                                Slot: (int)ReadU32(code, ref pc),
+                                IsString: ReadU32(code, ref pc) != 0,
+                                Rank: (int)ReadU32(code, ref pc));
+                        }
+                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var indices = new int[targetCount][];
+                        for (var i = targetCount - 1; i >= 0; i--) indices[i] = PopIndices(stack, descs[i].Rank);
+                        PerformReadFile(channel, descs, indices, frame, programFrame);
                         break;
                     }
 
@@ -1027,7 +1055,7 @@ public sealed class BasicVm
 
     // -- File-I/O helpers (mirror BasicInterpreter.File.cs) ---------------
 
-    private void OpenChannel(int channel, string path, uint access, uint create)
+    private void OpenChannel(int channel, string path, uint access, uint create, uint rectype)
     {
         // Access values: 0=Default, 1=Input, 2=Output, 3=Outin (match Parser.Ast.OpenAccess).
         // Create values: 0=Default, 1=New, 2=Old, 3=NewOld (match Parser.Ast.OpenCreate).
@@ -1049,7 +1077,8 @@ public sealed class BasicVm
         if (access == 2u && create == 0u) mode = FileMode.Create;
         try
         {
-            var file = new DisplayFile(path, mode, fileAccess);
+            // RecType values: 0=Default, 1=Display, 2=Internal (match Parser.Ast.OpenRecType).
+            var file = new DisplayFile(path, mode, fileAccess) { IsInternal = rectype == 2u };
             _channels.Open(channel, file);
         }
         catch (FileNotFoundException ex)
@@ -1155,6 +1184,44 @@ public sealed class BasicVm
             AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], v);
         }
     }
+
+    // -- INTERNAL (exact-value) records: WRITE # / READ # (mirror the interpreter) --
+
+    private void PerformWriteFile(int channel, Value[] values)
+    {
+        var file = _channels.Get(channel);
+        if (!file.IsInternal)
+            throw new BasicRuntimeException(7030, $"WRITE #{channel}: channel is not open RECTYPE INTERNAL");
+        foreach (var v in values) file.WriteLine(FormatInternal(v));
+    }
+
+    private void PerformReadFile(int channel, InputTargetDesc[] descs, int[][] indices,
+        ActivationRecord frame, ActivationRecord programFrame)
+    {
+        var file = _channels.Get(channel);
+        if (!file.IsInternal)
+            throw new BasicRuntimeException(7030, $"READ #{channel}: channel is not open RECTYPE INTERNAL");
+        for (var i = 0; i < descs.Length; i++)
+        {
+            var line = file.ReadLine()
+                ?? throw new BasicRuntimeException(7020, $"READ #{channel}: end of file");
+            Value v;
+            if (descs[i].IsString)
+                v = new StringValue(line);
+            else if (BigDecimal.TryParse(line, NumberStyles.Float, CultureInfo.InvariantCulture, out var bd))
+                v = new NumericValue(bd);
+            else
+                throw new BasicRuntimeException(7022, $"READ #{channel}: '{line}' is not numeric");
+            AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], v);
+        }
+    }
+
+    private static string FormatInternal(Value v) => v switch
+    {
+        NumericValue n => n.V.ToString(CultureInfo.InvariantCulture),
+        StringValue s => s.V,
+        _ => throw new BasicRuntimeException(7031, "WRITE #: unsupported value type"),
+    };
 
     private Value ReadNextDataValue(bool isString)
     {

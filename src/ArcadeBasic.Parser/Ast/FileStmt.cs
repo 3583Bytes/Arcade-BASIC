@@ -2,18 +2,25 @@ using ArcadeBasic.Core;
 
 namespace ArcadeBasic.Parser.Ast;
 
-/// <summary>OPEN #ch: NAME f$, ACCESS ?, ORGANIZATION ?, CREATE ?
-/// (RECSIZE/RECTYPE/KEY are deferred to a follow-up).</summary>
+/// <summary>OPEN #ch: NAME f$, ACCESS ?, ORGANIZATION ?, CREATE ?, RECTYPE ?
+/// (RECSIZE/KEY are deferred to a follow-up).</summary>
 public sealed record class OpenStmt(
     SourceSpan Span,
     Expr Channel,
     Expr Name,
     OpenAccess Access,
     OpenOrganization Organization,
-    OpenCreate Create) : Stmt(Span);
+    OpenCreate Create,
+    OpenRecType RecType) : Stmt(Span);
 
 /// <summary>CLOSE #ch.</summary>
 public sealed record class CloseStmt(SourceSpan Span, Expr Channel) : Stmt(Span);
+
+/// <summary>WRITE #ch: items — write exact-value (INTERNAL) records.</summary>
+public sealed record class WriteFileStmt(SourceSpan Span, Expr Channel, IReadOnlyList<Expr> Items) : Stmt(Span);
+
+/// <summary>READ #ch: targets — read exact-value (INTERNAL) records.</summary>
+public sealed record class ReadFileStmt(SourceSpan Span, Expr Channel, IReadOnlyList<Expr> Targets) : Stmt(Span);
 
 /// <summary>PRINT #ch: items.</summary>
 public sealed record class PrintFileStmt(SourceSpan Span, Expr Channel, IReadOnlyList<PrintItem> Items) : Stmt(Span);
@@ -40,6 +47,16 @@ public enum OpenOrganization
     Sequential,
     Stream,
     Random,
+}
+
+public enum OpenRecType
+{
+    /// <summary>RECTYPE omitted — default DISPLAY (text records).</summary>
+    Default,
+    /// <summary>DISPLAY — text records (PRINT #/INPUT #).</summary>
+    Display,
+    /// <summary>INTERNAL — exact-value binary records (WRITE #/READ #).</summary>
+    Internal,
 }
 
 public enum OpenCreate

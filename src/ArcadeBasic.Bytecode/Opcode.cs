@@ -110,10 +110,18 @@ public enum Opcode : byte
 
     // -- File I/O (DISPLAY mode, SEQUENTIAL/STREAM) --
     //
-    //   Open       operand: u32 access, u32 organization, u32 create
+    //   Open       operand: u32 access, u32 organization, u32 create, u32 rectype
     //              stack (top last): name, channel
     //              kind values match Parser.Ast.OpenAccess / OpenOrganization /
-    //              OpenCreate ordinals.
+    //              OpenCreate / OpenRecType ordinals.
+    //
+    //   WriteFile  operand: u32 itemCount
+    //              stack (top last): item values in declaration order, then channel.
+    //              Writes exact-value (INTERNAL) records, one field per line.
+    //
+    //   ReadFile   operand: u32 targetCount, then per target:
+    //                  u32 depth, u32 slot, u32 isString, u32 rank
+    //              stack (top last): for each array target, `rank` subscripts; then channel.
     //
     //   Close      stack: channel
     //
@@ -142,6 +150,8 @@ public enum Opcode : byte
     InputFile,
     LineInputFile,
     LineInput,
+    WriteFile,
+    ReadFile,
 
     // -- PRINT USING --
     //   operand: u32 itemCount

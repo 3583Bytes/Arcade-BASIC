@@ -30,6 +30,7 @@ public sealed partial class BasicParser
         var access = OpenAccess.Default;
         var organization = OpenOrganization.Default;
         var create = OpenCreate.Default;
+        var recType = OpenRecType.Default;
 
         // Comma-separated clauses, NAME first by convention but order is flexible.
         do
@@ -52,10 +53,14 @@ public sealed partial class BasicParser
             {
                 create = ParseOpenCreate();
             }
+            else if (Match(TokenKind.KwRectype))
+            {
+                recType = ParseOpenRecType();
+            }
             else
             {
                 ErrorAt(tok, ErrUnsupportedSyntax,
-                    "expected NAME, ACCESS, ORGANIZATION, or CREATE clause in OPEN");
+                    "expected NAME, ACCESS, ORGANIZATION, CREATE, or RECTYPE clause in OPEN");
                 return null;
             }
         }
@@ -67,7 +72,16 @@ public sealed partial class BasicParser
             return null;
         }
 
-        return new OpenStmt(SpanFrom(start, Previous().Span), channel, name, access, organization, create);
+        return new OpenStmt(SpanFrom(start, Previous().Span), channel, name, access, organization, create, recType);
+    }
+
+    private OpenRecType ParseOpenRecType()
+    {
+        var tok = Peek();
+        if (Match(TokenKind.KwDisplay)) return OpenRecType.Display;
+        if (Match(TokenKind.KwInternal)) return OpenRecType.Internal;
+        ErrorAt(tok, ErrExpectedToken, "expected DISPLAY or INTERNAL");
+        return OpenRecType.Default;
     }
 
     private OpenAccess ParseOpenAccess()
@@ -171,6 +185,46 @@ public sealed partial class BasicParser
         }
         while (Match(TokenKind.Comma));
         return new InputFileStmt(SpanFrom(start, Previous().Span), channel, targets);
+    }
+
+    /// <summary>WRITE #ch: items — exact-value (INTERNAL) record output.</summary>
+    private WriteFileStmt? ParseWriteFile()
+    {
+        var start = Advance(); // WRITE
+        if (!ExpectKind(TokenKind.Hash, "'#' (channel marker)")) return null;
+        var channel = ParseExpression();
+        if (channel is null) return null;
+        if (!ExpectKind(TokenKind.Colon, "':' after channel in WRITE #")) return null;
+
+        var items = new List<Expr>();
+        do
+        {
+            var e = ParseExpression();
+            if (e is null) return null;
+            items.Add(e);
+        }
+        while (Match(TokenKind.Comma));
+        return new WriteFileStmt(SpanFrom(start, Previous().Span), channel, items);
+    }
+
+    /// <summary>Called from ParseRead when READ is followed by '#': READ #ch: targets
+    /// — exact-value (INTERNAL) record input.</summary>
+    private ReadFileStmt? ParseReadFile(Token start)
+    {
+        Advance(); // #
+        var channel = ParseExpression();
+        if (channel is null) return null;
+        if (!ExpectKind(TokenKind.Colon, "':' after channel in READ #")) return null;
+
+        var targets = new List<Expr>();
+        do
+        {
+            var t = ParseAssignmentTarget();
+            if (t is null) return null;
+            targets.Add(t);
+        }
+        while (Match(TokenKind.Comma));
+        return new ReadFileStmt(SpanFrom(start, Previous().Span), channel, targets);
     }
 
     /// <summary>Called from ParseLineInputOrError when LINE INPUT is followed by '#'.</summary>

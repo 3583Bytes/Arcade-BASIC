@@ -13,14 +13,17 @@ The spec uses "shall" for normative requirements and "should" for recommendation
 | Exception handling (`WHEN` / `USE` / `HANDLER` / `CAUSE` / `RETRY` / `CONTINUE`) | ✅ Implemented |
 | Modules | ✅ Implemented |
 | File I/O (DISPLAY mode, SEQUENTIAL/STREAM) | ✅ Implemented |
-| File I/O (INTERNAL mode, BYTE mode, RANDOM organisation) | ❌ Not yet |
+| File I/O (INTERNAL mode, sequential — `WRITE #`/`READ #`) | ✅ Implemented (exact-value records) |
+| File I/O (BYTE mode, NATIVE records, RANDOM/KEYED organisation) | ❌ Not yet |
 | Editing module — `PRINT USING` | ✅ Implemented |
 | Editing module — formatted `INPUT` | ❌ Not yet |
 | Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG + terminal/braille backends; Unity backend pending) |
 | Fixed-decimal | ❌ Not yet (skipped per project plan unless asked) |
-| Real-time | ❌ Not in scope |
+| Real-time (§14 — concurrent tasks + process/hardware I/O) | ❌ Not in scope |
 
 Items marked ❌ Not yet are scoped for later phases; the parser and analyzer recognise their syntax but emit "not implemented" diagnostics at execution time, or reject the syntax outright.
+
+The **Real-time** module (ANSI X3.113 §14) is a different beast: parallel sections (`PARACT`), scheduling, hardware **process ports** (`IN`/`OUT`), shared data, and message passing — i.e. BASIC for industrial control and instrumentation, not interactive programs. ECMA-116 omits it entirely (its §14 is a "not in ECMA BASIC" stub), so it is out of scope here. The interactive bits an arcade game wants are provided instead by the Microsoft-dialect extensions below (`INKEY$`, `SLEEP`).
 
 ## Numeric representation
 
@@ -167,7 +170,7 @@ source.
 
 | Feature | Source | Notes |
 |---|---|---|
-| `INKEY$` | **Microsoft BASIC** (GW-BASIC / QuickBASIC) | Niladic string function; **non-blocking** keyboard poll. Returns `""` when no key is waiting, a 1-char string for a normal key, or `CHR$(0)` + a key code for special keys (arrows: 72/80/75/77 — Up/Down/Left/Right). ISO Full BASIC explicitly excludes real-time input (§14), so this is a deliberate arcade extension. Reads from the active keyboard backend (console for `run`/`vm`/standalone; the IDE captures keys globally while a program runs). With no interactive keyboard (piped input, headless) it always returns `""`. |
+| `INKEY$` | **Microsoft BASIC** (GW-BASIC / QuickBASIC) | Niladic string function; **non-blocking** keyboard poll. Returns `""` when no key is waiting, a 1-char string for a normal key, or `CHR$(0)` + a key code for special keys (arrows: 72/80/75/77 — Up/Down/Left/Right). ISO/ECMA Full BASIC has no interactive single-key input at all (its only "real-time" facility is the §14 process-control module above — concurrent tasks and hardware I/O, unrelated to keyboards — which ECMA omits anyway), so this is a deliberate arcade extension. Reads from the active keyboard backend (console for `run`/`vm`/standalone; the IDE captures keys globally while a program runs). With no interactive keyboard (piped input, headless) it always returns `""`. |
 | `SLEEP <seconds>` | **Microsoft BASIC** (QuickBASIC), extended | Pause execution for the given number of seconds; **fractional seconds are allowed** (QuickBASIC only took whole seconds). Pairs with `INKEY$` to pace a real-time loop. Also acts as the frame boundary — the console graphics backend presents the current frame at each `SLEEP`. A cancellation (the IDE's Stop) interrupts a long `SLEEP` promptly. |
 
 > **Reserved-but-unimplemented:** `WAIT` is reserved in the lexer but has no
@@ -185,11 +188,15 @@ source.
 
 ## File I/O
 
-Implemented surface: `OPEN #channel: NAME ...`, `CLOSE #channel`, `PRINT #channel:`, `INPUT #channel:`, `LINE INPUT #channel:`. Channel 0 is implicit stdin/stdout.
+Implemented surface: `OPEN #channel: NAME …` (with optional `ACCESS`, `ORGANIZATION`, `CREATE`, `RECTYPE`), `CLOSE #channel`, and both record types:
+- **DISPLAY** (text): `PRINT #channel:`, `INPUT #channel:`, `LINE INPUT #channel:`.
+- **INTERNAL** (exact-value): `WRITE #channel:`, `READ #channel:` — numbers stored at full precision (round-trip exactly, no display rounding), strings verbatim. Per the standard, `PRINT`/`INPUT` are DISPLAY-only and `WRITE`/`READ` are the INTERNAL statements.
 
-**IMPLEMENTATION-DEFINED:** DISPLAY mode files use the host's default text encoding. SEQUENTIAL and STREAM organizations are supported. RANDOM is not yet.
+Channel 0 is implicit stdin/stdout.
 
-**IMPLEMENTATION-DEFINED:** BYTE mode files (raw `byte[]` I/O) and INTERNAL mode (spec-defined binary format) are not yet implemented.
+**IMPLEMENTATION-DEFINED:** DISPLAY mode files use UTF-8. SEQUENTIAL and STREAM organizations are supported; RANDOM/KEYED are not yet.
+
+**IMPLEMENTATION-DEFINED:** INTERNAL records are encoded as one field per line (number = canonical full-precision decimal, string = the raw line). v1 limitation: an INTERNAL string field can't contain an embedded newline. Also v1: `WRITE`/`READ` require a `RECTYPE INTERNAL` channel (the standard additionally permits them on DISPLAY records, mapping to `PRINT`/`INPUT` — not implemented). **BYTE mode** (raw `byte[]` I/O) and **NATIVE** records are not implemented.
 
 ## Exception handling
 

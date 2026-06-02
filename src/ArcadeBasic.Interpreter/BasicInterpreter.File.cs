@@ -44,7 +44,10 @@ public sealed partial class BasicInterpreter
 
         try
         {
-            var file = new DisplayFile(path, mode, access);
+            var file = new DisplayFile(path, mode, access)
+            {
+                IsInternal = stmt.RecType == OpenRecType.Internal,
+            };
             _channels.Open(channel, file);
         }
         catch (FileNotFoundException ex)
@@ -155,4 +158,58 @@ public sealed partial class BasicInterpreter
         WriteAssignableTarget(stmt.Target, new StringValue(line), frame);
         return FlowControl.Continue;
     }
+
+    // -- INTERNAL (exact-value) records: WRITE # / READ # ----------------
+    // One field per line. Numbers are written at full precision (no display
+    // rounding) and read back exactly; strings are the raw line.
+
+    private FlowControl ExecWriteFile(WriteFileStmt stmt, ActivationRecord frame)
+    {
+        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var file = _channels.Get(channel);
+        if (!file.IsInternal)
+            throw new BasicRuntimeException(7030, $"WRITE #{channel}: channel is not open RECTYPE INTERNAL");
+        foreach (var item in stmt.Items)
+        {
+            file.WriteLine(FormatInternal(EvalExpr(item, frame)));
+        }
+        return FlowControl.Continue;
+    }
+
+    private FlowControl ExecReadFile(ReadFileStmt stmt, ActivationRecord frame)
+    {
+        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var file = _channels.Get(channel);
+        if (!file.IsInternal)
+            throw new BasicRuntimeException(7030, $"READ #{channel}: channel is not open RECTYPE INTERNAL");
+        foreach (var target in stmt.Targets)
+        {
+            var line = file.ReadLine() ?? throw new BasicRuntimeException(7020,
+                $"READ #{channel}: end of file");
+            Value v;
+            if (TargetIsString(target))
+            {
+                v = new StringValue(line);
+            }
+            else if (BigDecimal.TryParse(line, NumberStyles.Float, CultureInfo.InvariantCulture, out var bd))
+            {
+                v = new NumericValue(bd);
+            }
+            else
+            {
+                throw new BasicRuntimeException(7022, $"READ #{channel}: '{line}' is not numeric");
+            }
+            WriteAssignableTarget(target, v, frame);
+        }
+        return FlowControl.Continue;
+    }
+
+    /// <summary>Exact textual encoding of a value for an INTERNAL record: numbers
+    /// at full precision (round-trips exactly), strings verbatim.</summary>
+    private static string FormatInternal(Value v) => v switch
+    {
+        NumericValue n => n.V.ToString(CultureInfo.InvariantCulture),
+        StringValue s => s.V,
+        _ => throw new BasicRuntimeException(7031, "WRITE #: unsupported value type"),
+    };
 }

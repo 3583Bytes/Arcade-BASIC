@@ -373,6 +373,8 @@ public sealed class BasicCompiler
             case PrintFileStmt pf: CompilePrintFile(pf); break;
             case InputFileStmt ifs: CompileInputFile(ifs); break;
             case LineInputFileStmt lif: CompileLineInputFile(lif); break;
+            case WriteFileStmt wf: CompileWriteFile(wf); break;
+            case ReadFileStmt rf: CompileReadFile(rf); break;
             case SetBoundsStmt sb: CompileSetBounds(sb); break;
             case SetClipStmt sc: CompileExpr(sc.OnOff); _current.Emit(Opcode.GfxSetClip); break;
             case SetStyleStmt ss:
@@ -743,6 +745,35 @@ public sealed class BasicCompiler
         _current.EmitU32((uint)op.Access);
         _current.EmitU32((uint)op.Organization);
         _current.EmitU32((uint)op.Create);
+        _current.EmitU32((uint)op.RecType);
+    }
+
+    private void CompileWriteFile(WriteFileStmt wf)
+    {
+        foreach (var item in wf.Items) CompileExpr(item);
+        CompileExpr(wf.Channel);
+        _current.Emit(Opcode.WriteFile);
+        _current.EmitU32((uint)wf.Items.Count);
+    }
+
+    private void CompileReadFile(ReadFileStmt rf)
+    {
+        var targets = new (int Depth, int Slot, bool IsString, int Rank, IReadOnlyList<Expr> Subs)[rf.Targets.Count];
+        for (var i = 0; i < rf.Targets.Count; i++) targets[i] = ResolveInputTarget(rf.Targets[i]);
+        foreach (var t in targets)
+        {
+            foreach (var sub in t.Subs) CompileExpr(sub);
+        }
+        CompileExpr(rf.Channel);
+        _current.Emit(Opcode.ReadFile);
+        _current.EmitU32((uint)targets.Length);
+        foreach (var t in targets)
+        {
+            _current.EmitU32((uint)t.Depth);
+            _current.EmitU32((uint)t.Slot);
+            _current.EmitU32(t.IsString ? 1u : 0u);
+            _current.EmitU32((uint)t.Rank);
+        }
     }
 
     private void CompileClose(CloseStmt cs)

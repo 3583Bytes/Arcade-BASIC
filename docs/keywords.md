@@ -48,7 +48,8 @@ token. Examples use uppercase by convention.
 [NUL$](#nul) · [TRN](#trn) · [INV](#inv)
 
 **Files:** [OPEN](#open) · [CLOSE](#close) ·
-[PRINT #](#print-) · [INPUT #](#input-) · [LINE INPUT #](#line-input-)
+[PRINT #](#print-) · [INPUT #](#input-) · [LINE INPUT #](#line-input-) ·
+[WRITE #](#write-) · [READ #](#read-)
 
 **Exceptions:** [WHEN ... USE](#when--use) · [CAUSE EXCEPTION](#cause-exception) ·
 [RETRY](#retry) · [CONTINUE](#continue)
@@ -728,14 +729,16 @@ MAT B = INV(A)             ! [[0.6, -0.7], [-0.2, 0.4]]
 ## Files
 
 File I/O uses *channels* — small positive integers introduced with `#`. A
-channel is opened with `OPEN`, written via `PRINT #`, read via `INPUT #` or
-`LINE INPUT #`, and released with `CLOSE`. DISPLAY mode (text) with
+channel is opened with `OPEN` and released with `CLOSE`. Two record types:
+**DISPLAY** (text) — written with `PRINT #`, read with `INPUT #` / `LINE INPUT #`;
+and **INTERNAL** (exact-value, `RECTYPE INTERNAL`) — written with `WRITE #`, read
+with `READ #`, storing numbers at full precision so they round-trip exactly.
 `SEQUENTIAL` or `STREAM` organization is supported.
 
 ### `OPEN`
 
 Open a file on a channel. The full clause shape is
-`OPEN #ch: NAME path$, [ACCESS kind, ORGANIZATION kind, CREATE kind]`.
+`OPEN #ch: NAME path$, [ACCESS kind, ORGANIZATION kind, CREATE kind, RECTYPE kind]`.
 Each clause has defaults: `ACCESS OUTIN`, `ORGANIZATION SEQUENTIAL`,
 `CREATE NEWOLD`. `ACCESS OUTPUT` with no explicit `CREATE` truncates on
 open per spec.
@@ -757,6 +760,8 @@ CLOSE #1
 `ORGANIZATION` values: `SEQUENTIAL`, `STREAM`.
 `CREATE` values: `NEW` (must not exist), `OLD` (must exist), `NEWOLD`
 (open if present, create otherwise).
+`RECTYPE` values: `DISPLAY` (text — the default, use `PRINT #`/`INPUT #`) or
+`INTERNAL` (exact-value records — use `WRITE #`/`READ #`).
 
 ### `CLOSE`
 
@@ -800,6 +805,31 @@ OPEN #1: NAME "log.txt", ACCESS INPUT
 LINE INPUT #1: ENTRY$
 CLOSE #1
 PRINT ENTRY$
+```
+
+### `WRITE #`
+
+Write **exact-value** records to an `INTERNAL` channel. Each item is a field;
+numbers are stored at full precision (no display rounding), strings verbatim.
+The counterpart to `READ #`. (`WRITE`/`READ` are the INTERNAL statements;
+`PRINT`/`INPUT` are DISPLAY-only.)
+
+```basic
+OPEN #1: NAME "save.dat", ACCESS OUTPUT, RECTYPE INTERNAL
+WRITE #1: HISCORE, PLAYER$        ! HISCORE round-trips exactly, not as rounded text
+CLOSE #1
+```
+
+### `READ #`
+
+Read exact-value records back from an `INTERNAL` channel, one field per target,
+in order — numbers come back byte-exact, strings verbatim. (Distinct from the
+`DATA`-reading `READ`: the `#channel` is what selects file input.)
+
+```basic
+OPEN #1: NAME "save.dat", ACCESS INPUT, RECTYPE INTERNAL
+READ #1: HISCORE, PLAYER$
+CLOSE #1
 ```
 
 ---

@@ -297,6 +297,8 @@ public sealed partial class BasicInterpreter
             case PrintFileStmt pf: return ExecPrintFile(pf, frame);
             case InputFileStmt ifs: return ExecInputFile(ifs, frame);
             case LineInputFileStmt li2: return ExecLineInputFile(li2, frame);
+            case WriteFileStmt wf: return ExecWriteFile(wf, frame);
+            case ReadFileStmt rf: return ExecReadFile(rf, frame);
             case WhenStmt w: return ExecWhen(w, frame);
             case HandlerStmt: return FlowControl.Continue; // declaration only
             case CauseStmt cause: return ExecCause(cause, frame);

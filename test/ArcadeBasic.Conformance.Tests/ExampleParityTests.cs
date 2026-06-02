@@ -95,6 +95,42 @@ public class ExampleParityTests
         Assert.Contains("[hello, world][second, line]", interpOut);  // whole lines, commas kept
     }
 
+    [Fact]
+    public void InternalFileRoundTripsExactlyOnBothEngines()
+    {
+        // INTERNAL records (WRITE #/READ #) preserve the exact value — including
+        // precision well beyond the 9-digit display rounding — and the two engines
+        // agree byte-for-byte.
+        var path = Path.GetTempFileName();
+        try
+        {
+            var src =
+                $"OPEN #1: NAME \"{path}\", ACCESS OUTPUT, RECTYPE INTERNAL\n" +
+                "WRITE #1: 1.234567890123456789, \"hi, there\"\n" +
+                "CLOSE #1\n" +
+                $"OPEN #1: NAME \"{path}\", ACCESS INPUT, RECTYPE INTERNAL\n" +
+                "READ #1: X, S$\n" +
+                "CLOSE #1\n" +
+                "PRINT X - 1.234567890123456789\n" +   // 0 only if the full precision round-tripped
+                "PRINT S$\n";                          // exact, comma and all (READ # doesn't split)
+            var (program, info) = FrontEndSource("internal.bas", src);
+
+            var (iOut, iExit) = RunInterpreter(program, info, "");
+            var (vOut, vExit) = RunVm(program, info, "");
+
+            Assert.Equal(0, iExit);
+            Assert.Equal(0, vExit);
+            Assert.Equal(iOut, vOut);
+            var lines = iOut.Replace("\r", "").Split('\n');
+            Assert.Equal("0", lines[0].Trim());       // exact round-trip past display precision
+            Assert.Equal("hi, there", lines[1]);       // string verbatim (comma preserved)
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     // -- helpers ---------------------------------------------------------
 
     private static (AstProgram Program, SemanticInfo Info) FrontEnd(string name) =>

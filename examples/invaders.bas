@@ -52,15 +52,22 @@ LET STEPF = 0
 LET GRIDW = 0
 LET LOWY = 0
 LET I = 0
+LET HISCORE = 0            ! best score, persisted to invaders.score (RECTYPE INTERNAL)
+LET PREVHI = 0            ! the high score as loaded (to detect a new record)
+LET NEWREC = 0
 
 FOR I = 1 TO NA
   LET ALIVE(I) = 1
 NEXT I
 
+GOSUB 5000                 ! load the saved high score
+LET PREVHI = HISCORE
+
 ! ---- main loop ----
 DO
   GOSUB 2000                       ! read input
   IF QUIT = 1 THEN
+    GOSUB 5100                     ! persist the high score on quit too
     LET MSG$ = "Bye!  -  press Enter"
     GOSUB 1000
     EXIT DO
@@ -107,7 +114,7 @@ SET LINE COLOR 2
 GRAPH LINES: PX, 1.8; PX, 2.8
 ! HUD
 SET TEXT COLOR 1
-GRAPH TEXT, AT 1, FH - 1: "SCORE " & LTRIM$(STR$(SC)) & "    ALIENS " & LTRIM$(STR$(NLEFT))
+GRAPH TEXT, AT 1, FH - 1: "SCORE " & LTRIM$(STR$(SC)) & "    HI " & LTRIM$(STR$(HISCORE)) & "    ALIENS " & LTRIM$(STR$(NLEFT))
 GRAPH TEXT, AT 1, 0: MSG$
 RETURN
 
@@ -160,6 +167,8 @@ IF BLIVE = 1 THEN
         LET BLIVE = 0
         LET SC = SC + 10
         LET NLEFT = NLEFT - 1
+        IF SC > HISCORE THEN LET HISCORE = SC     ! HUD shows the live best
+        IF SC > PREVHI THEN LET NEWREC = 1        ! beat the saved record
       END IF
     END IF
   NEXT I
@@ -167,7 +176,8 @@ END IF
 ! win?
 IF NLEFT <= 0 THEN
   LET STATE = 1
-  LET MSG$ = "YOU WIN!  score " & LTRIM$(STR$(SC)) & "  -  press Enter"
+  LET MSG$ = "YOU WIN!  score " & LTRIM$(STR$(SC))
+  GOSUB 5200                       ! flag a new record + persist the high score
   RETURN
 END IF
 ! march the grid every STEPF frames (faster as the swarm thins)
@@ -193,6 +203,45 @@ FOR I = 1 TO NA
 NEXT I
 IF LOWY <= PY + 2 THEN
   LET STATE = 2
-  LET MSG$ = "GAME OVER  score " & LTRIM$(STR$(SC)) & "  -  press Enter"
+  LET MSG$ = "GAME OVER  score " & LTRIM$(STR$(SC))
+  GOSUB 5200                       ! flag a new record + persist the high score
 END IF
+RETURN
+
+! ======================================================================
+! 5000  LOAD high score from invaders.score (INTERNAL/exact). Missing file
+!        on the first run is fine — the handler just leaves HISCORE at 0.
+! ======================================================================
+5000 REM ---- load high score ----
+LET HISCORE = 0
+WHEN EXCEPTION IN
+  OPEN #2: NAME "invaders.score", ACCESS INPUT, RECTYPE INTERNAL
+  READ #2: HISCORE
+  CLOSE #2
+USE
+  CLOSE #2                         ! safe even if it never opened
+  LET HISCORE = 0
+END WHEN
+RETURN
+
+! ======================================================================
+! 5100  SAVE the high score (exact, via WRITE # to an INTERNAL file).
+! ======================================================================
+5100 REM ---- save high score ----
+WHEN EXCEPTION IN
+  OPEN #2: NAME "invaders.score", ACCESS OUTPUT, RECTYPE INTERNAL
+  WRITE #2: HISCORE
+  CLOSE #2
+USE
+  CLOSE #2
+END WHEN
+RETURN
+
+! ======================================================================
+! 5200  Finalize a game: flag a new record in the message, then persist.
+! ======================================================================
+5200 REM ---- finalize ----
+IF NEWREC = 1 THEN LET MSG$ = MSG$ & "  -  NEW HIGH!"
+GOSUB 5100
+LET MSG$ = MSG$ & "  -  press Enter"
 RETURN

@@ -585,6 +585,14 @@ public sealed class Analyzer
                 ExpectType(ifs.Channel, AnalyzeExpr(ifs.Channel, scope), BasicType.Numeric, "INPUT # channel");
                 foreach (var t in ifs.Targets) AnalyzeAssignableTarget(t, scope);
                 break;
+            case WriteFileStmt wf:
+                ExpectType(wf.Channel, AnalyzeExpr(wf.Channel, scope), BasicType.Numeric, "WRITE # channel");
+                foreach (var item in wf.Items) AnalyzeExpr(item, scope);   // numeric or string both fine
+                break;
+            case ReadFileStmt rf:
+                ExpectType(rf.Channel, AnalyzeExpr(rf.Channel, scope), BasicType.Numeric, "READ # channel");
+                foreach (var t in rf.Targets) AnalyzeAssignableTarget(t, scope);
+                break;
             case LineInputFileStmt li2:
                 ExpectType(li2.Channel, AnalyzeExpr(li2.Channel, scope), BasicType.Numeric, "LINE INPUT # channel");
                 AnalyzeAssignableTarget(li2.Target, scope);
