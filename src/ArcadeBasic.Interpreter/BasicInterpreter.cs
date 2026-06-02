@@ -221,6 +221,7 @@ public sealed partial class BasicInterpreter
             case PrintStmt p: return ExecPrint(p, frame);
             case PrintUsingStmt pu: return ExecPrintUsing(pu, frame);
             case InputStmt i: return ExecInput(i, frame);
+            case LineInputStmt li: return ExecLineInput(li, frame);
             case ReadStmt r: return ExecRead(r, frame);
             case DataStmt: return FlowControl.Continue; // collected at sema time
             case RestoreStmt rs: return ExecRestore(rs);

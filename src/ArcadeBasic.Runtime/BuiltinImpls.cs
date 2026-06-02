@@ -290,16 +290,20 @@ public static class BuiltinImpls
     private static string SubstringByCodepoints(string s, int startCp, int lenCp)
     {
         if (lenCp <= 0) return string.Empty;
+        // Use a long end bound: the 2-arg MID$(s, start) passes lenCp = int.MaxValue,
+        // and startCp + lenCp would overflow Int32 (going negative) — which made the
+        // whole substring come back empty.
+        long end = (long)startCp + lenCp;
         var sb = new StringBuilder();
         var cp = 0;
         var i = 0;
         while (i < s.Length)
         {
             var width = char.IsHighSurrogate(s[i]) && i + 1 < s.Length && char.IsLowSurrogate(s[i + 1]) ? 2 : 1;
-            if (cp >= startCp && cp < startCp + lenCp) sb.Append(s, i, width);
+            if (cp >= startCp && cp < end) sb.Append(s, i, width);
             cp++;
             i += width;
-            if (cp >= startCp + lenCp) break;
+            if (cp >= end) break;
         }
         return sb.ToString();
     }

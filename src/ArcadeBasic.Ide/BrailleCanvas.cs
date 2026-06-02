@@ -6,33 +6,58 @@ namespace ArcadeBasic.Ide;
 
 /// <summary>
 /// A Terminal.Gui view that renders a sub-cell bitmap using Unicode Braille
-/// patterns: each character cell packs a 2×4 dot matrix (U+2800..U+28FF), so an
-/// 80×24 region of cells addresses a 160×96 "pixel" grid. Graphic-output
+/// patterns: each character cell packs a 2×4 dot matrix (U+2800..U+28FF), so a
+/// region of C×R cells addresses a (2C)×(4R) "pixel" grid. Graphic-output
 /// statements plot into the dot grid (from the interpreter's background thread,
 /// so access is locked); the main loop redraws. GRAPH TEXT labels are drawn
 /// natively on top of the braille cells.
+///
+/// The dot grid sizes itself to the view's bounds (so a drawing fills whatever
+/// space the Graphics pane is given, and adapts when the terminal is resized);
+/// <see cref="PixelWidth"/>/<see cref="PixelHeight"/> report the current grid so
+/// the graphics device can map into it and <c>ASK DEVICE SIZE</c> reflects it.
+/// Until the view is laid out (e.g. in headless tests) it stays at the default
+/// 160×96 / 80×24 size.
 /// </summary>
 internal sealed class BrailleCanvas : View
 {
-    public const int DotsW = 160;
-    public const int DotsH = 96;
-    private const int CellsW = DotsW / 2;   // 80
-    private const int CellsH = DotsH / 4;   // 24
+    public const int DefaultDotsW = 160;
+    public const int DefaultDotsH = 96;
+    // Clamp the dot grid to a sane range so a stray (or huge) layout can't make a
+    // degenerate or wildly large buffer. Limits are in cells; dots are ×2 / ×4.
+    private const int MinCellsW = 8, MinCellsH = 3;
+    private const int MaxCellsW = 400, MaxCellsH = 150;
 
-    private readonly bool[,] _dots = new bool[DotsW, DotsH];
-    private readonly int[,] _cellColor = new int[CellsW, CellsH];
+    private int _dotsW = DefaultDotsW;
+    private int _dotsH = DefaultDotsH;
+    private bool[,] _dots = new bool[DefaultDotsW, DefaultDotsH];
+    private int[,] _cellColor = new int[DefaultDotsW / 2, DefaultDotsH / 4];
     private readonly List<(int Cx, int Cy, string Text, int Color)> _labels = new();
     private readonly object _lock = new();
     private bool _empty = true;
 
-    public int PixelWidth => DotsW;
-    public int PixelHeight => DotsH;
+    public int PixelWidth => _dotsW;
+    public int PixelHeight => _dotsH;
+    private int CellsW => _dotsW / 2;
+    private int CellsH => _dotsH / 4;
     public bool IsEmpty { get { lock (_lock) return _empty; } }
 
     public BrailleCanvas()
     {
         CanFocus = false;
         ClearBuffer();
+        // Re-fit the dot grid to the view's bounds once layout settles, so
+        // drawings fill the pane and follow terminal resizes.
+        LayoutComplete += _ => RefitToBounds();
+    }
+
+    private void RefitToBounds()
+    {
+        var cellsW = Bounds.Width;
+        var cellsH = Bounds.Height;
+        if (cellsW <= 0 || cellsH <= 0) return;   // not laid out yet
+        Resize(Math.Clamp(cellsW, MinCellsW, MaxCellsW),
+               Math.Clamp(cellsH, MinCellsH, MaxCellsH));
     }
 
     public void ClearBuffer()
@@ -40,9 +65,7 @@ internal sealed class BrailleCanvas : View
         lock (_lock)
         {
             Array.Clear(_dots, 0, _dots.Length);
-            for (var i = 0; i < CellsW; i++)
-                for (var j = 0; j < CellsH; j++)
-                    _cellColor[i, j] = 1;
+            ResetColors();
             _labels.Clear();
             _empty = true;
         }
@@ -50,9 +73,9 @@ internal sealed class BrailleCanvas : View
 
     public void Plot(int x, int y, int colorIndex)
     {
-        if (x < 0 || x >= DotsW || y < 0 || y >= DotsH) return;
         lock (_lock)
         {
+            if (x < 0 || x >= _dotsW || y < 0 || y >= _dotsH) return;
             _dots[x, y] = true;
             _cellColor[x / 2, y / 4] = colorIndex;
             _empty = false;
@@ -118,6 +141,62 @@ internal sealed class BrailleCanvas : View
                 }
             }
         }
+    }
+
+    /// <summary>Reallocate the dot grid to <paramref name="cellsW"/>×<paramref name="cellsH"/>
+    /// cells, rescaling any existing drawing (nearest-neighbour) so a resize keeps
+    /// the picture visible until the program redraws. Leaves <see cref="IsEmpty"/>
+    /// unchanged so input routing stays stable across a resize.</summary>
+    private void Resize(int cellsW, int cellsH)
+    {
+        lock (_lock)
+        {
+            if (cellsW == CellsW && cellsH == CellsH) return;
+
+            int newDotsW = cellsW * 2, newDotsH = cellsH * 4;
+            var newDots = new bool[newDotsW, newDotsH];
+            var newColor = new int[cellsW, cellsH];
+            for (var i = 0; i < cellsW; i++)
+                for (var j = 0; j < cellsH; j++)
+                    newColor[i, j] = 1;
+
+            if (!_empty)
+            {
+                int oldDotsW = _dotsW, oldDotsH = _dotsH, oldCellsW = CellsW, oldCellsH = CellsH;
+                for (var nx = 0; nx < newDotsW; nx++)
+                {
+                    int ox = Math.Min((int)((long)nx * oldDotsW / newDotsW), oldDotsW - 1);
+                    for (var ny = 0; ny < newDotsH; ny++)
+                    {
+                        int oy = Math.Min((int)((long)ny * oldDotsH / newDotsH), oldDotsH - 1);
+                        newDots[nx, ny] = _dots[ox, oy];
+                    }
+                }
+                for (var i = 0; i < cellsW; i++)
+                {
+                    int oi = Math.Min(i * oldCellsW / cellsW, oldCellsW - 1);
+                    for (var j = 0; j < cellsH; j++)
+                        newColor[i, j] = _cellColor[oi, Math.Min(j * oldCellsH / cellsH, oldCellsH - 1)];
+                }
+                for (var k = 0; k < _labels.Count; k++)
+                {
+                    var (cx, cy, txt, col) = _labels[k];
+                    _labels[k] = (cx * cellsW / oldCellsW, cy * cellsH / oldCellsH, txt, col);
+                }
+            }
+
+            _dots = newDots;
+            _cellColor = newColor;
+            _dotsW = newDotsW;
+            _dotsH = newDotsH;
+        }
+    }
+
+    private void ResetColors()
+    {
+        for (var i = 0; i < CellsW; i++)
+            for (var j = 0; j < CellsH; j++)
+                _cellColor[i, j] = 1;
     }
 
     private int CellBits(int cx, int cy)

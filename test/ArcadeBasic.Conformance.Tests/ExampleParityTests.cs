@@ -72,11 +72,36 @@ public class ExampleParityTests
         Assert.Null(ex);
     }
 
+    [Fact]
+    public void TerminalLineInputAgreesOnBothEngines()
+    {
+        // Regression: terminal LINE INPUT (no file channel) was unimplemented in
+        // the interpreter (it fell through to the default no-op) while the VM read
+        // it — a silent parity gap. Both must now read the whole line, commas
+        // included, and emit identical prompts ("? " bare, a single space for the
+        // ';' form).
+        const string source =
+            "LINE INPUT A$\n" +
+            "LINE INPUT \"\"; B$\n" +
+            "PRINT \"[\" & A$ & \"][\" & B$ & \"]\"\n";
+        const string stdin = "hello, world\nsecond, line\n";
+
+        var (program, info) = FrontEndSource("lineinput.bas", source);
+        var (interpOut, interpExit) = RunInterpreter(program, info, stdin);
+        var (vmOut, vmExit) = RunVm(program, info, stdin);
+
+        Assert.Equal(interpOut, vmOut);
+        Assert.Equal(interpExit, vmExit);
+        Assert.Contains("[hello, world][second, line]", interpOut);  // whole lines, commas kept
+    }
+
     // -- helpers ---------------------------------------------------------
 
-    private static (AstProgram Program, SemanticInfo Info) FrontEnd(string name)
+    private static (AstProgram Program, SemanticInfo Info) FrontEnd(string name) =>
+        FrontEndSource(name, File.ReadAllText(Path.Combine(ExamplesDir(), name)));
+
+    private static (AstProgram Program, SemanticInfo Info) FrontEndSource(string name, string source)
     {
-        var source = File.ReadAllText(Path.Combine(ExamplesDir(), name));
         var file = new SourceFile(name, source);
         var diags = new DiagnosticBag();
         var tokens = new BasicLexer(file, diags).Lex();

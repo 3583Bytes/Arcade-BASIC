@@ -62,11 +62,11 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice
 
     public void Flush() { }
 
-    private static (int X, int Y) ToPixel(GfxPoint p) => (
-        (int)Math.Round(p.X * (BrailleCanvas.DotsW - 1)),
-        (int)Math.Round((1.0 - p.Y) * (BrailleCanvas.DotsH - 1)));   // flip Y: BASIC up → screen down
+    private (int X, int Y) ToPixel(GfxPoint p) => (
+        (int)Math.Round(p.X * (_canvas.PixelWidth - 1)),
+        (int)Math.Round((1.0 - p.Y) * (_canvas.PixelHeight - 1)));   // flip Y: BASIC up → screen down
 
-    private static List<(int X, int Y)> ToPixels(IReadOnlyList<GfxPoint> pts)
+    private List<(int X, int Y)> ToPixels(IReadOnlyList<GfxPoint> pts)
     {
         var result = new List<(int X, int Y)>(pts.Count);
         foreach (var p in pts) result.Add(ToPixel(p));

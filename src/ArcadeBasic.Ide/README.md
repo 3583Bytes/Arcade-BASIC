@@ -50,6 +50,12 @@ A program that uses the §13 graphics statements (`SET WINDOW`/`GRAPH …`) draw
 onto a **Graphics tab** — a Braille-cell canvas (2×4 dots per character cell).
 The tab appears automatically the moment a program draws.
 
+The canvas **sizes itself to the pane** (and re-fits when the terminal is
+resized), so a drawing fills the available space rather than a fixed corner.
+`ASK DEVICE SIZE w, h, u$` reports the live grid (in braille dots — width and
+height are 2× and 4× the cell columns/rows), so a program can lay itself out to
+fit the surface.
+
 Both output surfaces have **their own `INPUT` field**: text programs read on the
 Output tab, graphics programs read on the field beneath the Graphics canvas. So
 an interactive draw → `INPUT` → redraw loop (e.g. [`kanban.bas`](../../examples/kanban.bas))

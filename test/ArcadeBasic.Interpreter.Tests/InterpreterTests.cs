@@ -481,6 +481,7 @@ public class InterpreterTests
     [InlineData("PRINT LEN(\"hello\")", "5")]
     [InlineData("PRINT LEN(\"\")", "0")]
     [InlineData("PRINT MID$(\"abcdef\", 2, 3)", "bcd")]
+    [InlineData("PRINT MID$(\"abcdef\", 3)", "cdef")]       // 2-arg: rest of string
     [InlineData("PRINT LEFT$(\"abcdef\", 3)", "abc")]
     [InlineData("PRINT RIGHT$(\"abcdef\", 3)", "def")]
     [InlineData("PRINT UCASE$(\"hello\")", "HELLO")]

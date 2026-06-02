@@ -206,6 +206,25 @@ public sealed partial class BasicInterpreter
         }
     }
 
+    // LINE INPUT reads a whole line (commas and all) into a single string target.
+    // The prompt mirrors the VM's Opcode.LineInput exactly so the two engines
+    // stay byte-identical: the prompt expression (if any) is printed, then a
+    // trailing "? " unless the prompt used the ';' form (then a single space).
+    private FlowControl ExecLineInput(LineInputStmt stmt, ActivationRecord frame)
+    {
+        if (stmt.Prompt is not null)
+        {
+            _out.Write(EvalString(stmt.Prompt, frame));
+        }
+        _out.Write(stmt.Prompt is not null && stmt.PromptIsSemicolon ? " " : "? ");
+        _out.Flush();
+
+        var line = _in.ReadLine()
+            ?? throw new BasicRuntimeException(4003, "LINE INPUT: end of input stream");
+        WriteAssignableTarget(stmt.Target, new StringValue(line), frame);
+        return FlowControl.Continue;
+    }
+
     private bool TargetIsString(Expr e) => e switch
     {
         NameRefExpr n => n.IsString,

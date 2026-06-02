@@ -152,6 +152,10 @@ The IDE is **not** AOT-compiled (Terminal.Gui relies on reflection), so it ships
 as a self-contained single-file binary with the .NET runtime bundled inside. No
 native toolchain required.
 
+> **Want F7 (Build standalone) to work?** Publishing the IDE alone is not enough —
+> see [Make standalone builds (F7) work](#make-standalone-builds-f7-work--bundle-the-cli)
+> below for the combined recipe.
+
 `--runtime <RID>` is the target platform (see §2) — replace `<RID>` with your
 own, e.g. `win-x64`, `osx-arm64`, or `linux-x64`. Because the publish is
 `--self-contained`, that RID decides which platform's .NET runtime gets bundled
@@ -179,6 +183,52 @@ it inside a terminal:
 ```sh
 ./publish/ide/arcade-basic-ide examples/startrek.bas
 ```
+
+### Make standalone builds (F7) work — bundle the CLI
+
+A published IDE **on its own cannot build standalone `.bas` binaries**. The IDE's
+**Build standalone** (F7) shells out to a native `arcade-basic` (the AOT CLI from
+§4) to use as the stub; if it can't find one it reports *"Could not find an
+`arcade-basic` AOT binary"*. F7 looks **next to `arcade-basic-ide` first**, then
+on your `PATH` — so the simplest fully-working setup is to publish **both into the
+same folder**:
+
+```sh
+# 1. native CLI (the F7 stub) — needs the C++ toolchain (§1)
+dotnet publish src/ArcadeBasic.Cli -c Release -r <RID> -o publish/ide
+# 2. the IDE, into the SAME folder
+dotnet publish src/ArcadeBasic.Ide -c Release -r <RID> --self-contained \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/ide
+```
+
+Windows (single line each):
+
+```powershell
+dotnet publish src/ArcadeBasic.Cli --configuration Release --runtime win-x64 --output publish/ide
+dotnet publish src/ArcadeBasic.Ide --configuration Release --runtime win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/ide
+```
+
+Result — both binaries side by side, so F7 works with no further setup
+(`.exe` suffix on Windows only):
+
+```
+publish/ide/arcade-basic        # AOT CLI — the F7 build stub
+publish/ide/arcade-basic-ide    # the IDE
+```
+
+Optionally add the folder to your `PATH` so you can launch from anywhere (and F7
+works regardless of the launch directory). Windows (permanent, user-level — open
+a new terminal afterward):
+
+```powershell
+$ideDir = "C:\path\to\arcade-basic\publish\ide"
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($userPath -notlike "*$ideDir*") { [Environment]::SetEnvironmentVariable("Path", "$userPath;$ideDir", "User") }
+```
+
+macOS/Linux: copy `arcade-basic` to a `PATH` directory (e.g. `/usr/local/bin`) or
+add `publish/ide` to `PATH` in your shell profile. See §6 for the full stub-lookup
+details.
 
 See [`../src/ArcadeBasic.Ide/README.md`](../src/ArcadeBasic.Ide/README.md) for
 implementation notes.
@@ -259,4 +309,5 @@ If AOT linking fails, the usual cause is a missing `clang` or `zlib` dev package
 | Tests | `dotnet test -c Release` | — | no |
 | CLI (AOT) | `dotnet publish src/ArcadeBasic.Cli -c Release -r <RID> -o publish/cli` | `publish/cli/arcade-basic` | **yes** |
 | IDE (single file) | `dotnet publish src/ArcadeBasic.Ide -c Release -r <RID> --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/ide` | `publish/ide/arcade-basic-ide` | no |
+| **Working IDE + F7** | publish the **CLI and IDE into the same `-o` folder** (see §5) | `publish/ide/{arcade-basic, arcade-basic-ide}` | **yes** (CLI step) |
 | Standalone `.bas` | `arcade-basic build foo.bas -o foo` | `foo` | **yes** (uses the AOT CLI) |

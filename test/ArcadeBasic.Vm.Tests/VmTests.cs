@@ -251,6 +251,7 @@ public class VmTests
     [Theory]
     [InlineData("PRINT LEN(\"hello\")", "5")]
     [InlineData("PRINT MID$(\"abcdef\", 2, 3)", "bcd")]
+    [InlineData("PRINT MID$(\"abcdef\", 3)", "cdef")]       // 2-arg: rest of string
     [InlineData("PRINT UCASE$(\"hi\")", "HI")]
     [InlineData("PRINT CHR$(65)", "A")]
     public void BuiltinString(string src, string expected) =>
