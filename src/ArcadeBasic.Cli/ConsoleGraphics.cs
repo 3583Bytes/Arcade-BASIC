@@ -53,11 +53,16 @@ internal static class ConsoleGraphics
     /// <summary>End-of-program handling: show the final frame, hold for a
     /// keypress if it was a static drawing (so the user can see it), then restore
     /// the terminal.</summary>
-    public static void Finish(AnsiGraphicsDevice? device, TextReader input)
+    public static void Finish(AnsiGraphicsDevice? device, TextReader input, IKeyboard? keyboard)
     {
         if (device is null) return;
         device.Present();
-        if (device.Active && input is PresentingTextReader r && r.LineReadCount == 0)
+        // Hold the final frame for a keypress only for a *static* drawing — one
+        // that neither read a line (kanban) nor polled the keyboard (a game like
+        // invaders manages its own "press Enter / R / Q" end screen).
+        var readLine = input is PresentingTextReader r && r.LineReadCount > 0;
+        var polledKeys = keyboard is ConsoleKeyboard { Polled: true };
+        if (device.Active && !readLine && !polledKeys)
         {
             try { Console.In.ReadLine(); } catch { /* no input available */ }
         }

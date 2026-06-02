@@ -10,8 +10,14 @@ namespace ArcadeBasic.Cli;
 /// </summary>
 internal sealed class ConsoleKeyboard : IKeyboard
 {
+    /// <summary>True once the program has polled the keyboard at least once — i.e.
+    /// it's an interactive INKEY$ program that manages its own end screen, so the
+    /// end-of-run "press Enter" hold should be skipped.</summary>
+    public bool Polled { get; private set; }
+
     public string ReadKey()
     {
+        Polled = true;
         bool available;
         try { available = Console.KeyAvailable; }
         catch { return string.Empty; }   // input redirected — no live keyboard

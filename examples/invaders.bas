@@ -6,9 +6,11 @@
 !
 ! Controls:   A / LEFT  move left     D / RIGHT  move right
 !             SPACE  fire             Q  quit
+! After a game ends:  R  play again    Q  quit
 !
+! The high score is saved to invaders.score (RECTYPE INTERNAL) and shown as HI.
 ! With no live keyboard (piped/headless) it plays itself to a loss — INKEY$ just
-! returns "" — so it still terminates.
+! returns "" — and exits without prompting, so it still terminates.
 
 OPTION BASE 1
 
@@ -53,29 +55,36 @@ LET GRIDW = 0
 LET LOWY = 0
 LET I = 0
 LET HISCORE = 0            ! best score, persisted to invaders.score (RECTYPE INTERNAL)
-LET PREVHI = 0            ! the high score as loaded (to detect a new record)
+LET PREVHI = 0            ! high score to beat this game (to detect a new record)
 LET NEWREC = 0
+LET ANYKEY = 0            ! 1 once any key is seen — proves a keyboard is present
+LET AGAIN = 0             ! 1 = play again, set by the game-over prompt
 
-FOR I = 1 TO NA
-  LET ALIVE(I) = 1
-NEXT I
+GOSUB 5000                 ! load the saved high score (once)
 
-GOSUB 5000                 ! load the saved high score
-LET PREVHI = HISCORE
-
-! ---- main loop ----
+! ---- session loop: each pass plays one game; R restarts ----
 DO
-  GOSUB 2000                       ! read input
+  GOSUB 6000                       ! reset state for a new game
+  ! ---- game loop ----
+  DO
+    GOSUB 2000                     ! read input
+    IF QUIT = 1 THEN EXIT DO
+    IF STATE = 0 THEN GOSUB 3000   ! advance the world
+    GOSUB 1000                     ! draw
+    IF STATE <> 0 THEN EXIT DO     ! win/lose: leave the final frame up
+    SLEEP 0.05                     ! ~20 fps (also presents the frame)
+  LOOP
   IF QUIT = 1 THEN
     GOSUB 5100                     ! persist the high score on quit too
     LET MSG$ = "Bye!  -  press Enter"
     GOSUB 1000
     EXIT DO
   END IF
-  IF STATE = 0 THEN GOSUB 3000     ! advance the world
-  GOSUB 1000                       ! draw
-  IF STATE <> 0 THEN EXIT DO       ! win/lose: leave the final frame up
-  SLEEP 0.05                       ! ~20 fps (also presents the frame)
+  ! Game over. Only wait for a restart key if a keyboard is actually there
+  ! (a headless or piped run never pressed a key — don't hang it).
+  IF ANYKEY = 0 THEN EXIT DO
+  GOSUB 7000                       ! prompt + poll: R play again / Q quit -> AGAIN
+  IF AGAIN = 0 THEN EXIT DO
 LOOP
 END
 
@@ -126,6 +135,7 @@ LET QUIT = 0
 DO
   LET K$ = INKEY$
   IF K$ = "" THEN EXIT DO
+  LET ANYKEY = 1                   ! a real key arrived — a keyboard is present
   IF K$ = "q" OR K$ = "Q" THEN
     LET QUIT = 1
   ELSEIF K$ = "a" OR K$ = "A" OR K$ = CHR$(0) & CHR$(75) THEN
@@ -243,5 +253,53 @@ RETURN
 5200 REM ---- finalize ----
 IF NEWREC = 1 THEN LET MSG$ = MSG$ & "  -  NEW HIGH!"
 GOSUB 5100
-LET MSG$ = MSG$ & "  -  press Enter"
+IF ANYKEY = 1 THEN
+  LET MSG$ = MSG$ & "  -  R play again, Q quit"
+ELSE
+  LET MSG$ = MSG$ & "  -  press Enter"
+END IF
+RETURN
+
+! ======================================================================
+! 6000  NEW GAME — reset everything that changes between games. HISCORE
+!        persists across restarts; PREVHI is the score to beat this game.
+! ======================================================================
+6000 REM ---- new game ----
+LET PX = FW / 2
+LET BLIVE = 0
+LET BX = 0
+LET BLY = 0
+LET GX = 2
+LET GY = FH - 4
+LET DX = 2
+LET FC = 0
+LET SC = 0
+LET NLEFT = NA
+LET STATE = 0
+LET QUIT = 0
+LET NEWREC = 0
+LET PREVHI = HISCORE
+LET MSG$ = "A/D or arrows move - SPACE fire - Q quit"
+FOR I = 1 TO NA
+  LET ALIVE(I) = 1
+NEXT I
+RETURN
+
+! ======================================================================
+! 7000  GAME-OVER PROMPT — keep the final frame up and wait for the player
+!        to choose: R plays again, Q (or anything else here) quits.
+! ======================================================================
+7000 REM ---- restart prompt ----
+LET AGAIN = 0
+DO
+  LET K$ = INKEY$
+  IF K$ = "r" OR K$ = "R" THEN
+    LET AGAIN = 1
+    EXIT DO
+  ELSEIF K$ = "q" OR K$ = "Q" THEN
+    LET AGAIN = 0
+    EXIT DO
+  END IF
+  SLEEP 0.05                       ! pace the wait + keep presenting the frame
+LOOP
 RETURN

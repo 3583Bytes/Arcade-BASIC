@@ -457,7 +457,7 @@ static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, IKeyboard?,
     }
     finally
     {
-        ConsoleGraphics.Finish(device, input);
+        ConsoleGraphics.Finish(device, input, keyboard);
     }
 }
 

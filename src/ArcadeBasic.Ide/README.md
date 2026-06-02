@@ -70,7 +70,8 @@ while **Esc** stops the run and the menu/shortcut keys keep working. Pair it wit
 Try [`examples/graphics.bas`](../../examples/graphics.bas) (a static drawing),
 [`examples/kanban.bas`](../../examples/kanban.bas) (an interactive board), or
 [`examples/invaders.bas`](../../examples/invaders.bas) (a real-time game — run it,
-then move with **A/D** or the arrows, fire with **Space**, quit with **Q**).
+then move with **A/D** or the arrows, fire with **Space**, quit with **Q**; after a
+game ends, **R** plays again and your high score is saved).
 
 ## Build standalone (F7)
 
