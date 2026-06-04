@@ -159,6 +159,7 @@ namespace ArcadeBasic.Samples
         int _liveCursor;
 
         TextAsset[] _examples = Array.Empty<TextAsset>();
+        readonly List<OpenEntry> _openEntries = new();   // dropdown rows: placeholder / browse / header / example
         string _currentFilePath;   // absolute path on disk; null = untitled
         int _activeTab;            // 0 = source, 1 = output, 2 = graphics
         string _baseline = string.Empty;   // last-saved source; IsModified compares against it
@@ -871,32 +872,80 @@ namespace ArcadeBasic.Samples
 
             _examples = Resources.LoadAll<TextAsset>(resourcesPath) ?? Array.Empty<TextAsset>();
 
+            // Rows: placeholder, Browse, then examples grouped by @category
+            // (Graphics, Games, Basics, …) under a non-selectable header each.
+            _openEntries.Clear();
+            _openEntries.Add(new OpenEntry { Label = "Open ▾" });
+            _openEntries.Add(new OpenEntry { Label = "📂 Browse...", IsBrowse = true });
+
+            var groups = _examples
+                .GroupBy(ExampleCategory)
+                .OrderBy(g => CategoryRank(g.Key))
+                .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+            foreach (var g in groups)
+            {
+                _openEntries.Add(new OpenEntry { Label = "—— " + g.Key + " ——" });
+                foreach (var ex in g.OrderBy(e => e.name, StringComparer.OrdinalIgnoreCase))
+                    _openEntries.Add(new OpenEntry { Label = "    📦 " + ex.name, Example = ex });
+            }
+
             exampleDropdown.ClearOptions();
-            var labels = new List<string> { "Open ▾", "📂 Browse..." };
-            foreach (var ex in _examples) labels.Add("📦 " + ex.name);
-            exampleDropdown.AddOptions(labels);
+            exampleDropdown.AddOptions(_openEntries.Select(e => e.Label).ToList());
             exampleDropdown.SetValueWithoutNotify(0);
         }
 
         void OnOpenSelected(int index)
         {
-            if (index <= 0) return;
-            if (index == 1)
+            if (index >= 0 && index < _openEntries.Count)
             {
-                OpenFileDialog();
-            }
-            else
-            {
-                int exIdx = index - 2;
-                if (exIdx < 0 || exIdx >= _examples.Length) return;
-                var ex = _examples[exIdx];
-                inputField.text = ex.text;
-                inputField.MoveTextStart(false);
-                _currentFilePath = null;          // examples aren't on disk; Save will prompt
-                if (filenameField != null) filenameField.text = ex.name;
-                SetStatus("Loaded example " + ex.name);
+                var entry = _openEntries[index];
+                if (entry.IsBrowse) OpenFileDialog();
+                else if (entry.Example != null) LoadExample(entry.Example);
+                // header / placeholder rows fall through as no-ops
             }
             exampleDropdown.SetValueWithoutNotify(0);
+        }
+
+        void LoadExample(TextAsset ex)
+        {
+            if (ex == null || inputField == null) return;
+            inputField.text = ex.text;
+            inputField.MoveTextStart(false);
+            _currentFilePath = null;          // examples aren't on disk; Save will prompt
+            if (filenameField != null) filenameField.text = ex.name;
+            SetStatus("Loaded example " + ex.name);
+        }
+
+        string ExampleCategory(TextAsset ex) => ParseCategory(ex != null ? ex.text : null);
+
+        static int CategoryRank(string category) => category switch
+        {
+            "Graphics" => 0,
+            "Games" => 1,
+            "Basics" => 2,
+            _ => 3,
+        };
+
+        /// <summary>Reads an example's group from a <c>@category &lt;Word&gt;</c> tag in
+        /// a leading comment. Defaults to <c>Basics</c> when absent.</summary>
+        static string ParseCategory(string source)
+        {
+            if (string.IsNullOrEmpty(source)) return "Basics";
+            const string Tag = "@category";
+            int i = source.IndexOf(Tag, StringComparison.OrdinalIgnoreCase);
+            if (i < 0) return "Basics";
+            i += Tag.Length;
+            while (i < source.Length && (source[i] == ' ' || source[i] == '\t')) i++;
+            int start = i;
+            while (i < source.Length && (char.IsLetterOrDigit(source[i]) || source[i] == '&')) i++;
+            return i > start ? source.Substring(start, i - start) : "Basics";
+        }
+
+        struct OpenEntry
+        {
+            public string Label;
+            public TextAsset Example;   // null for placeholder / header
+            public bool IsBrowse;
         }
 
         /// <summary>

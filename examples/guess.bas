@@ -1,4 +1,4 @@
-! Number-guessing game. Stdin form: pipe in your guesses, one per line.
+! Number-guessing game. Stdin form: pipe in your guesses, one per line.  @category Games
 ! Example:   echo "50\n25\n12\n6\n" | arcade-basic run guess.bas
 LET TARGET = 7
 LET TRIES = 0

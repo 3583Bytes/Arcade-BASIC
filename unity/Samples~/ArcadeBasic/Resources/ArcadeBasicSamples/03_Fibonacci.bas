@@ -1,4 +1,4 @@
-! Fibonacci sequence via DIM array. First 15 terms.
+! Fibonacci sequence via DIM array. First 15 terms.  @category Basics
 OPTION BASE 1
 DIM F(15)
 LET F(1) = 1

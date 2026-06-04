@@ -16,6 +16,7 @@ All notable changes to the Unity package will be documented here. Versions follo
 - `Arcade BASIC IDE` sample: a drop-in in-game BASIC IDE shipped as a ready-to-play **scene + prefab** (the `ArcadeBasicCodeEditor` MonoBehaviour with its UI wired in the Inspector).
   - **Menus**: File (New / Open / Save / Save As / Quit), Run (Run / Compile / Build standalone / Stop / Clear Output), Help (About modal).
   - **Editor niceties** (TUI parity): F5 Run / F6 Compile / F7 Build / Esc Stop hotkeys (alongside Ctrl/Cmd+Enter); a live `Ln L, Col C` readout in the status line while editing; Tab inserts two spaces instead of moving focus.
+  - **Grouped examples**: the Open dropdown groups bundled programs under headers (Graphics / Games / Basics) driven by a `@category <Name>` tag in each `.bas`. The console TUI IDE reads the same tag and renders the groups as nested `Examples ▸ …` submenus.
   - **Source pane**: line-number gutter + a syntax-highlighted TMP overlay (the editor's own text is transparent; the overlay is colored by the project's own `BasicLexer`, so highlighting always matches what the interpreter parses).
   - **Output pane**: scrollable transcript with sticky-bottom auto-scroll (stays pinned to new output unless the user has scrolled up to read older lines).
   - **Graphics pane** (§13): a third tab that renders `GRAPH`/`SET` drawing into a `Texture2D` "screen" (built at runtime over `RasterGraphicsDevice`), auto-shown the first time a program draws.

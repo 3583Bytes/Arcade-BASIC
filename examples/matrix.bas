@@ -1,4 +1,4 @@
-! MAT operations — assignment, multiply, transpose, inverse.
+! MAT operations — assignment, multiply, transpose, inverse.  @category Basics
 OPTION BASE 1
 DIM A(2, 2), B(2, 2), C(2, 2), I(2, 2)
 

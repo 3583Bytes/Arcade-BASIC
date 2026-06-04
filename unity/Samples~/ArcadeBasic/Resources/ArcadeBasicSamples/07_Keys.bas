@@ -1,4 +1,4 @@
-! Real-time input demo (INKEY$ + SLEEP, a Microsoft-BASIC extension).
+! Real-time input demo (INKEY$ + SLEEP, a Microsoft-BASIC extension).  @category Graphics
 ! Move the dot with the ARROW KEYS. Press Q to quit.
 ! Runs on the Graphics tab; click Run, then click the Graphics screen so it
 ! has focus and start pressing keys.

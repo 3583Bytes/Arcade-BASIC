@@ -1,4 +1,4 @@
-REM LUNAR — Jim Storer, 1969. Ported to Arcade BASIC.
+REM LUNAR — Jim Storer, 1969. Ported to Arcade BASIC.  @category Games
 REM From David Ahl's "BASIC Computer Games" (Creative Computing, 1973).
 REM
 REM You're piloting an Apollo lunar landing capsule by setting the

@@ -1,4 +1,4 @@
-! String built-ins.
+! String built-ins.  @category Basics
 LET S$ = "hello, BASIC world"
 PRINT "original   : "; S$
 PRINT "length     :"; LEN(S$)

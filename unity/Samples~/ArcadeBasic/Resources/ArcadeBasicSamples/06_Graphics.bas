@@ -1,4 +1,4 @@
-! §13 graphics demo — runs on the Graphics tab.
+! §13 graphics demo — runs on the Graphics tab.  @category Graphics
 ! Click Run; the IDE auto-switches to the Graphics screen on the first draw.
 
 SET WINDOW 0, 100, 0, 100

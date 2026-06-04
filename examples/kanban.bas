@@ -1,4 +1,4 @@
-! kanban.bas — a three-lane Kanban board (To-Do / In-Progress / Done) drawn with
+! kanban.bas — a three-lane Kanban board (To-Do / In-Progress / Done) drawn with  @category Graphics
 ! the ECMA-116 §13 graphics module. Each lane is an outlined GRAPH LINES box with
 ! a dashed header divider; cards are GRAPH TEXT, word-wrapped to the lane width,
 ! each tagged with a GRAPH POINTS bullet; a thin filled GRAPH AREA bar along the

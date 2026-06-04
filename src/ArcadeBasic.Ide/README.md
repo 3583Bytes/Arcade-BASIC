@@ -42,7 +42,10 @@ install required — the runtime is bundled into the executable) for
 | Ctrl-Q         | Quit                                |
 
 Every example in `/examples` is bundled into the binary and listed under
-**File ▸ Examples**.
+**File ▸ Examples**, grouped into submenus (Graphics, Games, Basics, …). A
+program's group comes from a `@category <Name>` tag in a leading comment;
+untagged programs fall under **Basics**. (The Unity IDE sample reads the same
+tag.)
 
 ## Graphics & interactive input
 

@@ -1,4 +1,4 @@
-! File I/O round-trip: write three lines, read them back.
+! File I/O round-trip: write three lines, read them back.  @category Basics
 ! Relative filename so the example runs unchanged on Linux, macOS, and
 ! Windows — the file is created in the current working directory.
 LET PATH$ = "arcade-basic-example.txt"

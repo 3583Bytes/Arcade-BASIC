@@ -1,4 +1,4 @@
-! Recursive factorial — demonstrates FUNCTION with self-call.
+! Recursive factorial — demonstrates FUNCTION with self-call.  @category Basics
 FUNCTION FACT(N)
   IF N <= 1 THEN
     FACT = 1

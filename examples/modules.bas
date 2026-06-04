@@ -1,4 +1,4 @@
-! Single-file MODULE block — PUBLIC vs PRIVATE visibility.
+! Single-file MODULE block — PUBLIC vs PRIVATE visibility.  @category Basics
 MODULE MATHLIB
   ! Private helper, not callable from outside the module.
   FUNCTION HELPER(X)

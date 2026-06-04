@@ -1,4 +1,4 @@
-! Sieve of Eratosthenes up to 50.
+! Sieve of Eratosthenes up to 50.  @category Basics
 OPTION BASE 1
 DIM SIEVE(50)
 

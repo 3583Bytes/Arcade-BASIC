@@ -1,4 +1,4 @@
-! Exception handling — implicit division-by-zero plus user CAUSE,
+! Exception handling — implicit division-by-zero plus user CAUSE,  @category Basics
 ! demonstrating EXTYPE/EXLINE and RETRY.
 
 PRINT "-- catch division by zero --"

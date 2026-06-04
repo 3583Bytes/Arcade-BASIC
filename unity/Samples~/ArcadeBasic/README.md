@@ -134,7 +134,15 @@ In a **built Player**, `UnityEditor.*` isn't available, so the buttons fall back
 
 ## Adding bundled examples
 
-Drop `.bas` files into the imported sample's `Resources/ArcadeBasicSamples/` folder (`Assets/Samples/Arcade BASIC Interpreter/<version>/Arcade BASIC IDE/Resources/ArcadeBasicSamples/`). Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Use a sort-prefix (`01_Hello.bas`, `02_Pi.bas`, ...) for deterministic ordering.
+Drop `.bas` files into the imported sample's `Resources/ArcadeBasicSamples/` folder (`Assets/Samples/Arcade BASIC Interpreter/<version>/Arcade BASIC IDE/Resources/ArcadeBasicSamples/`). Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Use a sort-prefix (`01_Hello.bas`, `02_Pi.bas`, ...) for deterministic ordering within a group.
+
+The Open dropdown **groups** examples under headers (Graphics, Games, Basics, …). A program's group comes from a `@category <Name>` tag in a leading comment — add one anywhere in the file's first comment line:
+
+```basic
+! my demo  @category Graphics
+```
+
+Untagged programs fall under **Basics**. Group order is Graphics → Games → Basics → anything else. (The console TUI IDE reads the same tag and renders the groups as nested submenus.)
 
 ## Feeding `INPUT` from C#
 

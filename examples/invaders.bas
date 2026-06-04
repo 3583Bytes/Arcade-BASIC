@@ -1,4 +1,4 @@
-! invaders.bas — a small Space Invaders, the showcase for INKEY$ (non-blocking
+! invaders.bas — a small Space Invaders, the showcase for INKEY$ (non-blocking  @category Graphics
 ! keyboard) and SLEEP (frame delay). Both are Microsoft BASIC extensions, not
 ! ISO/ECMA Full BASIC — see docs/conformance.md. Graphics use the ECMA-116 §13
 ! module, so it draws on the Braille console: it runs in the IDE, via

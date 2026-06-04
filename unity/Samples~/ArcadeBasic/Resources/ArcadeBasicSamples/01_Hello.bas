@@ -1,4 +1,4 @@
-100 REM hello world example
+100 REM hello world example  @category Basics
 110 LET X = 42
 120 LET MSG$ = "answer is"
 130 PRINT MSG$; X

@@ -152,13 +152,30 @@ internal sealed class TuiShell
         _source.Editor.SetFocus();
     }
 
+    private static int CategoryRank(string category) => category switch
+    {
+        "Graphics" => 0,
+        "Games" => 1,
+        "Basics" => 2,
+        _ => 3,
+    };
+
     private MenuBar BuildMenu()
     {
-        var fileExamples = new MenuBarItem("E_xamples",
-            ExamplesProvider.All
-                .Select(ex => new MenuItem(ex.Name, string.Empty, () => LoadExample(ex)))
-                .DefaultIfEmpty(new MenuItem("(none bundled)", string.Empty, null) { CanExecute = () => false })
-                .ToArray());
+        // Group examples into nested submenus (Examples ▸ Graphics ▸ …), ordered
+        // Graphics, Games, Basics, then anything else.
+        var exampleGroups = ExamplesProvider.All
+            .GroupBy(ex => ex.Category)
+            .OrderBy(g => CategoryRank(g.Key))
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (MenuItem)new MenuBarItem(
+                g.Key,
+                g.OrderBy(ex => ex.Name, StringComparer.OrdinalIgnoreCase)
+                 .Select(ex => new MenuItem(ex.Name, string.Empty, () => LoadExample(ex)))
+                 .ToArray()))
+            .DefaultIfEmpty(new MenuItem("(none bundled)", string.Empty, null) { CanExecute = () => false })
+            .ToArray();
+        var fileExamples = new MenuBarItem("E_xamples", exampleGroups);
 
         return new MenuBar(new MenuBarItem[]
         {

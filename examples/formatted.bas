@@ -1,4 +1,4 @@
-! PRINT USING — picture-string formatted output.
+! PRINT USING — picture-string formatted output.  @category Basics
 PRINT USING ">###########": "TABULATED"
 
 PRINT "  i      x       sin(x)"

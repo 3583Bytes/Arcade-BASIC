@@ -1,4 +1,4 @@
-! Estimate π via the Leibniz series π/4 = 1 - 1/3 + 1/5 - 1/7 + ...
+! Estimate π via the Leibniz series π/4 = 1 - 1/3 + 1/5 - 1/7 + ...  @category Basics
 LET SUM = 0
 FOR I = 0 TO 999
   LET TERM = 1 / (2 * I + 1)
