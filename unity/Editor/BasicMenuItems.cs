@@ -3,7 +3,6 @@ using UnityEditor;
 using UnityEditor.ProjectWindowCallback;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace ArcadeBasic.Editor
 {
@@ -106,14 +105,27 @@ namespace ArcadeBasic.Editor
             Application.OpenURL("https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/conformance.md");
         }
 
-        [MenuItem("Window/Arcade BASIC/Samples/Create BASIC IDE Scene", priority = 150)]
-        public static void CreateBasicIdeScene()
+        [MenuItem("Window/Arcade BASIC/Samples/Open BASIC IDE Scene", priority = 150)]
+        public static void OpenBasicIdeScene()
         {
-            // The sample's MonoBehaviour (ArcadeBasicCodeEditor) lives in the
-            // ArcadeBasic.Samples assembly, which only exists after the user
-            // imports the sample via Package Manager.
-            var editorType = FindEditorType();
-            if (editorType == null)
+            // The "Arcade BASIC IDE" sample ships a ready-to-play scene + prefab
+            // (the ArcadeBasicCodeEditor MonoBehaviour has its UI wired in the
+            // Inspector). After the user imports the sample via Package Manager,
+            // the scene lands under Assets/Samples/.../Arcade BASIC IDE/Scene/.
+            // Locate and open it — this Editor assembly never hard-references the
+            // sample assembly (which only exists once the sample is imported).
+            string scenePath = null;
+            foreach (var guid in AssetDatabase.FindAssets("ArcadeBasicIDE"))
+            {
+                var p = AssetDatabase.GUIDToAssetPath(guid);
+                if (p.EndsWith("ArcadeBasicIDE.unity", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    scenePath = p;
+                    break;
+                }
+            }
+
+            if (scenePath == null)
             {
                 EditorUtility.DisplayDialog(
                     "Arcade BASIC",
@@ -124,44 +136,8 @@ namespace ArcadeBasic.Editor
                 return;
             }
 
-            var savePath = EditorUtility.SaveFilePanelInProject(
-                "Save BASIC IDE scene",
-                "ArcadeBasicIDE",
-                "unity",
-                "Choose where to save the new scene.");
-            if (string.IsNullOrEmpty(savePath)) return;
-
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-
-            var cameraGo = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
-            cameraGo.tag = "MainCamera";
-            var camera = cameraGo.GetComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
-            camera.transform.position = new Vector3(0f, 1f, -10f);
-            SceneManager.MoveGameObjectToScene(cameraGo, scene);
-
-            // Empty host GameObject — the script's Awake builds the entire
-            // Canvas + UI tree at runtime (see ArcadeBasicUIBuilder.cs).
-            var ide = new GameObject("Arcade BASIC IDE");
-            ide.AddComponent(editorType);
-            SceneManager.MoveGameObjectToScene(ide, scene);
-
-            EditorSceneManager.SaveScene(scene, savePath);
-            EditorSceneManager.OpenScene(savePath, OpenSceneMode.Single);
-        }
-
-        // Locate ArcadeBasicCodeEditor via reflection so this Editor assembly
-        // doesn't need a hard reference to the Samples assembly (which may
-        // not be present until the user imports the sample).
-        private static System.Type FindEditorType()
-        {
-            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var t = asm.GetType("ArcadeBasic.Samples.ArcadeBasicCodeEditor");
-                if (t != null) return t;
-            }
-            return null;
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+            EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
         }
 
         [MenuItem("Window/Arcade BASIC/About", priority = 200)]

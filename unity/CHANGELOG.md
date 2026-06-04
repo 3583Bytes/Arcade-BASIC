@@ -13,15 +13,17 @@ All notable changes to the Unity package will be documented here. Versions follo
 - `LICENSE.md` and `Third Party Notices.md` (Singulink.Numerics, MIT) inside the package.
 - Initial Unity package: pre-built netstandard2.1 DLLs for the Arcade BASIC libraries.
 - `ArcadeBasic.BasicEngine` static class as a one-call embedding entry point.
-- `Arcade BASIC IDE` sample: an in-game BASIC IDE built entirely at runtime by `ArcadeBasicCodeEditor.Awake()` (see `ArcadeBasicUIBuilder.cs`). No prefab, no scene asset, no GUID drift.
-  - **Menus**: File (New / Open / Save / Save As / Quit), Run (Run / Compile / Build standalone / Stop / Clear Output), Help (About).
-  - **Source pane**: gutter + syntax-highlighted TMP_InputField + scrollbar, all sharing one ScrollRect so the gutter scrolls with the code and stays clipped to the visible source. Avoids the TMP 3.0.x `UpdateScrollbar()` graphic-rebuild collision by using the ScrollRect's scrollbar instead of `TMP_InputField.verticalScrollbar`.
+- `Arcade BASIC IDE` sample: a drop-in in-game BASIC IDE shipped as a ready-to-play **scene + prefab** (the `ArcadeBasicCodeEditor` MonoBehaviour with its UI wired in the Inspector).
+  - **Menus**: File (New / Open / Save / Save As / Quit), Run (Run / Compile / Build standalone / Stop / Clear Output), Help (About modal).
+  - **Editor niceties** (TUI parity): F5 Run / F6 Compile / F7 Build / Esc Stop hotkeys (alongside Ctrl/Cmd+Enter); a live `Ln L, Col C` readout in the status line while editing; Tab inserts two spaces instead of moving focus.
+  - **Source pane**: line-number gutter + a syntax-highlighted TMP overlay (the editor's own text is transparent; the overlay is colored by the project's own `BasicLexer`, so highlighting always matches what the interpreter parses).
   - **Output pane**: scrollable transcript with sticky-bottom auto-scroll (stays pinned to new output unless the user has scrolled up to read older lines).
-  - **INPUT bar**: permanently visible at the bottom of the Output pane (matches TUI IDE). Read-only and blank-prompted when idle; flips to editable + focused with a `? ` prompt when the program runs `INPUT` / `LINE INPUT`.
-  - **Problems pane**: bottom strip in the Source pane that auto-opens on diagnostics, with Copy + close (X) controls.
-  - **About modal**: centered dialog dismissed by clicking OK.
-  - **EventSystem**: auto-created if absent, picks `InputSystemUIInputModule` when the new Input System package is present, falls back to `StandaloneInputModule` otherwise.
-  - Import via **Package Manager → Samples → Import**, then run **Window → Arcade BASIC → Samples → Create BASIC IDE Scene**.
+  - **Graphics pane** (§13): a third tab that renders `GRAPH`/`SET` drawing into a `Texture2D` "screen" (built at runtime over `RasterGraphicsDevice`), auto-shown the first time a program draws.
+  - **Real-time input** (`INKEY$`): while a program runs, key presses are forwarded to the `INKEY$` buffer — printable ASCII 32–126 plus the arrow keys (`CHR$(0)` + 72/80/75/77), matching the TUI/CLI byte-for-byte — so `SLEEP`-driven games (e.g. Space Invaders) play inside the IDE. Suppressed while an `INPUT` line is pending or a Ctrl/Cmd shortcut is held. Requires the project's Active Input Handling to include the (old) Input Manager.
+  - **INPUT bar**: single-line field at the bottom of the Output pane; hidden while idle, then auto-shown + focused when the program runs `INPUT` / `LINE INPUT`, echoing the typed line into the transcript.
+  - **Problems pane**: bottom strip in the Source pane that auto-opens on compile/runtime diagnostics, titled `Problems (N)`, with Copy + close (✕) controls.
+  - **Build standalone** (Editor-only): compiles the source to bytecode and appends it to a located `arcade-basic` AOT stub — same flow as the CLI `build` subcommand and the TUI IDE's F7. Per-RID stub binaries ship under the sample's `Stubs/` folder.
+  - Import via **Package Manager → Samples → Import**, then open the sample's `Scene/ArcadeBasicIDE.unity` (or run **Window → Arcade BASIC → Samples → Open BASIC IDE Scene**).
 - Unity editor integration (`Editor/` folder):
   - `Window → Arcade BASIC → Console` — REPL-style editor window with run + persistence.
   - `Assets → Create → Arcade BASIC → {Empty Program, Hello World, FOR Loop Demo, Function Demo}` — `.bas` templates.

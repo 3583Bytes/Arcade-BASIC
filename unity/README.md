@@ -147,10 +147,10 @@ All of the above is in `Editor/` of the package and only compiled when Unity is 
 
 ## Sample
 
-The package ships an **Arcade BASIC IDE** sample — a full in-game IDE with three-menu bar (File / Run / Help), syntax-highlighted source pane with line gutter and scrollbar, scrollable output transcript with sticky-bottom auto-scroll, persistent INPUT bar at the bottom, Problems pane, About dialog, and Build Standalone support.
+The package ships an **Arcade BASIC IDE** sample — a full in-game IDE at feature parity with the console TUI IDE: menu bar (File / Run / Help), syntax-highlighted source pane with line gutter and live `Ln/Col`, scrollable output transcript, INPUT bar, Problems pane, Build Standalone, F5/F6/F7/Esc hotkeys, a **Graphics** tab that renders §13 `GRAPH`/`SET` drawing to a texture screen, and real-time **`INKEY$`** input so `SLEEP`-driven games (Space Invaders) play in-IDE. It's delivered as a ready-to-play **scene + prefab** (an `ArcadeBasicCodeEditor` MonoBehaviour with its UI wired in the Inspector); the Graphics tab, Help menu, and About modal are built at runtime.
 
 1. Open **Window → Package Manager → Arcade BASIC Interpreter → Samples** and click **Import** next to "Arcade BASIC IDE".
-2. Run **Window → Arcade BASIC → Samples → Create BASIC IDE Scene**. This builds a scene with a Main Camera and a GameObject hosting the `ArcadeBasicCodeEditor` script. The script constructs the entire Canvas + UI tree at runtime (see [`Samples~/ArcadeBasic/ArcadeBasicUIBuilder.cs`](Samples~/ArcadeBasic/ArcadeBasicUIBuilder.cs)) — no prefab, no scene asset, no GUID drift.
+2. Open the imported `Scene/ArcadeBasicIDE.unity` — or run **Window → Arcade BASIC → Samples → Open BASIC IDE Scene**, which locates and opens it for you. (To build your own, drop the `Prefab/ArcadeBasicIDE.prefab` into a Canvas instead.)
 3. Press Play.
 
 See [`Samples~/ArcadeBasic/README.md`](Samples~/ArcadeBasic/README.md) for layout and customization notes.
