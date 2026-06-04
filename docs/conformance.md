@@ -17,7 +17,7 @@ The spec uses "shall" for normative requirements and "should" for recommendation
 | File I/O (BYTE mode, NATIVE records, RANDOM/KEYED organisation) | ❌ Not yet |
 | Editing module — `PRINT USING` | ✅ Implemented |
 | Editing module — formatted `INPUT` | ❌ Not yet |
-| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG + terminal/braille backends; Unity backend pending) |
+| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG, terminal/braille, and raster/Unity-texture backends) |
 | Fixed-decimal | ❌ Not yet (skipped per project plan unless asked) |
 | Real-time (§14 — concurrent tasks + process/hardware I/O) | ❌ Not in scope |
 
@@ -265,8 +265,12 @@ between engines (asserted in `ArcadeBasic.Conformance.Tests`). Shipped backends:
 (a Braille-cell canvas on a Graphics tab in `arcade-basic-ide`); and a **console
 Braille + ANSI** backend (`AnsiGraphicsDevice` in Runtime) used by `arcade-basic
 run`/`vm` and standalone binaries on an interactive terminal — so graphics
-programs run anywhere, not just the IDE. All three share a `Rasterizer` in
-Runtime. A Unity (`Texture2D`) backend is planned.
+programs run anywhere, not just the IDE. There is also a **`RasterGraphicsDevice`**
+in Runtime that renders into an ARGB pixel buffer (with a shared 5×7 `BitmapFont`
+for `GRAPH TEXT`) — the engine-agnostic core of the **Unity `Texture2D`** backend
+(`unity/Runtime/UnityGraphics/BasicScreen.cs`); the raster core is implemented and
+tested, the Unity texture/scene glue is shipped for static programs. All backends
+share the `Rasterizer` in Runtime.
 
 **IMPLEMENTATION-DEFINED:** the device transform (DEVICE WINDOW → DEVICE
 VIEWPORT) is a plain linear remap within the unit square; physical aspect-ratio

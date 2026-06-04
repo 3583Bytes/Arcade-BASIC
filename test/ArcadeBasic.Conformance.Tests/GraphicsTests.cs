@@ -156,6 +156,30 @@ public class GraphicsTests
         public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
     }
 
+    [Fact]
+    public void ExampleRendersToRasterBufferIdenticallyOnBothEngines()
+    {
+        // The Unity backend's core: render graphics.bas into an ARGB pixel buffer
+        // via both engines and assert the buffers are byte-identical (and non-empty).
+        var src = File.ReadAllText(Path.Combine(ExamplesDir(), "graphics.bas"));
+        var file = new SourceFile("graphics.bas", src);
+        var diags = new DiagnosticBag();
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var info = Analyzer.Analyze(program, diags);
+        Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
+
+        var id = new RasterGraphicsDevice(200, 150);
+        new BasicInterpreter(program, info, new StringWriter(), TextReader.Null, default, id).Run();
+
+        var vd = new RasterGraphicsDevice(200, 150);
+        new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), TextReader.Null, vd).Run();
+
+        Assert.Equal(id.Pixels, vd.Pixels);                                    // byte-identical render
+        var black = unchecked((int)0xFF000000);
+        Assert.True(id.Pixels.Count(p => p != black) > 100, "expected the drawing to paint pixels");
+    }
+
     private static string ExamplesDir()
     {
         var dir = AppContext.BaseDirectory;

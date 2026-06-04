@@ -1,8 +1,10 @@
 {
   "name": "com.arcadebasic.interpreter",
   "version": "0.1.0",
+  "license": "MIT",
+  "dependencies": {},
   "displayName": "Arcade BASIC Interpreter",
-  "description": "Arcade BASIC: a Full BASIC (ISO/IEC 10279:1991) interpreter for Unity. Run BASIC programs from C# for in-game scripting, dialogue, modding, education, or demos.\n\nFeatures: arrays, MAT operations, file I/O, exception handling (WHEN/USE/HANDLER), modules, PRINT USING, INPUT, codepoint-aware strings, arbitrary-precision decimal arithmetic.\n\nSee README.md inside the package for quickstart and the InGameConsole sample for a working scene wiring.",
+  "description": "Arcade BASIC: a Full BASIC (ISO/IEC 10279:1991) interpreter for Unity. Run BASIC programs from C# for in-game scripting, dialogue, modding, education, or demos.\n\nFeatures: arrays, MAT operations, file I/O, exception handling (WHEN/USE/HANDLER), modules, PRINT USING, INPUT, codepoint-aware strings, arbitrary-precision decimal arithmetic.\n\nSee README.md inside the package for quickstart and the Arcade BASIC IDE sample for a working scene wiring.",
   "unity": "2021.3",
   "documentationUrl": "https://github.com/3583Bytes/Arcade-BASIC",
   "changelogUrl": "https://github.com/3583Bytes/Arcade-BASIC/blob/main/unity/CHANGELOG.md",

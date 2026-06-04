@@ -104,6 +104,35 @@ Per the upstream [`docs/conformance.md`](https://github.com/3583Bytes/Arcade-BAS
 | Fixed-decimal arithmetic | ❌ Not yet |
 | Real-time module | ❌ Out of scope |
 
+## Graphics (preview)
+
+BASIC's ECMA-116 §13 graphics module (`SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT`)
+renders to a `Texture2D` you can show in your scene — an embedded "retro screen."
+
+Add the **`Basic Screen`** component (`Add Component → Arcade BASIC → Basic Screen`)
+to a GameObject, paste a program into its `source`, set a `resolution`, and assign
+a **Renderer** (e.g. a `Quad`) to `targetRenderer` — the rendered texture becomes
+that material's `mainTexture`. (For a UI `RawImage`, read the component's `Screen`
+property and assign it yourself.)
+
+```csharp
+var screen = gameObject.AddComponent<ArcadeBasic.Unity.BasicScreen>();
+screen.source = "SET WINDOW 0,100,0,100\nGRAPH LINES: 10,10; 90,10; 50,90; 10,10\n";
+screen.targetRenderer = GetComponent<Renderer>();
+screen.Run();
+```
+
+The rasterization itself lives in the engine-agnostic, unit-tested
+`RasterGraphicsDevice` in `ArcadeBasic.Runtime`; the Unity component just blits its
+pixel buffer into a texture. **Scope:** v1 handles *static* programs (they run to
+completion and the final frame is shown — e.g. `examples/graphics.bas`). Real-time
+programs that loop on `INKEY$`/`SLEEP` (kanban, invaders) need the threaded driver
+that runs the program off the main thread — a planned follow-up.
+
+> After building the engine DLLs (`./unity/scripts/copy-dlls.sh`), the
+> `RasterGraphicsDevice`/`BitmapFont` ship inside `ArcadeBasic.Runtime.dll` — no
+> extra plugins needed.
+
 ## Editor integration
 
 Installing the package activates a small Unity editor extension:

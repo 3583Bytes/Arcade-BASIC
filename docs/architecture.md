@@ -153,7 +153,7 @@ Domain types shared by both the interpreter and the VM:
 - **`BuiltinImpls`** — concrete implementations of `SQR`, `SIN`, `LEN`, `MID$`, etc., keyed by name in an `IReadOnlyDictionary`.
 - **`BasicFile`** — abstraction over a `Stream` for DISPLAY/INTERNAL/BYTE mode files.
 - **`PictureFormat`** — parser and applier for `PRINT USING` picture strings.
-- **§13 graphics core** — `GraphicsState` (window/viewport/clip + coordinate mapping and Cohen–Sutherland / Sutherland–Hodgman clipping), `Rasterizer` (Bresenham + scanline fill), and the `IGraphicsDevice` seam with backends `NullGraphicsDevice`, `RecordingGraphicsDevice` (tests), `AnsiGraphicsDevice` (Braille + ANSI terminal). See *device seams* below.
+- **§13 graphics core** — `GraphicsState` (window/viewport/clip + coordinate mapping and Cohen–Sutherland / Sutherland–Hodgman clipping), `Rasterizer` (Bresenham + scanline fill), a 5×7 `BitmapFont`, and the `IGraphicsDevice` seam with backends `NullGraphicsDevice`, `RecordingGraphicsDevice` (tests), `AnsiGraphicsDevice` (Braille + ANSI terminal), and `RasterGraphicsDevice` (ARGB pixel buffer — the Unity texture backend's core). See *device seams* below.
 - **`IKeyboard`** — the seam behind `INKEY$` (non-blocking key poll); `NullKeyboard` is the default.
 
 ### ArcadeBasic.Interpreter
@@ -226,10 +226,13 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
   and clipping, then hands the backend already-clipped vector primitives in the
   normalized `[0,1]` device square. Backends: `NullGraphicsDevice` (default),
   `SvgGraphicsDevice` (`--svg`), `AnsiGraphicsDevice` (Braille + ANSI terminal —
-  CLI/standalone), and the IDE's `TuiGraphicsDevice` (Terminal.Gui canvas).
-  `RecordingGraphicsDevice` captures the primitive stream so the conformance
-  suite can assert interpreter == VM. `SLEEP` calls `Flush()`, which is the frame
-  boundary that makes the terminal backends present each frame of a game loop.
+  CLI/standalone), the IDE's `TuiGraphicsDevice` (Terminal.Gui canvas), and
+  `RasterGraphicsDevice` (ARGB pixel buffer — the Unity `Texture2D` backend's
+  engine-agnostic, unit-tested core; `unity/Runtime/UnityGraphics` blits it to a
+  texture). `RecordingGraphicsDevice` captures the primitive stream so the
+  conformance suite can assert interpreter == VM. `SLEEP` calls `Flush()`, which
+  is the frame boundary that makes the terminal backends present each frame of a
+  game loop.
 - **`IKeyboard`** — a non-blocking `ReadKey()` behind `INKEY$`; `ConsoleKeyboard`
   (CLI/standalone, via `Console.ReadKey`) and `TuiKeyboard` (the IDE captures keys
   with a global hook while a program runs) supply real keys, `NullKeyboard`
@@ -237,7 +240,7 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
 
 Both interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
 value types crossing the boundary), so the same code path serves the CLI,
-standalone binaries, the IDE, and a future Unity backend.
+standalone binaries, the IDE, and Unity.
 
 ### Frame storage: slot-indexed activation records
 

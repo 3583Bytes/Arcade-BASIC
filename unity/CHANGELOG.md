@@ -8,6 +8,9 @@ All notable changes to the Unity package will be documented here. Versions follo
 - Import error "Reference has errors 'Singulink.Numerics.BigDecimal'" — `copy-dlls.sh` now emits a `.meta` file next to every plugin DLL with `validateReferences: 0`. Unity 2021.3+ otherwise tries to bind netstandard2.1 `System.*` references against its bundled BCL and rejects the assembly when the metadata identity doesn't match exactly.
 
 ### Added
+- §13 graphics rendering to a `Texture2D`. `RasterGraphicsDevice` (in `ArcadeBasic.Runtime`) rasterizes `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` into an ARGB pixel buffer with a shared 5×7 `BitmapFont`; the `BasicScreen` component (`Runtime/UnityGraphics`) runs a program and blits the buffer onto a `Renderer`'s material. Handles static programs (run-to-completion); real-time/interactive programs (a worker-thread driver + `INKEY$` keyboard) are a planned follow-up.
+- `link.xml` preserving the engine assemblies under IL2CPP managed-code stripping.
+- `LICENSE.md` and `Third Party Notices.md` (Singulink.Numerics, MIT) inside the package.
 - Initial Unity package: pre-built netstandard2.1 DLLs for the Arcade BASIC libraries.
 - `ArcadeBasic.BasicEngine` static class as a one-call embedding entry point.
 - `Arcade BASIC IDE` sample: an in-game BASIC IDE built entirely at runtime by `ArcadeBasicCodeEditor.Awake()` (see `ArcadeBasicUIBuilder.cs`). No prefab, no scene asset, no GUID drift.

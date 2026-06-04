@@ -1,0 +1,19 @@
+<!--
+  IL2CPP managed-code stripping can remove engine code that the consuming
+  project doesn't statically reference. Arcade BASIC dispatches builtins/opcodes
+  by name internally, so preserve the engine assemblies wholesale to be safe on
+  IL2CPP targets (iOS, WebGL, consoles, IL2CPP standalone).
+-->
+<linker>
+  <assembly fullname="ArcadeBasic.Core" preserve="all" />
+  <assembly fullname="ArcadeBasic.Lexer" preserve="all" />
+  <assembly fullname="ArcadeBasic.Parser" preserve="all" />
+  <assembly fullname="ArcadeBasic.Sema" preserve="all" />
+  <assembly fullname="ArcadeBasic.Runtime" preserve="all" />
+  <assembly fullname="ArcadeBasic.Interpreter" preserve="all" />
+  <assembly fullname="ArcadeBasic.Bytecode" preserve="all" />
+  <assembly fullname="ArcadeBasic.Compiler" preserve="all" />
+  <assembly fullname="ArcadeBasic.Vm" preserve="all" />
+  <assembly fullname="Singulink.Numerics.BigDecimal" preserve="all" />
+  <assembly fullname="Singulink.Numerics.BigIntegerExtensions" preserve="all" />
+</linker>
