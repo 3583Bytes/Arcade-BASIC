@@ -13,6 +13,10 @@ publish/
 .idea/
 *.swp
 *~
+# The UPM sample folder is literally named "Samples~" (the trailing '~' marks it
+# as import-on-demand). The "*~" rule above would otherwise ignore it, so re-include
+# the directory explicitly. (The Stubs re-ignore below still applies to build output.)
+!unity/Samples~/
 # AOT stubs staged by unity/scripts/copy-stubs.sh — built artifacts, not source.
 # CI re-stages them from the per-RID AOT artifacts before zipping the package.
 unity/Samples~/ArcadeBasic/Stubs/
