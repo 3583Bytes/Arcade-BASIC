@@ -83,21 +83,31 @@ self-contained executable that contains both the bytecode VM and your
 program. The result needs no .NET install and no separate Arcade BASIC
 install — just the one file.
 
-How it works: the IDE compiles the source, then locates an external
-`arcade-basic` AOT binary to use as the *stub*, reads it, appends the
-compiled bytecode + an `FB-BCEND` trailer, and chmods the result executable.
-This is the same mechanism the CLI's `build` subcommand uses.
+First you pick a **target platform** — Windows, macOS arm64, macOS x64, or
+Linux. The compiled bytecode is identical for every OS; the output's OS is
+decided by which native `arcade-basic` stub the bytecode is appended to, so
+you can build for any platform from one machine. The host platform is marked
+*(this)*; a platform whose stub isn't available locally shows *[no stub]*.
+
+How it works: the IDE compiles the source, then locates the `arcade-basic`
+AOT stub for the chosen platform, reads it, appends the compiled bytecode +
+an `FB-BCEND` trailer, and chmods the result executable. Same mechanism as
+the CLI's `build` subcommand.
 
 Because the IDE itself isn't AOT-compiled (Terminal.Gui v1 relies on
-reflection), it can't use itself as the stub. It looks for `arcade-basic`
-in two places:
+reflection), it can't use itself as the stub. For a given platform it looks for:
 
-1. Same directory as the running `arcade-basic-ide` binary.
-2. Anywhere on `PATH`.
+1. `arcade-basic-<rid>` (e.g. `arcade-basic-osx-arm64`, `arcade-basic-win-x64.exe`)
+   next to the `arcade-basic-ide` binary, then in a `stubs/` folder beside it.
+2. For the **host** platform only, a plain `arcade-basic` next to the IDE or on `PATH`.
 
-If neither finds it, the IDE shows an error pointing to the releases page.
-The fix is to put `arcade-basic` next to `arcade-basic-ide` or add it to
-your PATH; tagged releases ship both binaries for every supported RID.
+So to enable cross-platform builds, drop the per-RID `arcade-basic-<rid>`
+binaries (from the releases page) next to the IDE or in a `stubs/` folder.
+With only a plain `arcade-basic` present, just the host platform is buildable.
+
+**Cross-OS caveat:** a Unix binary built on Windows can't be marked executable
+there — the recipient runs `chmod +x` (and unsigned macOS binaries need a
+Gatekeeper bypass: right-click → Open, or `xattr -d com.apple.quarantine`).
 
 ## What's inside
 

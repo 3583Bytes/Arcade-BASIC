@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using ArcadeBasic.Bytecode;
 
 namespace ArcadeBasic.Ide;
@@ -82,6 +83,43 @@ internal static class BuildService
         {
             return new Result(false, "build failed: " + ex.Message);
         }
+    }
+
+    /// <summary>The RID matching the host the IDE is running on.</summary>
+    public static string HostRid()
+    {
+        if (OperatingSystem.IsWindows()) return "win-x64";
+        if (OperatingSystem.IsMacOS())
+            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64";
+        if (OperatingSystem.IsLinux())
+            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+        return "";
+    }
+
+    /// <summary>Find an `arcade-basic` AOT stub for <paramref name="rid"/>:
+    /// <c>arcade-basic-&lt;rid&gt;[.exe]</c> next to the IDE binary or in a sibling
+    /// <c>stubs/</c> folder; for the host RID also a plain <c>arcade-basic</c> (next
+    /// to the IDE or on PATH). Returns <c>null</c> if none is found.</summary>
+    public static string? LocateStub(string rid)
+    {
+        if (string.IsNullOrEmpty(rid)) return null;
+        var ext = rid == "win-x64" ? ".exe" : "";
+        var ridName = "arcade-basic-" + rid + ext;
+
+        var ideDir = Path.GetDirectoryName(Environment.ProcessPath);
+        if (!string.IsNullOrEmpty(ideDir))
+        {
+            var c1 = Path.Combine(ideDir, ridName);
+            if (File.Exists(c1)) return c1;
+            var c2 = Path.Combine(ideDir, "stubs", ridName);
+            if (File.Exists(c2)) return c2;
+        }
+
+        // For the host RID, the plain `arcade-basic` (next to the IDE / on PATH)
+        // also works as a stub.
+        if (rid == HostRid()) return LocateStub();
+
+        return null;
     }
 
     /// <summary>Best-effort: find an <c>arcade-basic</c> binary to use as the

@@ -249,6 +249,16 @@ internal sealed class TuiShell
         RefocusEditor();
     }
 
+    // Desktop targets offered by Build standalone. The bytecode payload is the
+    // same for every OS; only the native `arcade-basic` stub differs.
+    private static readonly (string Rid, string Label)[] BuildTargets =
+    {
+        ("win-x64",   "Windows"),
+        ("osx-arm64", "macOS arm64"),
+        ("osx-x64",   "macOS x64"),
+        ("linux-x64", "Linux"),
+    };
+
     private void BuildStandalone()
     {
         if (_runner.IsRunning) return;
@@ -267,31 +277,64 @@ internal sealed class TuiShell
             return;
         }
 
-        // Step 2: confirm we can find the AOT stub. If not, tell the user
-        // exactly what to do — no point opening the Save dialog only to
-        // fail at the very end.
-        var stub = BuildService.LocateStub();
+        // Step 2: choose the target platform. The output's OS is decided by
+        // which native stub we append the (OS-agnostic) bytecode to. Labels
+        // mark the host platform and any whose stub isn't available locally.
+        var host = BuildService.HostRid();
+        var labels = new NStack.ustring[BuildTargets.Length + 1];
+        for (int i = 0; i < BuildTargets.Length; i++)
+        {
+            var t = BuildTargets[i];
+            var available = BuildService.LocateStub(t.Rid) is not null;
+            labels[i] = t.Label
+                + (t.Rid == host ? " (this)" : string.Empty)
+                + (available ? string.Empty : " [no stub]");
+        }
+        labels[^1] = "Cancel";
+
+        int choice = MessageBox.Query(72, 13, "Build standalone",
+            "Target platform?\n\n" +
+            "The program's bytecode is identical for every OS — pick which\n" +
+            "platform's binary to produce. \"[no stub]\" means that platform's\n" +
+            "`arcade-basic` isn't next to the IDE, in a stubs/ folder, or on PATH.",
+            labels);
+        RefocusEditor();
+        if (choice < 0 || choice >= BuildTargets.Length)   // Cancel / Esc
+        {
+            _statusItem.Title = "Build cancelled";
+            Application.Top.SetNeedsDisplay();
+            return;
+        }
+        var target = BuildTargets[choice];
+
+        // Step 3: resolve the stub for the chosen target.
+        var stub = BuildService.LocateStub(target.Rid);
         if (stub is null)
         {
-            MessageBox.ErrorQuery(70, 10, "Build standalone",
-                "Could not find an `arcade-basic` AOT binary to use as the build stub.\n\n" +
-                "Fix: download the matching `arcade-basic` from the releases page and either:\n" +
-                "  • drop it next to arcade-basic-ide, or\n" +
-                "  • add it to your PATH.",
+            var stubName = "arcade-basic-" + target.Rid + (target.Rid == "win-x64" ? ".exe" : string.Empty);
+            MessageBox.ErrorQuery(76, 12, "Build standalone",
+                $"No `{stubName}` stub found for {target.Label}.\n\n" +
+                "Fix: download the matching `arcade-basic` from the releases page, then:\n" +
+                $"  • name it `{stubName}` and drop it next to arcade-basic-ide\n" +
+                "    (or in a `stubs/` folder beside it); or\n" +
+                "  • for this platform only, put a plain `arcade-basic` next to the IDE or on PATH.",
                 "OK");
             RefocusEditor();
+            _statusItem.Title = "Build cancelled (no stub)";
+            Application.Top.SetNeedsDisplay();
             return;
         }
 
-        // Step 3: ask where to write the output. Default name derived from
-        // the currently-loaded file (or "program" if nothing is loaded yet).
-        var defaultName = _currentFilePath is null
+        // Step 4: ask where to write the output. Extension follows the target;
+        // non-host targets get a -<rid> suffix so several platforms don't clash.
+        var baseName = _currentFilePath is null
             ? "program"
             : Path.GetFileNameWithoutExtension(_currentFilePath);
-        if (OperatingSystem.IsWindows()) defaultName += ".exe";
+        var defaultName = target.Rid == host ? baseName : baseName + "-" + target.Rid;
+        if (target.Rid == "win-x64") defaultName += ".exe";
 
         var dlg = new SaveDialog("Build standalone",
-            $"Save self-contained binary (stub: {Path.GetFileName(stub)})")
+            $"Save {target.Label} binary (stub: {Path.GetFileName(stub)})")
         {
             FilePath = defaultName,
         };
@@ -318,12 +361,13 @@ internal sealed class TuiShell
             return;
         }
 
-        // Step 4: do the build. BuildService handles stub-reading, payload
-        // append, and chmod — same flow as the CLI's build subcommand.
+        // Step 5: do the build. BuildService handles stub-reading, payload
+        // append, and chmod — same flow as the CLI's build subcommand. (A Unix
+        // target built on Windows can't be chmod'd here; the recipient does it.)
         var buildResult = BuildService.Build(result.Program, outputPath, stub);
         if (buildResult.Ok)
         {
-            _statusItem.Title = $"Built {Path.GetFileName(outputPath)} ({buildResult.OutputBytes:N0} bytes)";
+            _statusItem.Title = $"Built {Path.GetFileName(outputPath)} for {target.Rid} ({buildResult.OutputBytes:N0} bytes)";
         }
         else
         {

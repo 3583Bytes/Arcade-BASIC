@@ -543,10 +543,9 @@ namespace ArcadeBasic.Samples
         }
 
         /// <summary>Build a self-contained native binary from the current source —
-        /// same flow as the CLI's `arcade-basic build` and the TUI IDE's F7.
-        /// Editor-only: needs to call <c>EditorUtility.SaveFilePanel</c> and the
-        /// file produced is a desktop executable, not something a Player runtime
-        /// can host. In Player builds this prints a status hint and bails.</summary>
+        /// same flow as the CLI's `arcade-basic build` and the TUI IDE's F7. Pops a
+        /// target-platform menu (the package bundles a stub per OS) and appends the
+        /// compiled bytecode to that platform's stub. Editor-only.</summary>
         public void BuildStandalone()
         {
             if (_runTask != null) return;
@@ -554,9 +553,42 @@ namespace ArcadeBasic.Samples
 
 #if !UNITY_EDITOR
             SetStatus("Build only available in Editor");
-            return;
 #else
-            // 1. Compile to bytecode; surface any errors in the output pane.
+            // Choose the TARGET platform. The bytecode payload is OS-agnostic; the
+            // output's OS is decided by which native stub we append it to, and the
+            // package bundles one stub per platform under Stubs/.
+            string host = HostRid();
+            var targets = new (string Rid, string Label)[]
+            {
+                ("win-x64",   "Windows (x64)"),
+                ("osx-arm64", "macOS (Apple Silicon)"),
+                ("osx-x64",   "macOS (Intel)"),
+                ("linux-x64", "Linux (x64)"),
+            };
+            var menu = new UnityEditor.GenericMenu();
+            foreach (var t in targets)
+            {
+                string rid = t.Rid;   // capture per item for the closure below
+                bool isHost = rid == host;
+                string label = t.Label + (isHost ? "  (this platform)" : string.Empty);
+                if (isHost || LocateStubForRid(rid) != null)
+                    menu.AddItem(new GUIContent(label), false, () => BuildStandaloneForRid(rid));
+                else
+                    menu.AddDisabledItem(new GUIContent(label + "  — no stub bundled"));
+            }
+            menu.ShowAsContext();
+#endif
+        }
+
+#if UNITY_EDITOR
+        /// <summary>Build a self-contained native binary for <paramref name="targetRid"/>
+        /// by appending the compiled bytecode to that platform's `arcade-basic` stub.
+        /// The payload is identical for every target — only the stub and the output
+        /// extension differ. Cross-OS output works; a Unix target built on Windows
+        /// can't have its +x bit set here (the recipient runs `chmod +x`).</summary>
+        void BuildStandaloneForRid(string targetRid)
+        {
+            // 1. Compile to bytecode; surface any errors in the Problems pane.
             var source = inputField.text ?? string.Empty;
             var file = new SourceFile("<editor>", source);
             var diags = new DiagnosticBag();
@@ -588,15 +620,16 @@ namespace ArcadeBasic.Samples
                 return;
             }
 
-            // 2. Save dialog for the output binary — this comes first so the
-            // user sees the dialog they expect (where to put the result),
-            // not the stub-picker that only fires the first time.
-            string defaultName = !string.IsNullOrEmpty(_currentFilePath)
+            // 2. Output path. Suffix the default name with the RID for non-host
+            // targets so building several platforms into one folder doesn't clash.
+            string host = HostRid();
+            string baseName = !string.IsNullOrEmpty(_currentFilePath)
                 ? Path.GetFileNameWithoutExtension(_currentFilePath)
                 : "program";
-            string ext = Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "";
+            string defaultName = targetRid == host ? baseName : baseName + "-" + targetRid;
+            string ext = targetRid == "win-x64" ? "exe" : "";
             string outputPath = UnityEditor.EditorUtility.SaveFilePanel(
-                "Build standalone Arcade BASIC binary",
+                "Build standalone Arcade BASIC binary (" + targetRid + ")",
                 DefaultBrowseDir(),
                 defaultName,
                 ext);
@@ -606,40 +639,51 @@ namespace ArcadeBasic.Samples
                 return;
             }
 
-            // 3. Find an `arcade-basic` AOT binary to use as the stub. Tried
-            // automatically first; if nothing matches, show an explanatory
-            // dialog before opening the file picker so the user knows the
-            // second dialog is for the stub, not the output.
-            string stub = LocateBuildStub();
+            // 3. Find the stub for this target.
+            string stub = LocateStubForRid(targetRid);
             if (string.IsNullOrEmpty(stub))
             {
-                bool pick = UnityEditor.EditorUtility.DisplayDialog(
-                    "Locate arcade-basic",
-                    "To build a standalone binary, Arcade BASIC needs to find an `arcade-basic` AOT executable to use as the runtime stub.\n\n" +
-                    "It wasn't found on your PATH or in the Build Stub Path inspector field. Click Browse to point at one (any platform-matching `arcade-basic` from a release ZIP, or one built locally via `scripts/build-bundle.sh`).",
-                    "Browse...", "Cancel");
-                if (!pick) { SetStatus("Build cancelled"); return; }
-
-                stub = UnityEditor.EditorUtility.OpenFilePanel(
-                    "Locate `arcade-basic` AOT binary",
-                    DefaultBrowseDir(), "");
-                if (string.IsNullOrEmpty(stub) || !File.Exists(stub))
+                if (targetRid == host)
                 {
-                    SetStatus("Build cancelled");
+                    // Host build with no bundled/PATH stub: let the user point at one.
+                    bool pick = UnityEditor.EditorUtility.DisplayDialog(
+                        "Locate arcade-basic",
+                        "To build for this platform, Arcade BASIC needs an `arcade-basic` AOT executable to use as the runtime stub.\n\n" +
+                        "It wasn't found in the bundled Stubs/ folder, the Build Stub Path field, or on PATH. Click Browse to point at one (e.g. from a release ZIP).",
+                        "Browse...", "Cancel");
+                    if (!pick) { SetStatus("Build cancelled"); return; }
+
+                    stub = UnityEditor.EditorUtility.OpenFilePanel(
+                        "Locate `arcade-basic` AOT binary", DefaultBrowseDir(), "");
+                    if (string.IsNullOrEmpty(stub) || !File.Exists(stub))
+                    {
+                        SetStatus("Build cancelled");
+                        return;
+                    }
+                    buildStubPath = stub;     // remember for next time this session
+                }
+                else
+                {
+                    // Cross-target: no file picker (a hand-picked binary could be the
+                    // wrong OS). The release package ships every platform's stub.
+                    UnityEditor.EditorUtility.DisplayDialog(
+                        "Arcade BASIC",
+                        "No " + targetRid + " stub is bundled with this sample.\n\n" +
+                        "Cross-platform stubs ship with the official release package — import that (its Stubs/ folder includes every platform), or build the " + targetRid + " stub yourself.",
+                        "OK");
+                    SetStatus("No " + targetRid + " stub");
                     return;
                 }
-                buildStubPath = stub;     // remember for next time this session
             }
 
-            // 4. Append the serialized bytecode to a copy of the stub. Same
-            // FB-BCEND framing the CLI uses at startup to find the payload.
+            // 4. Append the serialized bytecode to a copy of the stub (FB-BCEND framing).
             try
             {
                 byte[] payload = BytecodeSerializer.Serialize(compiled);
                 byte[] stubBytes = File.ReadAllBytes(stub);
 
-                // If the stub already has an embedded payload (someone pointed
-                // at an already-built binary), strip it so we don't grow on rebuild.
+                // If the stub already has an embedded payload (someone pointed at an
+                // already-built binary), strip it so we don't grow on rebuild.
                 var existing = EmbeddedPayload.TryRead(stub);
                 if (existing != null)
                 {
@@ -653,9 +697,11 @@ namespace ArcadeBasic.Samples
                     EmbeddedPayload.Append(fs, payload);
                 }
 
-                // chmod +x on Unix-like platforms — File.SetUnixFileMode isn't
-                // in .NET Standard 2.1, so shell out to /bin/chmod.
-                if (Application.platform != RuntimePlatform.WindowsEditor)
+                // chmod +x only matters for a Unix output, and only a Unix host can
+                // run chmod. A Unix target built on Windows can't be marked +x here.
+                bool unixTarget = targetRid != "win-x64";
+                bool canChmod = Application.platform != RuntimePlatform.WindowsEditor;
+                if (unixTarget && canChmod)
                 {
                     try
                     {
@@ -666,7 +712,8 @@ namespace ArcadeBasic.Samples
                 }
 
                 long outBytes = new FileInfo(outputPath).Length;
-                SetStatus($"Built {Path.GetFileName(outputPath)} ({outBytes:N0} bytes, payload {payload.Length:N0})");
+                string note = (unixTarget && !canChmod) ? "  (run `chmod +x` on the target machine)" : string.Empty;
+                SetStatus($"Built {Path.GetFileName(outputPath)} for {targetRid} ({outBytes:N0} bytes){note}");
             }
             catch (Exception ex)
             {
@@ -674,51 +721,47 @@ namespace ArcadeBasic.Samples
                 SetProblems(new[] { "Build failed: " + ex.Message });
                 SetStatus("Build failed");
             }
-#endif
         }
 
-#if UNITY_EDITOR
-        /// <summary>Find an `arcade-basic` AOT binary. Order:
-        /// (1) explicit <see cref="buildStubPath"/>, (2) the
-        /// <c>Stubs/arcade-basic-&lt;rid&gt;</c> binary that ships with the
-        /// imported sample, (3) anywhere on <c>PATH</c>. Returns null if
-        /// nothing matches — the caller pops a file picker.</summary>
-        string LocateBuildStub()
+        /// <summary>Locate an `arcade-basic` stub for <paramref name="rid"/>: the
+        /// bundled <c>Stubs/arcade-basic-&lt;rid&gt;</c> for any RID; for the host
+        /// RID also the <see cref="buildStubPath"/> field and <c>PATH</c>. Returns
+        /// null if nothing matches.</summary>
+        string LocateStubForRid(string rid)
         {
-            if (!string.IsNullOrEmpty(buildStubPath) && File.Exists(buildStubPath))
+            bool isHost = rid == HostRid();
+
+            if (isHost && !string.IsNullOrEmpty(buildStubPath) && File.Exists(buildStubPath))
                 return buildStubPath;
 
-            // (2) Bundled sample stub: the package's auto-imported ArcadeBasic
-            // sample includes a Stubs/ folder with arcade-basic-<rid> binaries.
-            // We find ourselves on disk via MonoScript, then look for
-            // Stubs/arcade-basic-<rid> next door.
-            var bundled = LocateBundledStub();
+            var bundled = LocateBundledStub(rid);
             if (!string.IsNullOrEmpty(bundled)) return bundled;
 
-            // (3) PATH walk — useful for users who installed arcade-basic
-            // globally (homebrew, /usr/local/bin, etc.).
-            string exe = Application.platform == RuntimePlatform.WindowsEditor
-                ? "arcade-basic.exe" : "arcade-basic";
-            string pathEnv = Environment.GetEnvironmentVariable("PATH");
-            if (!string.IsNullOrEmpty(pathEnv))
+            // PATH only makes sense for the host RID — a binary on PATH is host-arch.
+            if (isHost)
             {
-                foreach (var dir in pathEnv.Split(Path.PathSeparator))
+                string exe = Application.platform == RuntimePlatform.WindowsEditor
+                    ? "arcade-basic.exe" : "arcade-basic";
+                string pathEnv = Environment.GetEnvironmentVariable("PATH");
+                if (!string.IsNullOrEmpty(pathEnv))
                 {
-                    if (string.IsNullOrWhiteSpace(dir)) continue;
-                    var candidate = Path.Combine(dir, exe);
-                    if (File.Exists(candidate)) return candidate;
+                    foreach (var dir in pathEnv.Split(Path.PathSeparator))
+                    {
+                        if (string.IsNullOrWhiteSpace(dir)) continue;
+                        var candidate = Path.Combine(dir, exe);
+                        if (File.Exists(candidate)) return candidate;
+                    }
                 }
             }
             return null;
         }
 
-        /// <summary>Resolve the bundled sample stub for the host RID. Walks
-        /// up from this script's location to find a sibling <c>Stubs/</c>
-        /// folder; chmods the file +x on Unix-like hosts so the build can
-        /// actually exec it after the sample import (Unity strips +x bits).</summary>
-        string LocateBundledStub()
+        /// <summary>Resolve the bundled sample stub for <paramref name="rid"/> — the
+        /// <c>Stubs/arcade-basic-&lt;rid&gt;</c> shipped with the imported sample.
+        /// Found relative to this script's location; chmods it +x on Unix hosts
+        /// (Unity strips +x bits on import).</summary>
+        string LocateBundledStub(string rid)
         {
-            string rid = HostRid();
             if (string.IsNullOrEmpty(rid)) return null;
 
             string scriptPath = UnityEditor.AssetDatabase.GetAssetPath(
