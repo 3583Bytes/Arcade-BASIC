@@ -12,6 +12,7 @@ All notable changes to the Unity package will be documented here. Versions follo
 - `link.xml` preserving the engine assemblies under IL2CPP managed-code stripping.
 - `LICENSE.md` and `Third Party Notices.md` (Singulink.Numerics, MIT) inside the package.
 - Initial Unity package: pre-built netstandard2.1 DLLs for the Arcade BASIC libraries.
+- `com.unity.textmeshpro` (3.0.6) declared as a package dependency, so the **Arcade BASIC IDE** sample compiles on a fresh project on any OS without manual setup. (TMP *Essentials* — the default font/shaders — still need a one-time **Window → TextMeshPro → Import TMP Essentials**; on Unity 6 TMP has merged into `com.unity.ugui`, so verify the dependency resolves there.)
 - `ArcadeBasic.BasicEngine` static class as a one-call embedding entry point.
 - `Arcade BASIC IDE` sample: a drop-in in-game BASIC IDE shipped as a ready-to-play **scene + prefab** (the `ArcadeBasicCodeEditor` MonoBehaviour with its UI wired in the Inspector).
   - **Menus**: File (New / Open / Save / Save As / Quit), Run (Run / Compile / Build standalone / Stop / Clear Output), Help (About modal).

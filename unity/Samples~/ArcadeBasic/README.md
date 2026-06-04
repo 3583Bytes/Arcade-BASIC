@@ -21,6 +21,14 @@ A drop-in Unity scene that gives your game a syntax-highlighted Arcade BASIC edi
 
 Three menus at the top — **File** (New, Open, Save, Save As, Quit), **Run** (Run, Compile, Build standalone, Stop, Clear Output), and **Help** (About) — pop out small panels when clicked, and a fullscreen click-blocker dismisses them when you click anywhere else. Keyboard shortcuts mirror the TUI IDE: **F5** Run, **F6** Compile, **F7** Build, **Esc** Stop, **Ctrl/Cmd+Enter** Run; the status line shows a live **Ln L, Col C** while you edit, and **Tab** inserts two spaces. Three tabs below swap which pane fills the content area: **Source** (gutter + syntax-highlighted editor), **Output** (scrollable transcript with a single-line input bar at the bottom that activates whenever the program runs an `INPUT`), or **Graphics** (an arcade-style screen for §13 `GRAPH`/`SET` drawing). Clicking **Run** auto-switches to Output so you watch the program execute live; the first §13 draw auto-switches to Graphics. The footer is just a status line: `Ready`, `Saved foo.bas`, `Running...`, `Cancelled`, error text. Keywords are blue, strings orange, numbers green, line labels gray, colored by the project's own `BasicLexer` so the highlighting always matches what the interpreter will parse.
 
+## Prerequisites
+
+| What | Provided how |
+|---|---|
+| **TextMeshPro** package | Auto-installed — declared as a package dependency. |
+| **TMP Essentials** (default font + shaders) | One-time **Window → TextMeshPro → Import TMP Essentials** (see note below). A package can't import these for you. |
+| **Build Standalone** AOT stubs (per-OS native binaries) | Bundled in `Stubs/` **when you install the official release package** (it ships `win-x64` / `osx-x64` / `osx-arm64` / `linux-x64`). A git-URL/UPM install can't carry native binaries — there, point the IDE at an `arcade-basic` binary (file picker) or run `scripts/copy-stubs.sh`. |
+
 ## Setup
 
 Import the sample on demand: **Window → Package Manager → Arcade BASIC Interpreter → Samples → Import** (next to **Arcade BASIC IDE**). Unity copies it into `Assets/Samples/Arcade BASIC Interpreter/<version>/Arcade BASIC IDE/`.
