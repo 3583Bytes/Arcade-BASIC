@@ -74,8 +74,16 @@ public class RasterGraphicsDeviceTests
     {
         var d = new RasterGraphicsDevice(40, 12);
         d.SetColor(GfxColorTarget.Text, 1);                 // white
-        d.DrawText(new GfxPoint(0, 1), "HI");               // top-left-ish
+        // Draw at the bottom edge (y=0). The anchor is the text's bottom-left, so
+        // the glyph rises into the buffer instead of clipping off the bottom.
+        d.DrawText(new GfxPoint(0, 0), "HI");
         var white = d.Pixels.Count(p => p == White);
         Assert.True(white >= 10, $"expected glyph pixels for 'HI', got {white}");
+
+        // The bottom row of the buffer must carry glyph pixels — the regression
+        // was that bottom-edge text drew downward and clipped away entirely.
+        int bottomRow = (d.Height - 1) * d.Width;
+        int bottomRowWhite = Enumerable.Range(0, d.Width).Count(x => d.Pixels[bottomRow + x] == White);
+        Assert.True(bottomRowWhite > 0, "expected glyph pixels on the bottom row");
     }
 }

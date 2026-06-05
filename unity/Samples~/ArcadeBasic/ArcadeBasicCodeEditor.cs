@@ -48,6 +48,8 @@ namespace ArcadeBasic.Samples
         [Header("Output")]
         public TMP_Text outputText;
         public ScrollRect outputScroll;
+        [Tooltip("Scroll view wrapping the Source editor; resized as the user types.")]
+        public ScrollRect sourceScroll;
 
         [Header("Tabs")]
         [Tooltip("Source pane root; SetActive(true) when Source tab selected.")]
@@ -76,10 +78,14 @@ namespace ArcadeBasic.Samples
         public Button fileMenuButton;
         [Tooltip("Top-level button that opens the Run menu.")]
         public Button runMenuButton;
+        [Tooltip("Top-level button that opens the Help menu.")]
+        public Button helpMenuButton;
         [Tooltip("Container of the File menu items. SetActive(true) when the menu is open.")]
         public GameObject fileMenuPanel;
         [Tooltip("Container of the Run menu items. SetActive(true) when the menu is open.")]
         public GameObject runMenuPanel;
+        [Tooltip("Container of the Help menu items. SetActive(true) when the menu is open.")]
+        public GameObject helpMenuPanel;
         [Tooltip("Fullscreen click-catcher (excluding the menu bar) that closes any open menu when clicked.")]
         public Button menuBlocker;
 
@@ -94,6 +100,25 @@ namespace ArcadeBasic.Samples
         public Button runBuildItem;
         public Button runStopItem;
         public Button runClearItem;
+        public Button helpAboutItem;
+
+        [Header("About dialog")]
+        [Tooltip("Root of the centered About modal. SetActive(true) when shown.")]
+        public GameObject aboutPanel;
+        [Tooltip("Body text of the About modal (filled in at startup).")]
+        public TMP_Text aboutText;
+        [Tooltip("Dismisses the About modal on click.")]
+        public Button aboutOkButton;
+
+        [Header("Build standalone dialog")]
+        [Tooltip("Root of the centered build-target picker modal. SetActive(true) when shown.")]
+        public GameObject buildPanel;
+        [Tooltip("Container the platform buttons are added to at runtime.")]
+        public Transform buildTargetContainer;
+        [Tooltip("Hidden template button cloned once per target platform.")]
+        public Button buildTargetTemplate;
+        [Tooltip("Dismisses the build-target picker on click.")]
+        public Button buildCancelButton;
 
         [Header("Build standalone (optional)")]
         [Tooltip("Path to an `arcade-basic` AOT binary used as the build stub. Leave empty to auto-locate via PATH; if still not found, the Editor will prompt with a file picker.")]
@@ -181,8 +206,6 @@ namespace ArcadeBasic.Samples
         string _statusBase = string.Empty;   // status message without the live Ln/Col suffix
         bool _lnColShown;
         int _lastLine = 1, _lastCol = 1;
-        Button _helpButton;
-        GameObject _aboutModal;
 
         // --- INPUT handshake (main thread <-> Task thread) ---
         volatile bool _inputPending;       // BASIC task is blocked waiting for a line
@@ -194,6 +217,11 @@ namespace ArcadeBasic.Samples
 
         void Awake()
         {
+            // Build the entire IDE UI tree at runtime and populate every
+            // serialized field below. Replaces the old prefab-based sample, so a
+            // scene needs only a bare GameObject carrying this component.
+            ArcadeBasicUIBuilder.Build(this);
+
             // Legacy controls (only active if a scene happens to wire them).
             if (runButton != null) runButton.onClick.AddListener(Run);
             if (stopButton != null) { stopButton.onClick.AddListener(Stop); stopButton.gameObject.SetActive(false); }
@@ -203,6 +231,7 @@ namespace ArcadeBasic.Samples
             // Menus.
             if (fileMenuButton != null) fileMenuButton.onClick.AddListener(() => ToggleMenu(fileMenuPanel));
             if (runMenuButton != null) runMenuButton.onClick.AddListener(() => ToggleMenu(runMenuPanel));
+            if (helpMenuButton != null) helpMenuButton.onClick.AddListener(() => ToggleMenu(helpMenuPanel));
             if (menuBlocker != null) menuBlocker.onClick.AddListener(CloseAllMenus);
             if (fileNewItem != null)    fileNewItem.onClick.AddListener(()    => { NewFile();        CloseAllMenus(); });
             if (fileOpenItem != null)   fileOpenItem.onClick.AddListener(()   => { OpenFileDialog(); CloseAllMenus(); });
@@ -214,6 +243,11 @@ namespace ArcadeBasic.Samples
             if (runBuildItem != null)   runBuildItem.onClick.AddListener(()   => { BuildStandalone(); CloseAllMenus(); });
             if (runStopItem != null)    runStopItem.onClick.AddListener(()    => { Stop();           CloseAllMenus(); });
             if (runClearItem != null)   runClearItem.onClick.AddListener(()   => { ClearOutput();    CloseAllMenus(); });
+            if (helpAboutItem != null)  helpAboutItem.onClick.AddListener(()  => { ShowAbout();      CloseAllMenus(); });
+            if (aboutOkButton != null)  aboutOkButton.onClick.AddListener(HideAbout);
+            if (aboutText != null)      aboutText.text = AboutBody;
+            if (buildCancelButton != null) buildCancelButton.onClick.AddListener(HideBuildPicker);
+            if (buildPanel != null) buildPanel.SetActive(false);
             CloseAllMenus();
 
             if (inputLineField != null)
@@ -229,7 +263,6 @@ namespace ArcadeBasic.Samples
             if (sourceTabButton != null) sourceTabButton.onClick.AddListener(() => SelectTab(0));
             if (outputTabButton != null) outputTabButton.onClick.AddListener(() => SelectTab(1));
             BuildGraphicsUi();   // adds the Graphics pane + tab button at runtime
-            BuildHelpUi();       // adds the Help menu button + About modal at runtime
             SelectTab(0);   // initial: show source
 
             try { Directory.CreateDirectory(SavedDir); } catch { /* read-only env, ignore */ }
@@ -273,7 +306,10 @@ namespace ArcadeBasic.Samples
                     inputLineField.ActivateInputField();
                     inputLineField.Select();
                 }
-                SelectTab(1);   // surface the output pane so the user can see context for the prompt
+                // Surface the Output pane for the prompt — unless a graphics
+                // program is already showing its canvas, in which case stay on it
+                // (the shared input bar sits just below the canvas).
+                if (_activeTab != 2) SelectTab(1);
             }
 
             if (_runTask != null && _runTask.IsCompleted) FinishRun();
@@ -554,9 +590,35 @@ namespace ArcadeBasic.Samples
 #if !UNITY_EDITOR
             SetStatus("Build only available in Editor");
 #else
-            // Choose the TARGET platform. The bytecode payload is OS-agnostic; the
-            // output's OS is decided by which native stub we append it to, and the
-            // package bundles one stub per platform under Stubs/.
+            ShowBuildTargetPicker();
+#endif
+        }
+
+        /// <summary>Hide the build-target picker and remove the platform buttons.</summary>
+        public void HideBuildPicker()
+        {
+            if (buildPanel != null) buildPanel.SetActive(false);
+            if (buildTargetContainer == null || buildTargetTemplate == null) return;
+            for (int i = buildTargetContainer.childCount - 1; i >= 0; i--)
+            {
+                var child = buildTargetContainer.GetChild(i);
+                if (child != buildTargetTemplate.transform) Destroy(child.gameObject);
+            }
+        }
+
+#if UNITY_EDITOR
+        /// <summary>Populate and show the uGUI build-target picker (one button per
+        /// platform). The bytecode payload is OS-agnostic; the output's OS is decided
+        /// by which native stub we append it to, and the package bundles one stub per
+        /// platform under Stubs/ — targets without a bundled stub are disabled.</summary>
+        void ShowBuildTargetPicker()
+        {
+            if (buildPanel == null || buildTargetContainer == null || buildTargetTemplate == null)
+            {
+                SetStatus("Build picker UI missing");
+                return;
+            }
+
             string host = HostRid();
             var targets = new (string Rid, string Label)[]
             {
@@ -565,20 +627,29 @@ namespace ArcadeBasic.Samples
                 ("osx-x64",   "macOS (Intel)"),
                 ("linux-x64", "Linux (x64)"),
             };
-            var menu = new UnityEditor.GenericMenu();
             foreach (var t in targets)
             {
                 string rid = t.Rid;   // capture per item for the closure below
                 bool isHost = rid == host;
-                string label = t.Label + (isHost ? "  (this platform)" : string.Empty);
-                if (isHost || LocateStubForRid(rid) != null)
-                    menu.AddItem(new GUIContent(label), false, () => BuildStandaloneForRid(rid));
-                else
-                    menu.AddDisabledItem(new GUIContent(label + "  — no stub bundled"));
+                bool hasStub = LocateStubForRid(rid) != null;
+                // Every target is clickable: ones without a bundled/remembered stub
+                // prompt the user to point at one (cross-building only needs the file).
+                string label = t.Label
+                    + (isHost ? "  (this platform)" : string.Empty)
+                    + (hasStub ? string.Empty : "  — choose stub…");
+
+                var btn = Instantiate(buildTargetTemplate, buildTargetContainer);
+                btn.gameObject.SetActive(true);
+                btn.transform.SetAsLastSibling();
+                var lbl = btn.GetComponentInChildren<TMP_Text>(includeInactive: true);
+                if (lbl != null) lbl.text = label;
+                btn.onClick.AddListener(() => { HideBuildPicker(); BuildStandaloneForRid(rid); });
             }
-            menu.ShowAsContext();
-#endif
+
+            buildPanel.transform.SetAsLastSibling();   // draw over the rest of the IDE
+            buildPanel.SetActive(true);
         }
+#endif
 
 #if UNITY_EDITOR
         /// <summary>Build a self-contained native binary for <paramref name="targetRid"/>
@@ -643,37 +714,29 @@ namespace ArcadeBasic.Samples
             string stub = LocateStubForRid(targetRid);
             if (string.IsNullOrEmpty(stub))
             {
-                if (targetRid == host)
-                {
-                    // Host build with no bundled/PATH stub: let the user point at one.
-                    bool pick = UnityEditor.EditorUtility.DisplayDialog(
-                        "Locate arcade-basic",
-                        "To build for this platform, Arcade BASIC needs an `arcade-basic` AOT executable to use as the runtime stub.\n\n" +
-                        "It wasn't found in the bundled Stubs/ folder, the Build Stub Path field, or on PATH. Click Browse to point at one (e.g. from a release ZIP).",
-                        "Browse...", "Cancel");
-                    if (!pick) { SetStatus("Build cancelled"); return; }
+                // No stub found. Let the user point at one. Building a standalone just
+                // appends OS-agnostic bytecode to the stub, so cross-target builds work
+                // from any OS — you only need that platform's stub file (it can't be
+                // AOT-compiled here for a different OS).
+                string msg = targetRid == host
+                    ? "Arcade BASIC needs an `arcade-basic` AOT executable for this platform to use as the runtime stub.\n\n" +
+                      "It wasn't found in the bundled Stubs/ folder, the Build Stub Path field, or on PATH. Click Browse to point at one (e.g. from a release ZIP)."
+                    : "No " + targetRid + " stub is bundled.\n\n" +
+                      "Cross-building for " + targetRid + " works from this machine — you just need that platform's `arcade-basic` stub (it can't be compiled here). Take it from the official release package's Stubs/ folder, or build it on " + targetRid + ", then Browse to it. It's remembered for this platform.\n\n" +
+                      "The stub must come from the SAME engine version as this project, or the built binary will mis-read its bytecode.";
+                bool pick = UnityEditor.EditorUtility.DisplayDialog(
+                    "Locate arcade-basic stub (" + targetRid + ")", msg, "Browse...", "Cancel");
+                if (!pick) { SetStatus("Build cancelled"); return; }
 
-                    stub = UnityEditor.EditorUtility.OpenFilePanel(
-                        "Locate `arcade-basic` AOT binary", DefaultBrowseDir(), "");
-                    if (string.IsNullOrEmpty(stub) || !File.Exists(stub))
-                    {
-                        SetStatus("Build cancelled");
-                        return;
-                    }
-                    buildStubPath = stub;     // remember for next time this session
-                }
-                else
+                stub = UnityEditor.EditorUtility.OpenFilePanel(
+                    "Locate `arcade-basic` stub for " + targetRid, DefaultBrowseDir(), "");
+                if (string.IsNullOrEmpty(stub) || !File.Exists(stub))
                 {
-                    // Cross-target: no file picker (a hand-picked binary could be the
-                    // wrong OS). The release package ships every platform's stub.
-                    UnityEditor.EditorUtility.DisplayDialog(
-                        "Arcade BASIC",
-                        "No " + targetRid + " stub is bundled with this sample.\n\n" +
-                        "Cross-platform stubs ship with the official release package — import that (its Stubs/ folder includes every platform), or build the " + targetRid + " stub yourself.",
-                        "OK");
-                    SetStatus("No " + targetRid + " stub");
+                    SetStatus("Build cancelled");
                     return;
                 }
+                UnityEditor.EditorPrefs.SetString(StubPrefKey(targetRid), stub);   // remember per platform
+                if (targetRid == host) buildStubPath = stub;
             }
 
             // 4. Append the serialized bytecode to a copy of the stub (FB-BCEND framing).
@@ -727,6 +790,8 @@ namespace ArcadeBasic.Samples
         /// bundled <c>Stubs/arcade-basic-&lt;rid&gt;</c> for any RID; for the host
         /// RID also the <see cref="buildStubPath"/> field and <c>PATH</c>. Returns
         /// null if nothing matches.</summary>
+        static string StubPrefKey(string rid) => "ArcadeBasic.StubPath." + rid;
+
         string LocateStubForRid(string rid)
         {
             bool isHost = rid == HostRid();
@@ -736,6 +801,12 @@ namespace ArcadeBasic.Samples
 
             var bundled = LocateBundledStub(rid);
             if (!string.IsNullOrEmpty(bundled)) return bundled;
+
+            // A stub the user pointed at before for this RID, remembered across
+            // sessions. Lets this machine cross-build other platforms once you supply
+            // their stub files (the build only appends OS-agnostic bytecode).
+            var remembered = UnityEditor.EditorPrefs.GetString(StubPrefKey(rid), string.Empty);
+            if (!string.IsNullOrEmpty(remembered) && File.Exists(remembered)) return remembered;
 
             // PATH only makes sense for the host RID — a binary on PATH is host-arch.
             if (isHost)
@@ -841,6 +912,21 @@ namespace ArcadeBasic.Samples
             SetStatus($"Copied {count} problem{(count == 1 ? "" : "s")} to clipboard");
         }
 
+        // Must match ArcadeBasicUIBuilder.InputLineHeight (the shared input bar's
+        // height) so the graphics canvas lifts by exactly the bar's height.
+        const float InputBarHeight = 28f;
+        // Extra gap below the graphics canvas so a program drawing on its bottom
+        // row (e.g. kanban's y=0 status line) clears the input line with margin
+        // instead of sitting flush against it.
+        const float GraphicsBottomPad = 14f;
+        // Total space reserved below the canvas: the input bar plus the gap.
+        const float GraphicsBottomInset = InputBarHeight + GraphicsBottomPad;
+        // §13 text is a fixed 5x7-pixel bitmap, so a large buffer renders it tiny.
+        // When auto-sizing, cap the internal resolution to this height (preserving
+        // aspect) and let the pane scale it up (Point-filtered) so text and 1px
+        // primitives stay readable. Set graphicsResolution in the Inspector to override.
+        const int GraphicsAutoMaxHeight = 384;
+
         void SetInputBarVisible(bool visible)
         {
             if (inputLineField != null)
@@ -854,6 +940,10 @@ namespace ArcadeBasic.Samples
                 inputLinePromptLabel.gameObject.SetActive(visible);
                 if (visible) inputLinePromptLabel.text = "? ";
             }
+            // Note: the graphics canvas is permanently positioned above the input
+            // bar (BuildGraphicsUi) and the buffer reserves that height
+            // (ComputeScreenSize), so there's nothing to toggle here — the prompt
+            // line always sits below the canvas, matching the terminal IDE.
         }
 
         void OnInputLineSubmitted(string text)
@@ -877,6 +967,31 @@ namespace ArcadeBasic.Samples
         {
             UpdateGutter(text);
             UpdateHighlight(text);
+            UpdateSourceContentHeight();
+        }
+
+        /// <summary>Grow the source ScrollRect's Content to the text's full height
+        /// so long programs scroll instead of clipping. The builder gives Content a
+        /// fixed placeholder height and a HorizontalLayoutGroup (gutter + input);
+        /// the input cell stretches to whatever height we set here, so the outer
+        /// ScrollRect — not TMP's own viewport — drives scrolling.</summary>
+        void UpdateSourceContentHeight()
+        {
+            if (sourceScroll == null || inputField == null) return;
+            var content = sourceScroll.content;
+            var text = inputField.textComponent;
+            if (content == null || text == null) return;
+
+            // ForceMeshUpdate so preferredHeight reflects the text just set (e.g.
+            // a freshly loaded file) rather than the previous frame's layout.
+            text.ForceMeshUpdate();
+            float desired = text.preferredHeight + 16f;   // 8px top + 8px bottom text-area inset
+            var viewport = sourceScroll.viewport;
+            if (viewport != null) desired = Mathf.Max(desired, viewport.rect.height);
+
+            var size = content.sizeDelta;
+            if (!Mathf.Approximately(size.y, desired))
+                content.sizeDelta = new Vector2(size.x, desired);
         }
 
         void UpdateGutter(string text)
@@ -1217,18 +1332,33 @@ namespace ArcadeBasic.Samples
             if (parent == null) return;
             _contentRect = parent as RectTransform;
 
-            // Screen pane: a stretch-filled RawImage sibling of the output pane.
+            // Screen pane: a black backdrop sitting just above the shared input bar.
+            // It extends all the way down to the bar, so the bottom-gap padding reads
+            // as black screen border rather than letting the scene background show.
             _graphicsPane = new GameObject("GraphicsPane", typeof(RectTransform));
             _graphicsPane.transform.SetParent(parent, worldPositionStays: false);
             var prt = (RectTransform)_graphicsPane.transform;
             prt.anchorMin = Vector2.zero;
             prt.anchorMax = Vector2.one;
-            prt.offsetMin = Vector2.zero;
+            prt.offsetMin = new Vector2(0, InputBarHeight);
             prt.offsetMax = Vector2.zero;
             prt.localScale = Vector3.one;
             prt.SetAsLastSibling();
+            _graphicsPane.AddComponent<Image>().color = Color.black;   // padding + letterbox
 
-            _graphicsImage = _graphicsPane.AddComponent<RawImage>();
+            // The actual screen RawImage fills the pane except for the bottom gap,
+            // so a program's bottom row (e.g. kanban's y=0 status) clears the input
+            // line with margin. The buffer matches this area (ComputeScreenSize).
+            var screenGo = new GameObject("GraphicsScreen", typeof(RectTransform));
+            screenGo.transform.SetParent(_graphicsPane.transform, worldPositionStays: false);
+            var srt = (RectTransform)screenGo.transform;
+            srt.anchorMin = Vector2.zero;
+            srt.anchorMax = Vector2.one;
+            srt.offsetMin = new Vector2(0, GraphicsBottomPad);
+            srt.offsetMax = Vector2.zero;
+            srt.localScale = Vector3.one;
+
+            _graphicsImage = screenGo.AddComponent<RawImage>();
             _graphicsImage.color = Color.white;
             _graphicsImage.raycastTarget = false;
             // 1×1 black placeholder so an unused graphics pane reads as a dark screen.
@@ -1239,13 +1369,16 @@ namespace ArcadeBasic.Samples
 
             // Graphics tab button: clone the Output button so it inherits the tab
             // bar's styling/layout, relabel it, and re-point its click.
-            _graphicsTabButton = Instantiate(outputTabButton, outputTabButton.transform.parent, instantiateInWorldSpace: false);
+            _graphicsTabButton = Instantiate(outputTabButton, outputTabButton.transform.parent, worldPositionStays: false);
             _graphicsTabButton.name = "GraphicsTabButton";
             _graphicsTabButton.onClick.RemoveAllListeners();
             _graphicsTabButton.onClick.AddListener(() => SelectTab(2));
             var lbl = _graphicsTabButton.GetComponentInChildren<TMP_Text>(includeInactive: true);
             if (lbl != null) lbl.text = "Graphics";
-            _graphicsTabButton.transform.SetAsLastSibling();
+            // Place it directly after the Output tab. The tab bar ends with a
+            // flexible spacer, so SetAsLastSibling would put it *after* the spacer
+            // and shove it to the far right — insert right after Output instead.
+            _graphicsTabButton.transform.SetSiblingIndex(outputTabButton.transform.GetSiblingIndex() + 1);
 
             // If the tab bar isn't using a layout group, the clone lands on top of
             // the Output button — nudge it one button-width to the right.
@@ -1257,6 +1390,12 @@ namespace ArcadeBasic.Samples
             }
 
             _graphicsPane.SetActive(false);
+
+            // The graphics pane was just made the last sibling of the content area;
+            // re-assert the shared input bar on top so it stays visible/clickable
+            // below the canvas while a graphics program waits for input.
+            if (inputLineField != null && inputLineField.transform.parent != null)
+                inputLineField.transform.parent.SetAsLastSibling();
         }
 
         /// <summary>Decide the screen buffer size: the Inspector value, or the
@@ -1269,8 +1408,24 @@ namespace ArcadeBasic.Samples
 
             Canvas.ForceUpdateCanvases();
             var r = _contentRect != null ? _contentRect.rect : new Rect(0, 0, 320, 240);
-            if (w <= 0) w = (int)r.width;
-            if (h <= 0) h = (int)r.height;
+            float availW = r.width;
+            // Reserve the input line's height plus the bottom gap: the graphics
+            // canvas sits above it (see BuildGraphicsUi), so the buffer must match
+            // the canvas area or a program drawing at its bottom edge (e.g. kanban's
+            // y=0 status) lands behind the input bar.
+            float availH = r.height - GraphicsBottomInset;
+
+            // Cap the auto resolution (aspect-preserving) so the fixed-size bitmap
+            // font renders large enough to read once the pane scales it up.
+            if (availH > GraphicsAutoMaxHeight && availH > 0f)
+            {
+                float s = GraphicsAutoMaxHeight / availH;
+                availW *= s;
+                availH *= s;
+            }
+
+            if (w <= 0) w = (int)availW;
+            if (h <= 0) h = (int)availH;
             w = Mathf.Clamp(w, 64, 2048);
             h = Mathf.Clamp(h, 64, 2048);
         }
@@ -1355,124 +1510,28 @@ namespace ArcadeBasic.Samples
             inputField.selectionFocusPosition = next;
         }
 
-        /// <summary>Add a Help menu button (clone of the Run button) + an About
-        /// modal at runtime, so the prefab needs no extra wiring. Wrapped in a
-        /// try/catch so a UI-build hiccup can never break the rest of the IDE.</summary>
-        void BuildHelpUi()
-        {
-            if (runMenuButton == null) return;
-            try
-            {
-                _helpButton = Instantiate(runMenuButton, runMenuButton.transform.parent, instantiateInWorldSpace: false);
-                _helpButton.name = "HelpMenuButton";
-                _helpButton.onClick.RemoveAllListeners();
-                _helpButton.onClick.AddListener(ShowAbout);
-                var lbl = _helpButton.GetComponentInChildren<TMP_Text>(includeInactive: true);
-                if (lbl != null) lbl.text = "Help";
-                _helpButton.transform.SetAsLastSibling();
-
-                // No layout group on the menu bar? The clone lands on the Run
-                // button — nudge it one button-width to the right.
-                if (runMenuButton.transform.parent.GetComponent<HorizontalOrVerticalLayoutGroup>() == null)
-                {
-                    var runRt = (RectTransform)runMenuButton.transform;
-                    var hRt = (RectTransform)_helpButton.transform;
-                    hRt.anchoredPosition = runRt.anchoredPosition + new Vector2(runRt.rect.width, 0f);
-                }
-
-                BuildAboutModal();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning("[ArcadeBasic] Help/About UI build skipped: " + ex.Message);
-            }
-        }
-
-        void BuildAboutModal()
-        {
-            var canvas = GetComponentInParent<Canvas>();
-            Transform root = canvas != null ? canvas.transform : transform;
-
-            // Full-screen dim backdrop; clicking it (outside the box) dismisses.
-            _aboutModal = new GameObject("AboutModal", typeof(RectTransform), typeof(Image));
-            _aboutModal.transform.SetParent(root, worldPositionStays: false);
-            StretchFill((RectTransform)_aboutModal.transform);
-            _aboutModal.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.6f);
-            var dismiss = _aboutModal.AddComponent<Button>();
-            dismiss.transition = Selectable.Transition.None;
-            dismiss.onClick.AddListener(HideAbout);
-
-            // Centered box (absorbs clicks so clicking it doesn't dismiss).
-            var box = new GameObject("Box", typeof(RectTransform), typeof(Image));
-            box.transform.SetParent(_aboutModal.transform, false);
-            var brt = (RectTransform)box.transform;
-            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0.5f, 0.5f);
-            brt.sizeDelta = new Vector2(460f, 280f);
-            brt.anchoredPosition = Vector2.zero;
-            box.GetComponent<Image>().color = new Color(0.12f, 0.13f, 0.16f, 1f);
-
-            // Body text.
-            var txtGo = new GameObject("Text", typeof(RectTransform));
-            txtGo.transform.SetParent(box.transform, false);
-            var trt = (RectTransform)txtGo.transform;
-            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
-            trt.offsetMin = new Vector2(22f, 58f);
-            trt.offsetMax = new Vector2(-22f, -18f);
-            var tmp = txtGo.AddComponent<TextMeshProUGUI>();
-            tmp.richText = true;
-            tmp.fontSize = 18f;
-            tmp.color = new Color(0.92f, 0.94f, 0.98f, 1f);
-            tmp.alignment = TextAlignmentOptions.TopLeft;
-            tmp.text =
-                "<b>Arcade BASIC IDE</b>\n\n" +
-                "ISO/IEC 10279:1991 Full BASIC, in Unity.\n\n" +
-                "F5 / Ctrl+Enter   Run\n" +
-                "F6   Compile-check\n" +
-                "F7   Build standalone\n" +
-                "Esc   Stop\n\n" +
-                "Arrow keys + printable feed INKEY$ while a program runs.";
-
-            // OK button (also dismisses).
-            var okGo = new GameObject("OK", typeof(RectTransform), typeof(Image));
-            okGo.transform.SetParent(box.transform, false);
-            var ort = (RectTransform)okGo.transform;
-            ort.anchorMin = ort.anchorMax = ort.pivot = new Vector2(0.5f, 0f);
-            ort.sizeDelta = new Vector2(120f, 34f);
-            ort.anchoredPosition = new Vector2(0f, 16f);
-            okGo.GetComponent<Image>().color = new Color(0.20f, 0.42f, 0.70f, 1f);
-            okGo.AddComponent<Button>().onClick.AddListener(HideAbout);
-            var okTxtGo = new GameObject("Label", typeof(RectTransform));
-            okTxtGo.transform.SetParent(okGo.transform, false);
-            StretchFill((RectTransform)okTxtGo.transform);
-            var okTmp = okTxtGo.AddComponent<TextMeshProUGUI>();
-            okTmp.text = "OK";
-            okTmp.fontSize = 16f;
-            okTmp.color = Color.white;
-            okTmp.alignment = TextAlignmentOptions.Center;
-
-            _aboutModal.SetActive(false);
-        }
-
-        static void StretchFill(RectTransform rt)
-        {
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-            rt.localScale = Vector3.one;
-        }
+        /// <summary>Body text shown in the About modal. The UI itself is built by
+        /// <see cref="ArcadeBasicUIBuilder"/>; this is just the content.</summary>
+        const string AboutBody =
+            "<b>Arcade BASIC IDE</b>\n\n" +
+            "ISO/IEC 10279:1991 Full BASIC, in Unity.\n\n" +
+            "F5 / Ctrl+Enter   Run\n" +
+            "F6   Compile-check\n" +
+            "F7   Build standalone\n" +
+            "Esc   Stop\n\n" +
+            "Arrow keys + printable feed INKEY$ while a program runs.";
 
         /// <summary>Show the About modal (closes any open menu first).</summary>
         public void ShowAbout()
         {
             CloseAllMenus();
-            if (_aboutModal != null) { _aboutModal.transform.SetAsLastSibling(); _aboutModal.SetActive(true); }
+            if (aboutPanel != null) { aboutPanel.transform.SetAsLastSibling(); aboutPanel.SetActive(true); }
         }
 
         /// <summary>Hide the About modal.</summary>
         public void HideAbout()
         {
-            if (_aboutModal != null) _aboutModal.SetActive(false);
+            if (aboutPanel != null) aboutPanel.SetActive(false);
         }
 
         // =====================================================================
@@ -1497,6 +1556,7 @@ namespace ArcadeBasic.Samples
         {
             if (fileMenuPanel != null) fileMenuPanel.SetActive(false);
             if (runMenuPanel != null) runMenuPanel.SetActive(false);
+            if (helpMenuPanel != null) helpMenuPanel.SetActive(false);
             if (menuBlocker != null) menuBlocker.gameObject.SetActive(false);
             _openMenu = null;
         }

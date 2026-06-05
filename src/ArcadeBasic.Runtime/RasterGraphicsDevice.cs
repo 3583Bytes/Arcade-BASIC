@@ -87,8 +87,13 @@ public sealed class RasterGraphicsDevice : IGraphicsDevice
         if (string.IsNullOrEmpty(text)) return;
         var argb = Color(_textColor);
         var (x, y) = ToPixel(at);
+        // BASIC's world Y is up, so the anchor point is the text's bottom-left and
+        // the glyph rises from it. BitmapFont.Draw places y at the glyph's top and
+        // draws downward, so shift up by the glyph height; otherwise text drawn at
+        // the bottom edge (e.g. a status line at y=0) would render off the buffer.
+        var top = y - (BitmapFont.Height - 1);
         for (var i = 0; i < text.Length; i++)
-            _font.Draw(text[i], x + i * BitmapFont.Advance, y, (px, py) => Plot(px, py, argb));
+            _font.Draw(text[i], x + i * BitmapFont.Advance, top, (px, py) => Plot(px, py, argb));
     }
 
     public void Flush() { }   // the Unity wrapper reads Pixels and uploads to its texture
