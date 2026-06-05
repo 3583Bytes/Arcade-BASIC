@@ -1,6 +1,6 @@
 {
   "name": "com.arcadebasic.interpreter",
-  "version": "0.1.0",
+  "version": "1.0.5",
   "license": "MIT",
   "dependencies": {
     "com.unity.textmeshpro": "3.0.6"
