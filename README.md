@@ -134,12 +134,13 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-17 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, and a real-time Space Invaders. Highlights:
+19 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, and real-time Space Invaders and Snake. Highlights:
 
 | Program | What it shows |
 |---|---|
 | [`hello.bas`](examples/hello.bas) | `PRINT`, `IF`/`THEN`/`ELSE`, `FOR`, `^` |
 | [`matrix.bas`](examples/matrix.bas) | `MAT` operations — `+`, `*`, `TRN`, `INV`, `IDN`, `MAT PRINT` |
+| [`mandelbrot.bas`](examples/mandelbrot.bas) | escape-time Mandelbrot as ASCII art — a pure-compute benchmark (`z = z*z + c`) |
 | [`exception.bas`](examples/exception.bas) | `WHEN`/`USE`/`END WHEN`, `CAUSE`, `EXLINE`, `EXTYPE`, `RETRY` |
 | [`modules.bas`](examples/modules.bas) | `MODULE` blocks, `PUBLIC` vs private declarations |
 | [`fileio.bas`](examples/fileio.bas) | `OPEN` / `PRINT #` / `LINE INPUT #` / `CLOSE` |
@@ -147,6 +148,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`graphics.bas`](examples/graphics.bas) | §13 graphics — `SET WINDOW`, `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` (render with `--svg`) |
 | [`kanban.bas`](examples/kanban.bas) | interactive graphics board — colored `GRAPH LINES` lanes + `GRAPH TEXT` cards |
 | [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `INKEY$` (keyboard) + `SLEEP` (frame delay) + §13 graphics |
+| [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 

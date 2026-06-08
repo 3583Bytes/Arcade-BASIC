@@ -270,9 +270,9 @@ public sealed class BasicVm
                         break;
                     }
 
-                case Opcode.Add: BinaryNumeric(stack, (a, b) => a + b); break;
-                case Opcode.Sub: BinaryNumeric(stack, (a, b) => a - b); break;
-                case Opcode.Mul: BinaryNumeric(stack, (a, b) => a * b); break;
+                case Opcode.Add: BinaryNumeric(stack, Numbers.Add); break;
+                case Opcode.Sub: BinaryNumeric(stack, Numbers.Subtract); break;
+                case Opcode.Mul: BinaryNumeric(stack, Numbers.Multiply); break;
                 case Opcode.Div: BinaryNumeric(stack, (a, b) =>
                 {
                     if (b == BigDecimal.Zero) throw new BasicRuntimeException(1001, "division by zero");

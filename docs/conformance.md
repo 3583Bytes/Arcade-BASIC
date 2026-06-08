@@ -27,7 +27,7 @@ The **Real-time** module (ANSI X3.113 §14) is a different beast: parallel secti
 
 ## Numeric representation
 
-**IMPLEMENTATION-DEFINED:** Numeric values are arbitrary-precision decimal via `Singulink.Numerics.BigDecimal`. There is no integer fast path: `42` and `42.0` are the same value. Range is effectively unbounded; precision is preserved exactly across `+`, `-`, `*`, but `/` is rounded to 30 significant digits with banker's rounding (`MidpointToEven`).
+**IMPLEMENTATION-DEFINED:** Numeric values are arbitrary-precision decimal via `Singulink.Numerics.BigDecimal`. There is no integer fast path: `42` and `42.0` are the same value. Range is effectively unbounded. Results of `+`, `-`, `*` are rounded to a **working precision of 40 significant digits**, and `/` to 30, both with banker's rounding (`MidpointToEven`). The 40-digit cap sits above everything else the language guarantees (`PI` is 37 digits; INTERNAL file records round-trip exactly to their stored precision) while far exceeding the ~15–16 digits of IEEE `double`; a result that already fits in 40 digits is left untouched. The cap exists because `BigDecimal` multiply is exact — without it, an iterative loop like Mandelbrot's `z = z*z + c` doubles its significant-digit count every step, making per-operation cost grow exponentially. See `src/ArcadeBasic.Runtime/Numbers.cs`.
 
 **IMPLEMENTATION-DEFINED:** PRINT output rounds to **9 significant digits**. ISO 10279 requires at least 6. Internal computation keeps full precision; only the display is rounded. `PRINT USING` uses its picture string verbatim and is unaffected.
 
@@ -111,7 +111,7 @@ Cross-section jumps (e.g. into an `END IF` label from inside an `ELSE` arm) are 
 | Op | Form | Notes |
 |---|---|---|
 | `^` | numeric ^ numeric | Integer exponents use `BigDecimal.Pow`; non-integer exponents go through `double` |
-| `*` `/` | numeric only | Division rounds to 30 digits |
+| `*` `/` | numeric only | `*` capped at 40 significant digits, `/` at 30 (see Numeric representation) |
 | `MOD` `REMAINDER` | numeric, both as operators and as 2-arg builtins | `MOD` follows mathematical modulo (result has sign of divisor); `REMAINDER` has sign of dividend, per spec |
 | `+` `-` | numeric only | **`+` is rejected for strings** (see DEVIATION above) |
 | `&` | string only | The only string concat operator |

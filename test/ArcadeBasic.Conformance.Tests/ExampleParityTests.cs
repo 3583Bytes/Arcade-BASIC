@@ -39,6 +39,7 @@ public class ExampleParityTests
         ["formatted.bas", ""],
         ["modules.bas", ""],
         ["pi.bas", ""],
+        ["mandelbrot.bas", ""],        // pure compute, no RND/input — both engines must match byte-for-byte
         ["guess.bas", "7\n"],          // TARGET is hard-coded to 7 — no RND
     ];
 

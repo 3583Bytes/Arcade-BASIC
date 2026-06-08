@@ -463,9 +463,9 @@ public sealed partial class BasicInterpreter
         var bv = EvalNumeric(b.Right, frame);
         return b.Op switch
         {
-            BinaryOp.Add => new NumericValue(a + bv),
-            BinaryOp.Subtract => new NumericValue(a - bv),
-            BinaryOp.Multiply => new NumericValue(a * bv),
+            BinaryOp.Add => new NumericValue(Numbers.Add(a, bv)),
+            BinaryOp.Subtract => new NumericValue(Numbers.Subtract(a, bv)),
+            BinaryOp.Multiply => new NumericValue(Numbers.Multiply(a, bv)),
             BinaryOp.Divide => bv == BigDecimal.Zero
                 ? throw new BasicRuntimeException(1001, "division by zero")
                 : new NumericValue(BigDecimal.Divide(a, bv, 30, RoundingMode.MidpointToEven)),

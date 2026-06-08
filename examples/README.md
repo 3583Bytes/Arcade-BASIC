@@ -21,12 +21,14 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `formatted.bas`  | PRINT USING with picture strings                | ✓           | ✓           |
 | `modules.bas`    | MODULE block, PUBLIC vs private declarations    | ✓           | ✓           |
 | `pi.bas`         | Leibniz series, MOD, ABS, PI constant           | ✓           | ✓           |
+| `mandelbrot.bas` | escape-time Mandelbrot as ASCII art — pure-compute benchmark (nested loops, `z=z*z+c`) | ✓ | ✓ |
 | `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | ✓           |
 | `kanban.bas`     | interactive graphics board: GRAPH LINES lane boxes (dashed dividers), word-wrapped GRAPH TEXT cards with GRAPH POINTS bullets, GRAPH AREA fill gauges, ASK DEVICE SIZE, INPUT loop, save/load | ✓ | ✓ |
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 | `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |
 | `invaders.bas`   | Space Invaders — real-time `INKEY$` + `SLEEP` + §13 graphics; play-again on game over; persists a high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
+| `snake.bas`      | Snake — real-time `INKEY$` + `SLEEP` + §13 graphics; growing body array, food via `RND`, anti-reverse steering, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 
 A ✓ in the **Bytecode VM** column means the example also runs via
 `arcade-basic vm <file>` with output byte-identical to the tree-walker
