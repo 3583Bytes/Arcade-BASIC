@@ -30,9 +30,18 @@ internal sealed class BrailleCanvas : View
 
     private int _dotsW = DefaultDotsW;
     private int _dotsH = DefaultDotsH;
+    // Back buffer: the frame currently being drawn (Plot/CLEAR/AddLabel write here;
+    // RenderToText/IsEmpty report it).
     private bool[,] _dots = new bool[DefaultDotsW, DefaultDotsH];
     private int[,] _cellColor = new int[DefaultDotsW / 2, DefaultDotsH / 4];
     private readonly List<(int Cx, int Cy, string Text, int Color)> _labels = new();
+    // Front buffer: the last *committed* (complete) frame. Redraw paints only this,
+    // so the UI never samples a half-built frame — that mid-frame sampling (the pump
+    // catching the buffer right after CLEAR) was the on-screen flicker. CLEAR touches
+    // only the back buffer, so the displayed frame holds steady until the next Commit.
+    private bool[,] _frontDots = new bool[DefaultDotsW, DefaultDotsH];
+    private int[,] _frontCellColor = new int[DefaultDotsW / 2, DefaultDotsH / 4];
+    private List<(int Cx, int Cy, string Text, int Color)> _frontLabels = new();
     private readonly object _lock = new();
     private bool _empty = true;
 
@@ -71,6 +80,27 @@ internal sealed class BrailleCanvas : View
         }
     }
 
+    /// <summary>Promote the working (back) frame to the front buffer that Redraw
+    /// paints. Called at each frame's present point (SLEEP/Flush, before an INPUT
+    /// read, and at program end), so the UI only ever shows complete frames.</summary>
+    public void Commit()
+    {
+        lock (_lock) CopyBackToFront();
+    }
+
+    // Clone the back buffer into the front buffer in one shot. Caller holds _lock.
+    private void CopyBackToFront()
+    {
+        if (_frontDots.GetLength(0) != _dotsW || _frontDots.GetLength(1) != _dotsH)
+        {
+            _frontDots = new bool[_dotsW, _dotsH];
+            _frontCellColor = new int[CellsW, CellsH];
+        }
+        Array.Copy(_dots, _frontDots, _dots.Length);
+        Array.Copy(_cellColor, _frontCellColor, _cellColor.Length);
+        _frontLabels = new List<(int Cx, int Cy, string Text, int Color)>(_labels);
+    }
+
     public void Plot(int x, int y, int colorIndex)
     {
         lock (_lock)
@@ -102,7 +132,25 @@ internal sealed class BrailleCanvas : View
             for (var cy = 0; cy < CellsH; cy++)
             {
                 for (var cx = 0; cx < CellsW; cx++)
-                    sb.Append((char)(0x2800 + CellBits(cx, cy)));
+                    sb.Append((char)(0x2800 + CellBits(_dots, cx, cy)));
+                sb.Append('\n');
+            }
+            return sb.ToString();
+        }
+    }
+
+    /// <summary>Render the committed <em>front</em> buffer (what Redraw paints) to
+    /// text — the counterpart to <see cref="RenderToText"/>, which renders the
+    /// still-being-drawn back buffer. For headless double-buffering tests.</summary>
+    internal string RenderFrontToText()
+    {
+        lock (_lock)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (var cy = 0; cy < CellsH; cy++)
+            {
+                for (var cx = 0; cx < CellsW; cx++)
+                    sb.Append((char)(0x2800 + CellBits(_frontDots, cx, cy)));
                 sb.Append('\n');
             }
             return sb.ToString();
@@ -122,14 +170,14 @@ internal sealed class BrailleCanvas : View
             {
                 for (var cx = 0; cx < cols; cx++)
                 {
-                    var bits = CellBits(cx, cy);
-                    driver.SetAttribute(Attr(driver, bits == 0 ? 1 : _cellColor[cx, cy]));
-                    AddRune(cx, cy, new Rune((char)(0x2800 + bits)));
+                    var bits = CellBits(_frontDots, cx, cy);
+                    driver.SetAttribute(Attr(driver, bits == 0 ? 1 : _frontCellColor[cx, cy]));
+                    AddRune(cx, cy, new Rune(ArcadeBasic.Runtime.CellGlyph.ForBits(bits)));
                 }
             }
 
             // Native text labels on top of the braille layer.
-            foreach (var (lcx, lcy, text, color) in _labels)
+            foreach (var (lcx, lcy, text, color) in _frontLabels)
             {
                 if (lcy < 0 || lcy >= rows) continue;
                 driver.SetAttribute(Attr(driver, color));
@@ -189,6 +237,7 @@ internal sealed class BrailleCanvas : View
             _cellColor = newColor;
             _dotsW = newDotsW;
             _dotsH = newDotsH;
+            CopyBackToFront();   // keep the displayed frame sized to the new grid
         }
     }
 
@@ -199,18 +248,18 @@ internal sealed class BrailleCanvas : View
                 _cellColor[i, j] = 1;
     }
 
-    private int CellBits(int cx, int cy)
+    private static int CellBits(bool[,] dots, int cx, int cy)
     {
         int bx = cx * 2, by = cy * 4;
         var bits = 0;
-        if (_dots[bx, by]) bits |= 0x01;
-        if (_dots[bx, by + 1]) bits |= 0x02;
-        if (_dots[bx, by + 2]) bits |= 0x04;
-        if (_dots[bx + 1, by]) bits |= 0x08;
-        if (_dots[bx + 1, by + 1]) bits |= 0x10;
-        if (_dots[bx + 1, by + 2]) bits |= 0x20;
-        if (_dots[bx, by + 3]) bits |= 0x40;
-        if (_dots[bx + 1, by + 3]) bits |= 0x80;
+        if (dots[bx, by]) bits |= 0x01;
+        if (dots[bx, by + 1]) bits |= 0x02;
+        if (dots[bx, by + 2]) bits |= 0x04;
+        if (dots[bx + 1, by]) bits |= 0x08;
+        if (dots[bx + 1, by + 1]) bits |= 0x10;
+        if (dots[bx + 1, by + 2]) bits |= 0x20;
+        if (dots[bx, by + 3]) bits |= 0x40;
+        if (dots[bx + 1, by + 3]) bits |= 0x80;
         return bits;
     }
 

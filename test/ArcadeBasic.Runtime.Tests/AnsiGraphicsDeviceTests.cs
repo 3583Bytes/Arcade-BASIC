@@ -51,6 +51,24 @@ public class AnsiGraphicsDeviceTests
     }
 
     [Fact]
+    public void FilledAreaRendersAsSolidBlocksNotSpeckledBraille()
+    {
+        // A filled shape saturates interior cells (all 8 dots). Those should paint
+        // as the solid full block █, which reads as solid colour — not the dense
+        // braille glyph ⣿, which reads as stipple.
+        var w = new StringWriter();
+        var d = Device(w);
+        d.Clear();
+        d.SetColor(GfxColorTarget.Area, 3);
+        d.FillArea(new GfxPoint[] { new(0, 0), new(1, 0), new(1, 1), new(0, 1) });   // whole window
+        d.Present();
+        var outp = w.ToString();
+
+        Assert.Contains('█', outp);              // solid interior cells
+        Assert.DoesNotContain('⣿', outp);        // no fully-set braille glyph survives a fill
+    }
+
+    [Fact]
     public void EndSessionLeavesTheAlternateScreen()
     {
         var w = new StringWriter();

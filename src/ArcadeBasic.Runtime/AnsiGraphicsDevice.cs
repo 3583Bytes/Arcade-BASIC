@@ -126,7 +126,7 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
                 var bits = CellBits(cx, cy);
                 var color = bits == 0 ? 1 : _cellColor[cx, cy];
                 if (color != cur) { sb.Append(Sgr(color)); cur = color; }
-                sb.Append(bits == 0 ? ' ' : (char)(0x2800 + bits));
+                sb.Append(CellGlyph.ForBits(bits));
             }
             sb.Append(Esc).Append('K');                                    // clear to end of line
         }

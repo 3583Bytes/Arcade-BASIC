@@ -60,7 +60,10 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice
         _canvas.AddLabel(x, y, text, _textColor);
     }
 
-    public void Flush() { }
+    // A frame is complete: promote it to the canvas's front buffer so the UI shows
+    // it atomically. SLEEP calls this each frame; without it the UI would sample
+    // half-built frames and flicker.
+    public void Flush() => _canvas.Commit();
 
     private (int X, int Y) ToPixel(GfxPoint p) => (
         (int)Math.Round(p.X * (_canvas.PixelWidth - 1)),

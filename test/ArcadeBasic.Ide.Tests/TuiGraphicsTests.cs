@@ -83,6 +83,27 @@ public class TuiGraphicsTests
     }
 
     [Fact]
+    public void FrontBufferStaysBlankUntilCommitted()
+    {
+        // Double buffering (the flicker fix): drawing fills the back buffer, but the
+        // front buffer Redraw paints stays blank until Commit() promotes the frame.
+        var canvas = new BrailleCanvas();
+        var device = new TuiGraphicsDevice(canvas);
+        BasicEngine.Run("""
+            SET WINDOW 0, 10, 0, 10
+            SET AREA COLOR 2
+            GRAPH AREA: 1, 1; 9, 1; 9, 9; 1, 9
+            """, new StringWriter(), stdin: null, filename: "t", default, graphics: device);
+
+        // Back buffer has the drawing; front buffer is still empty (no flush/commit).
+        Assert.Contains(canvas.RenderToText(), c => c > '⠀');
+        Assert.DoesNotContain(canvas.RenderFrontToText(), c => c > '⠀');
+
+        canvas.Commit();
+        Assert.Contains(canvas.RenderFrontToText(), c => c > '⠀');   // now presented
+    }
+
+    [Fact]
     public void ClearEmptiesTheCanvas()
     {
         var canvas = RunOntoCanvas("""

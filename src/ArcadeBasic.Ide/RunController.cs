@@ -82,6 +82,7 @@ internal sealed class RunController
             beginRead: done =>
             {
                 var useGraphics = !_graphics.Canvas.IsEmpty;
+                _graphics.Canvas.Commit();        // present the drawn frame before the input field opens
                 _onInputRequested(useGraphics);
                 _readActive = true;                       // route keys to the input field, not INKEY$
                 ActiveSink().BeginRead(result => { _readActive = false; done(result); });
@@ -174,6 +175,7 @@ internal sealed class RunController
         RemoveKeyHook();
         _readActive = false;
         Drain();
+        _graphics.Canvas.Commit();         // present the program's final frame
         if (!_graphics.Canvas.IsEmpty)
         {
             _graphics.Canvas.SetNeedsDisplay();
