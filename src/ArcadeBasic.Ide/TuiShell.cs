@@ -86,7 +86,7 @@ internal sealed class TuiShell
             new StatusItem(Key.Esc, "~Esc~ Stop", () => StopProgram()),
             new StatusItem(Key.CtrlMask | Key.S, "~^S~ Save", () => SaveCurrent()),
             new StatusItem(Key.CtrlMask | Key.O, "~^O~ Open", () => OpenDialog()),
-            new StatusItem(Key.CtrlMask | Key.Q, "~^Q~ Quit", () => Application.RequestStop()),
+            new StatusItem(Key.CtrlMask | Key.Q, "~^Q~ Quit", QuitApp),
         });
 
         _source.X = 0;
@@ -162,20 +162,27 @@ internal sealed class TuiShell
 
     private MenuBar BuildMenu()
     {
-        // Group examples into nested submenus (Examples ▸ Graphics ▸ …), ordered
-        // Graphics, Games, Basics, then anything else.
-        var exampleGroups = ExamplesProvider.All
+        // One flat Examples submenu, grouped by category with a dimmed header row
+        // and a separator line between groups (categories ordered Graphics, Games,
+        // Basics, then anything else; items alpha within each). We deliberately do
+        // NOT nest a submenu per category: Terminal.Gui v1 mispositions a third-level
+        // submenu (File ▸ Examples ▸ Category ▸ item) so it opens *over* its parent,
+        // making every category but the first unreachable.
+        var exampleItems = new List<MenuItem>();
+        foreach (var group in ExamplesProvider.All
             .GroupBy(ex => ex.Category)
             .OrderBy(g => CategoryRank(g.Key))
-            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(g => (MenuItem)new MenuBarItem(
-                g.Key,
-                g.OrderBy(ex => ex.Name, StringComparer.OrdinalIgnoreCase)
-                 .Select(ex => new MenuItem(ex.Name, string.Empty, () => LoadExample(ex)))
-                 .ToArray()))
-            .DefaultIfEmpty(new MenuItem("(none bundled)", string.Empty, null) { CanExecute = () => false })
-            .ToArray();
-        var fileExamples = new MenuBarItem("E_xamples", exampleGroups);
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
+        {
+            if (exampleItems.Count > 0) exampleItems.Add(null!);   // separator between categories
+            // Disabled header row (skipped by keyboard navigation, dimmed by the theme).
+            exampleItems.Add(new MenuItem($"— {group.Key} —", string.Empty, null) { CanExecute = () => false });
+            foreach (var ex in group.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase))
+                exampleItems.Add(new MenuItem(ex.Name, string.Empty, () => LoadExample(ex)));
+        }
+        if (exampleItems.Count == 0)
+            exampleItems.Add(new MenuItem("(none bundled)", string.Empty, null) { CanExecute = () => false });
+        var fileExamples = new MenuBarItem("E_xamples", exampleItems.ToArray());
 
         return new MenuBar(new MenuBarItem[]
         {
@@ -188,7 +195,7 @@ internal sealed class TuiShell
                 null!,
                 fileExamples,
                 null!,
-                new("_Quit", string.Empty, () => Application.RequestStop(), shortcut: Key.CtrlMask | Key.Q),
+                new("_Quit", string.Empty, QuitApp, shortcut: Key.CtrlMask | Key.Q),
             }),
             new("_Run", new MenuItem[]
             {
@@ -218,6 +225,25 @@ internal sealed class TuiShell
     private void StopProgram()
     {
         if (_runner.IsRunning) _runner.Stop();
+    }
+
+    /// <summary>
+    /// Cancel any in-flight run before an action that replaces the program
+    /// (New / Open / Examples) or exits the IDE. Without this the program keeps
+    /// running on its background task — still streaming output and holding the
+    /// global key hook — so the editor appears stuck on the old program. Stop()
+    /// requests cancellation; the run controller tears down (and removes the key
+    /// hook) on its next pump tick.
+    /// </summary>
+    private void EnsureRunStopped()
+    {
+        if (_runner.IsRunning) _runner.Stop();
+    }
+
+    private void QuitApp()
+    {
+        EnsureRunStopped();
+        Application.RequestStop();
     }
 
     private void OnDiagnostics(IReadOnlyList<string> diagnostics)
@@ -415,6 +441,7 @@ internal sealed class TuiShell
 
     private void NewFile()
     {
+        EnsureRunStopped();
         if (!ConfirmDiscardChanges()) return;
         _source.SetText(string.Empty);
         _currentFilePath = null;
@@ -454,6 +481,7 @@ internal sealed class TuiShell
 
     private void OpenDialog()
     {
+        EnsureRunStopped();
         var dlg = new OpenDialog("Open program", "Select an Arcade BASIC file")
         {
             AllowsMultipleSelection = false,
@@ -546,6 +574,7 @@ internal sealed class TuiShell
 
     private void LoadExample(ExamplesProvider.Example example)
     {
+        EnsureRunStopped();
         _source.SetText(example.Source);
         _currentFilePath = null;
         _source.SetTitle(example.Name + " (example)");
