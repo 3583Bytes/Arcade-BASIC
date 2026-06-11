@@ -134,7 +134,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-20 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, and real-time Space Invaders, Snake, and Breakout. Highlights:
+21 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, and real-time Space Invaders, Snake, Breakout, and Tetris. Highlights:
 
 | Program | What it shows |
 |---|---|
@@ -150,6 +150,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `INKEY$` (keyboard) + `SLEEP` (frame delay) + §13 graphics |
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
+| [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 

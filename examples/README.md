@@ -30,10 +30,12 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `invaders.bas`   | Space Invaders — real-time `INKEY$` + `SLEEP` + §13 graphics; play-again on game over; persists a high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `snake.bas`      | Snake — real-time `INKEY$` + `SLEEP` + §13 graphics; growing body array, food via `RND`, anti-reverse steering, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `breakout.bas`   | Breakout — real-time `INKEY$` + `SLEEP` + §13 graphics; ball physics (wall/brick/paddle reflection, angle steered by paddle hit point), lives, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
+| `tetris.bas`     | Tetris — real-time `INKEY$` + `SLEEP` + §13 graphics; piece table from `READ`/`DATA`, live 90° rotation via the `(r,c)->(c,-r)` transform, full-row clearing, levels, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 
 A ✓ in the **Bytecode VM** column means the example also runs via
 `arcade-basic vm <file>` with output byte-identical to the tree-walker
-(`startrek.bas` uses non-deterministic `RND`, so the two engines produce
+(`startrek.bas` and the real-time games — `invaders`, `snake`, `breakout`,
+`tetris` — use non-deterministic `RND`, so the two engines produce
 structurally-identical output up to RNG draws).
 
 To produce a self-contained native binary for any example:

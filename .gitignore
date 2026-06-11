@@ -22,6 +22,10 @@ publish/
 unity/Samples~/ArcadeBasic/Stubs/
 .DS_Store
 
+## Runtime artifacts written by example programs (high scores, etc.)
+## e.g. breakout.bas / snake.bas persist to *.score via RECTYPE INTERNAL.
+*.score
+
 ## Test outputs
 TestResults/
 coverage/
