@@ -142,7 +142,21 @@ In a **built Player**, `UnityEditor.*` isn't available, so the buttons fall back
 
 ## Adding bundled examples
 
-Drop `.bas` files into the imported sample's `Resources/ArcadeBasicSamples/` folder (`Assets/Samples/Arcade BASIC Interpreter/<version>/Arcade BASIC IDE/Resources/ArcadeBasicSamples/`). Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Use a sort-prefix (`01_Hello.bas`, `02_Pi.bas`, ...) for deterministic ordering within a group.
+The bundled set in `Resources/ArcadeBasicSamples/` mirrors the repo's
+[`examples/`](https://github.com/3583Bytes/Arcade-BASIC/tree/main/examples) — the
+same programs the CLI and TUI IDE ship — so the Open dropdown lists exactly the
+same library everywhere. **Repo maintainers:** don't hand-edit the bundled copies;
+add or change a program under `/examples` and re-run `unity/scripts/copy-examples.sh`,
+which re-mirrors them (and regenerates each `.meta`). Programs with no CLI
+counterpart (e.g. `keys.bas`, a Unity-focused input demo) are preserved by the
+script's keep-list.
+
+To add **your own** examples in an imported package, drop `.bas` files into that
+folder (`Assets/Samples/Arcade BASIC Interpreter/<version>/Arcade BASIC IDE/Resources/ArcadeBasicSamples/`).
+Unity imports them as `TextAsset`s via the package's `BasicScriptedImporter`; the
+Open dropdown rebuilds on `Awake` and shows them with a 📦 prefix. Within a group
+they sort alphabetically by filename, so a numeric prefix (`01_Hello.bas`, …) is an
+easy way to force a specific order.
 
 The Open dropdown **groups** examples under headers (Graphics, Games, Basics, …). A program's group comes from a `@category <Name>` tag in a leading comment — add one anywhere in the file's first comment line:
 
