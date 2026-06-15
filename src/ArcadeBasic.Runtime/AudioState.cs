@@ -39,10 +39,26 @@ public sealed class AudioState
         if (frequencyHz < 37 || frequencyHz > 32767)
             throw new BasicRuntimeException(5, "SOUND frequency must be in 37..32767 Hz");
         device.Emit(new ToneEvent(frequencyHz, durationTicks / TicksPerSecond, 0));
+        EndStatement(device);
     }
 
     /// <summary>BEEP — the standard ~800 Hz / 0.25 s alert tone (≡ PRINT CHR$(7)).</summary>
-    public void EmitBeep(IAudioDevice device) => device.Emit(new ToneEvent(800, 0.25, 0));
+    public void EmitBeep(IAudioDevice device)
+    {
+        device.Emit(new ToneEvent(800, 0.25, 0));
+        EndStatement(device);
+    }
+
+    // A foreground (MF) statement waits for its audio to finish before the
+    // program continues; a background (MB) statement returns immediately and the
+    // audio plays asynchronously. On the device seam that is exactly Flush() =
+    // "drain": real-time backends block until the queue empties; the offline WAV
+    // and Null devices treat Flush() as a no-op (everything is already on the
+    // timeline), so this is invisible to them and to the parity transcript.
+    private void EndStatement(IAudioDevice device)
+    {
+        if (!Background) device.Flush();
+    }
 
     // -- PLAY (Music Macro Language) -------------------------------------
 
@@ -81,6 +97,7 @@ public sealed class AudioState
                     throw new BasicRuntimeException(5, $"PLAY: unexpected character '{mml[i]}'");
             }
         }
+        EndStatement(device);   // MF waits for completion; MB returns immediately
     }
 
     private void ParseModeCommand(string s, ref int i)

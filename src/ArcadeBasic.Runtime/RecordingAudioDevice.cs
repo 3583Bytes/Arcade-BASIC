@@ -23,7 +23,9 @@ public sealed class RecordingAudioDevice : IAudioDevice
             .Append(Fmt(tone.SoundedSeconds)).Append(' ')
             .Append(Fmt(tone.SilentSeconds)).Append('\n');
 
-    public void Flush() => _log.Append("FLUSH\n");
+    // No-op: Flush() is the real-time "drain" signal (foreground/MF completion);
+    // it has no bearing on the tone stream the parity tests compare.
+    public void Flush() { }
 
     private static string Fmt(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
 }

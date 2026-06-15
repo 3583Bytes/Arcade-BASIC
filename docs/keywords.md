@@ -620,7 +620,7 @@ BASIC (GW-BASIC/QuickBASIC). Commands (case-insensitive, spaces ignored):
 | `P n` | rest of length n |
 | `T n` | tempo: quarter notes per minute, 32–255 (default 120) |
 | `MN` / `ML` / `MS` | normal / legato / staccato articulation |
-| `MF` / `MB` | foreground / background (background is rendered as foreground for now) |
+| `MF` / `MB` | foreground / background — foreground waits for the music to finish; background plays asynchronously (up to 32 buffered tones) |
 
 ```basic
 PLAY "T120 O4 L8 CDEFGAB>C"      ! a C major scale

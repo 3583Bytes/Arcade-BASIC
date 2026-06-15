@@ -1,5 +1,6 @@
 using ArcadeBasic.Bytecode;
 using ArcadeBasic.Cli;
+using ArcadeBasic.Cli.Audio;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Core;
 using ArcadeBasic.Interpreter;
@@ -299,20 +300,25 @@ static int RunVm(ReadOnlySpan<string> args)
         return 1;
     }
 
-    var audio = wavPath is not null ? new WavAudioDevice() : null;
-    if (svgPath is not null)
+    var (audio, wav) = MakeAudio(wavPath);
+    try
     {
-        var svg = new SvgGraphicsDevice();
-        var exit = new BasicVm(compiled, Console.Out, Console.In, svg, null, audio).Run();
-        File.WriteAllText(svgPath, svg.ToSvg());
-        Console.Error.WriteLine($"wrote {svgPath}");
-        WriteWav(wavPath, audio);
-        return exit;
+        if (svgPath is not null)
+        {
+            var svg = new SvgGraphicsDevice();
+            var exit = new BasicVm(compiled, Console.Out, Console.In, svg, null, audio).Run();
+            File.WriteAllText(svgPath, svg.ToSvg());
+            Console.Error.WriteLine($"wrote {svgPath}");
+            return exit;
+        }
+        return RunWithConsoleGraphics((input, gfx, kb) =>
+            new BasicVm(compiled, Console.Out, input, gfx, kb, audio).Run());
     }
-    var vmExit = RunWithConsoleGraphics((input, gfx, kb) =>
-        new BasicVm(compiled, Console.Out, input, gfx, kb, audio).Run());
-    WriteWav(wavPath, audio);
-    return vmExit;
+    finally
+    {
+        (audio as IDisposable)?.Dispose();   // drain + close any real-time sink
+        WriteWav(wavPath, wav);
+    }
 }
 
 static int RunAnalyze(ReadOnlySpan<string> args)
@@ -432,20 +438,35 @@ static int RunProgram(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
-    var audio = wavPath is not null ? new WavAudioDevice() : null;
-    if (svgPath is not null)
+    var (audio, wav) = MakeAudio(wavPath);
+    try
     {
-        var svg = new SvgGraphicsDevice();
-        var exit = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg, null, audio).Run();
-        File.WriteAllText(svgPath, svg.ToSvg());
-        Console.Error.WriteLine($"wrote {svgPath}");
-        WriteWav(wavPath, audio);
-        return exit;
+        if (svgPath is not null)
+        {
+            var svg = new SvgGraphicsDevice();
+            var exit = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg, null, audio).Run();
+            File.WriteAllText(svgPath, svg.ToSvg());
+            Console.Error.WriteLine($"wrote {svgPath}");
+            return exit;
+        }
+        return RunWithConsoleGraphics((input, gfx, kb) =>
+            new BasicInterpreter(combined, info, Console.Out, input, default, gfx, kb, audio).Run());
     }
-    var runExit = RunWithConsoleGraphics((input, gfx, kb) =>
-        new BasicInterpreter(combined, info, Console.Out, input, default, gfx, kb, audio).Run());
-    WriteWav(wavPath, audio);
-    return runExit;
+    finally
+    {
+        (audio as IDisposable)?.Dispose();
+        WriteWav(wavPath, wav);
+    }
+}
+
+/// <summary>Choose the audio backend: a WAV recorder when <c>--wav</c> is given,
+/// otherwise real-time playback on an interactive terminal (silent — no device —
+/// when output is piped/redirected, mirroring the graphics backend).</summary>
+static (IAudioDevice? audio, WavAudioDevice? wav) MakeAudio(string? wavPath)
+{
+    if (wavPath is not null) { var w = new WavAudioDevice(); return (w, w); }
+    if (!Console.IsOutputRedirected) return (new RealtimeAudioDevice(PcmSinks.CreateDefault), null);
+    return (null, null);
 }
 
 /// <summary>Write the rendered WAV to <paramref name="path"/> if a --wav device was used.</summary>

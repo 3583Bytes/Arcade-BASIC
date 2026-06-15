@@ -143,19 +143,29 @@ parser (all of §4 except the `MB`/`X`/`=` items below, which are parsed and, fo
 `RecordingAudioDevice`, plus MML semantics). `arcade-basic run file.bas --wav out.wav`
 renders a correct WAV with no audio hardware. Example: `examples/music.bas`.
 
-**Phase 2 — Live audible playback (cross-platform).**
-A real-time `IAudioDevice` that actually makes sound from `arcade-basic run`/`vm`
-and standalone binaries. This is the phase that needs the **audio-output decision**
-(below) because it touches the no-dependency / single-file AOT story. Foreground
-(`MF`) playback only at this stage; it blocks for the tone duration and doubles as
-a frame boundary like `SLEEP`.
+**Phase 2 — Live audible playback (cross-platform). ✅ IMPLEMENTED (Windows verified; macOS/Linux unverified).**
+A real-time `RealtimeAudioDevice` (in `Runtime`) plays sound from `arcade-basic
+run`/`vm` and standalone binaries on an interactive terminal (piped/redirected
+runs stay silent, mirroring the graphics backend; `--wav` overrides to file). It
+renders each tone with the shared `PcmRenderer` and plays it through a platform
+`IPcmSink`. Per-OS sinks (`src/ArcadeBasic.Cli/Audio/`): **Windows `winmm`
+waveOut** (verified to initialize / degrade without crashing here — true audible
+output still needs a human on real hardware), **Linux ALSA** and **macOS
+AudioQueue** (written to the platform APIs, **not yet verified on real
+hardware**). Any init/runtime failure falls back to `SilentPcmSink`, so audio
+never crashes a run.
 
-**Phase 3 — Background music (`MB`) + async.**
-True `MB`: a buffered audio thread (32-note queue, `PLAY` blocks when full, per
-GW-BASIC) so music plays while the program runs; `MF`/`MB` switch foreground vs
-background. For the offline `--wav` backend, model a **virtual clock** that
-advances on `SLEEP` and on foreground tones, and mix background notes onto that
-timeline so offline output stays deterministic and meaningful.
+**Phase 3 — Background music (`MB`) + async. ✅ IMPLEMENTED.**
+`RealtimeAudioDevice` runs a background worker thread draining a **bounded 32-item
+queue** (GW-BASIC's background buffer — `Emit` blocks once 32 tones are
+outstanding). Foreground vs background maps onto the device seam: `AudioState`
+calls `device.Flush()` after a foreground (`MF`) statement, which **drains** (the
+realtime device blocks until the queue empties); a background (`MB`) statement
+skips the flush and returns immediately while the worker keeps playing. The
+offline `--wav` and Null devices treat `Flush()` as a no-op (everything is already
+on the timeline), so `MB`/`MF` don't change the deterministic WAV — no virtual
+clock needed. Covered by `RealtimeAudioDeviceTests` (queue→worker→sink→drain, via
+a recording sink).
 
 **Phase 4 — Advanced MML.**
 `X str;` (execute a substring variable) and `=var;` (numeric substitution into a
@@ -173,14 +183,15 @@ requirement is satisfied per phase, not deferred to the end.
 
 Independent of phasing, these get an explicit recorded choice:
 
-1. **Audio-output mechanism (Phase 2) — the one real architectural call.**
-   Cross-platform real-time PCM playback needs *something*: `Console.Beep` is
-   Windows-only and crude (mono, no PCM); true cross-platform means either
-   P/Invoking platform audio APIs or bundling a small native lib (e.g. miniaudio)
-   per-RID. That tension with the **self-contained single-file AOT binary** is the
-   crux — bundling per-RID native audio affects the standalone-build story. This
-   decision deserves its own short design pass when we reach Phase 2; Phase 1
-   doesn't depend on it.
+1. **Audio-output mechanism (Phase 2) — DECIDED: P/Invoke platform APIs, no
+   bundled libs.** Each OS uses its system audio library via `DllImport`
+   (`winmm`/ALSA/AudioToolbox), so the **self-contained single-file AOT binary** is
+   preserved — no per-RID native sidecar. `DllImport` is NativeAOT-safe. The cost
+   is three separate bindings and that real audible output can only be verified on
+   each OS's real hardware (Windows init is exercised here; macOS/Linux are
+   written-to-spec, unverified). Missing library / no device → silent fallback.
+   Rejected: bundling miniaudio/SDL (one code path, but a native sidecar that
+   undermines the single-file story) and `Console.Beep` (Windows-only, no PCM).
 2. **`SOUND` boundary cases.** `duration = 0` = silence/stop; reject or clamp
    negative; define the sub-tick "continuous" case explicitly.
 3. **Tuning.** A4 = 440 Hz equal temperament; note GW-BASIC's 8253-divisor

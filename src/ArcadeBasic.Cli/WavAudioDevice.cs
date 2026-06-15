@@ -14,35 +14,13 @@ namespace ArcadeBasic.Cli;
 /// </summary>
 public sealed class WavAudioDevice : IAudioDevice
 {
-    private const int SampleRate = 44100;
-    private const short Amplitude = 9000;   // of 32767 — gentle, avoids clipping/harshness
+    private const int SampleRate = PcmRenderer.SampleRate;
 
     private readonly List<short> _samples = new();
 
-    public void Emit(ToneEvent tone)
-    {
-        AppendTone(tone.FrequencyHz, tone.SoundedSeconds);
-        AppendSilence(tone.SilentSeconds);
-    }
+    public void Emit(ToneEvent tone) => _samples.AddRange(PcmRenderer.Render(tone));
 
     public void Flush() { }
-
-    private void AppendTone(double freq, double seconds)
-    {
-        var n = (int)(seconds * SampleRate);
-        if (freq <= 0) { AppendSilence(seconds); return; }   // a rest
-        for (var i = 0; i < n; i++)
-        {
-            var phase = (i * freq / SampleRate) % 1.0;        // square wave
-            _samples.Add(phase < 0.5 ? Amplitude : (short)-Amplitude);
-        }
-    }
-
-    private void AppendSilence(double seconds)
-    {
-        var n = (int)(seconds * SampleRate);
-        for (var i = 0; i < n; i++) _samples.Add(0);
-    }
 
     /// <summary>Serialize the accumulated samples to a complete WAV file.</summary>
     public byte[] ToBytes()
