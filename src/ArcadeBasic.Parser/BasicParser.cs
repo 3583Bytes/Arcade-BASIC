@@ -131,6 +131,9 @@ public sealed partial class BasicParser
             TokenKind.KwRun => ParseRun(),
             TokenKind.KwRandomize => ParseRandomize(),
             TokenKind.KwSleep => ParseSleep(),
+            TokenKind.KwSound => ParseSound(),
+            TokenKind.KwBeep => ParseBeep(),
+            TokenKind.KwPlay => ParsePlay(),
             TokenKind.KwRem => ParseRem(),
             TokenKind.KwDim => ParseDim(),
             TokenKind.KwOption => ParseOption(),
@@ -568,6 +571,31 @@ public sealed partial class BasicParser
         var seconds = ParseExpression();
         if (seconds is null) return null;
         return new SleepStmt(SpanFrom(start, Previous().Span), seconds);
+    }
+
+    private Stmt? ParseSound()
+    {
+        var start = Advance(); // SOUND
+        var freq = ParseExpression();
+        if (freq is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var duration = ParseExpression();
+        if (duration is null) return null;
+        return new SoundStmt(SpanFrom(start, Previous().Span), freq, duration);
+    }
+
+    private BeepStmt ParseBeep()
+    {
+        var start = Advance(); // BEEP
+        return new BeepStmt(SpanFrom(start, Previous().Span));
+    }
+
+    private Stmt? ParsePlay()
+    {
+        var start = Advance(); // PLAY
+        var notes = ParseExpression();
+        if (notes is null) return null;
+        return new PlayStmt(SpanFrom(start, Previous().Span), notes);
     }
 
     private RemStmt ParseRem()

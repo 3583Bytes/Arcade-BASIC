@@ -306,6 +306,31 @@ public sealed partial class BasicInterpreter
         return FlowControl.Continue;
     }
 
+    // -- SOUND / BEEP / PLAY (Microsoft BASIC / GW-BASIC audio extension) -
+
+    private FlowControl ExecSound(SoundStmt snd, ActivationRecord frame)
+    {
+        _graphics.Flush();   // a tone is a frame boundary like SLEEP
+        var freq = (double)EvalNumeric(snd.Frequency, frame);
+        var dur = (double)EvalNumeric(snd.Duration, frame);
+        _audioState.EmitSound(freq, dur, _audio);
+        return FlowControl.Continue;
+    }
+
+    private FlowControl ExecBeep()
+    {
+        _graphics.Flush();
+        _audioState.EmitBeep(_audio);
+        return FlowControl.Continue;
+    }
+
+    private FlowControl ExecPlay(PlayStmt ply, ActivationRecord frame)
+    {
+        _graphics.Flush();
+        _audioState.EmitPlay(EvalString(ply.Notes, frame), _audio);
+        return FlowControl.Continue;
+    }
+
     // -- DIM -------------------------------------------------------------
 
     private FlowControl ExecDim(DimStmt dim, ActivationRecord frame)

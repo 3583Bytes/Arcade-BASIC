@@ -89,6 +89,16 @@ public sealed record class RandomizeStmt(SourceSpan Span, Expr? Seed) : Stmt(Spa
 /// <summary>SLEEP seconds — pause execution (Microsoft BASIC extension; fractional seconds allowed).</summary>
 public sealed record class SleepStmt(SourceSpan Span, Expr Seconds) : Stmt(Span);
 
+/// <summary>SOUND frequency, duration — emit a tone (Microsoft BASIC / GW-BASIC extension).
+/// Frequency in Hz (37..32767); duration in clock ticks (18.2/sec). Both are required, per GW-BASIC.</summary>
+public sealed record class SoundStmt(SourceSpan Span, Expr Frequency, Expr Duration) : Stmt(Span);
+
+/// <summary>BEEP — fixed ~800 Hz / 0.25 s alert tone (Microsoft BASIC / GW-BASIC extension).</summary>
+public sealed record class BeepStmt(SourceSpan Span) : Stmt(Span);
+
+/// <summary>PLAY notes$ — play a Music Macro Language string (Microsoft BASIC / GW-BASIC extension).</summary>
+public sealed record class PlayStmt(SourceSpan Span, Expr Notes) : Stmt(Span);
+
 /// <summary>REM comment line. Comment text retained for formatter use.</summary>
 public sealed record class RemStmt(SourceSpan Span, string Comment) : Stmt(Span);
 

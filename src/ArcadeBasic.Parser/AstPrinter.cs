@@ -86,6 +86,16 @@ public static class AstPrinter
                 sb.AppendLine($"{label}Sleep");
                 PrintExpr(sb, s.Seconds, depth + 1, "seconds");
                 break;
+            case SoundStmt s:
+                sb.AppendLine($"{label}Sound");
+                PrintExpr(sb, s.Frequency, depth + 1, "frequency");
+                PrintExpr(sb, s.Duration, depth + 1, "duration");
+                break;
+            case BeepStmt: sb.AppendLine($"{label}Beep"); break;
+            case PlayStmt s:
+                sb.AppendLine($"{label}Play");
+                PrintExpr(sb, s.Notes, depth + 1, "notes");
+                break;
             case RemStmt s: sb.AppendLine($"{label}Rem  \"{s.Comment}\""); break;
             case DimStmt s:
                 sb.AppendLine($"{label}Dim");

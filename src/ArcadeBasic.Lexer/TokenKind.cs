@@ -50,6 +50,7 @@ public enum TokenKind
     // Word-form operators come first, then everything else alphabetically.
     KwAnd,
     KwBand,
+    KwBeep,
     KwBnot,
     KwBor,
     KwBxor,
@@ -155,6 +156,7 @@ public enum TokenKind
     KwParallel,
     KwPic,
     KwPicture,
+    KwPlay,
     KwPlot,
     KwPoint,
     KwPoints,

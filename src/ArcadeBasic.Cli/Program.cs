@@ -257,10 +257,10 @@ static int RunBuild(ReadOnlySpan<string> args)
 
 static int RunVm(ReadOnlySpan<string> args)
 {
-    var files = ParseSvgOption(args, out var svgPath);
+    var files = ParseRenderOptions(args, out var svgPath, out var wavPath);
     if (files.Count != 1)
     {
-        Console.Error.WriteLine("usage: arcade-basic vm <file> [--svg <out.svg>]");
+        Console.Error.WriteLine("usage: arcade-basic vm <file> [--svg <out.svg>] [--wav <out.wav>]");
         return 2;
     }
     var path = files[0];
@@ -299,16 +299,20 @@ static int RunVm(ReadOnlySpan<string> args)
         return 1;
     }
 
+    var audio = wavPath is not null ? new WavAudioDevice() : null;
     if (svgPath is not null)
     {
         var svg = new SvgGraphicsDevice();
-        var exit = new BasicVm(compiled, Console.Out, Console.In, svg).Run();
+        var exit = new BasicVm(compiled, Console.Out, Console.In, svg, null, audio).Run();
         File.WriteAllText(svgPath, svg.ToSvg());
         Console.Error.WriteLine($"wrote {svgPath}");
+        WriteWav(wavPath, audio);
         return exit;
     }
-    return RunWithConsoleGraphics((input, gfx, kb) =>
-        new BasicVm(compiled, Console.Out, input, gfx, kb).Run());
+    var vmExit = RunWithConsoleGraphics((input, gfx, kb) =>
+        new BasicVm(compiled, Console.Out, input, gfx, kb, audio).Run());
+    WriteWav(wavPath, audio);
+    return vmExit;
 }
 
 static int RunAnalyze(ReadOnlySpan<string> args)
@@ -365,10 +369,10 @@ static int RunAnalyze(ReadOnlySpan<string> args)
 
 static int RunProgram(ReadOnlySpan<string> args)
 {
-    var files = ParseSvgOption(args, out var svgPath);
+    var files = ParseRenderOptions(args, out var svgPath, out var wavPath);
     if (files.Count < 1)
     {
-        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...] [--svg <out.svg>]");
+        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...] [--svg <out.svg>] [--wav <out.wav>]");
         return 2;
     }
 
@@ -428,16 +432,28 @@ static int RunProgram(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
+    var audio = wavPath is not null ? new WavAudioDevice() : null;
     if (svgPath is not null)
     {
         var svg = new SvgGraphicsDevice();
-        var exit = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg).Run();
+        var exit = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg, null, audio).Run();
         File.WriteAllText(svgPath, svg.ToSvg());
         Console.Error.WriteLine($"wrote {svgPath}");
+        WriteWav(wavPath, audio);
         return exit;
     }
-    return RunWithConsoleGraphics((input, gfx, kb) =>
-        new BasicInterpreter(combined, info, Console.Out, input, default, gfx, kb).Run());
+    var runExit = RunWithConsoleGraphics((input, gfx, kb) =>
+        new BasicInterpreter(combined, info, Console.Out, input, default, gfx, kb, audio).Run());
+    WriteWav(wavPath, audio);
+    return runExit;
+}
+
+/// <summary>Write the rendered WAV to <paramref name="path"/> if a --wav device was used.</summary>
+static void WriteWav(string? path, WavAudioDevice? audio)
+{
+    if (path is null || audio is null) return;
+    File.WriteAllBytes(path, audio.ToBytes());
+    Console.Error.WriteLine($"wrote {path}");
 }
 
 /// <summary>Run an engine with terminal graphics when stdout/stdin are an
@@ -461,15 +477,17 @@ static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, IKeyboard?,
     }
 }
 
-/// <summary>Extract an optional "--svg &lt;path&gt;" option, returning the
-/// remaining (file) arguments.</summary>
-static List<string> ParseSvgOption(ReadOnlySpan<string> args, out string? svgPath)
+/// <summary>Extract the optional "--svg &lt;path&gt;" and "--wav &lt;path&gt;"
+/// output options, returning the remaining (file) arguments.</summary>
+static List<string> ParseRenderOptions(ReadOnlySpan<string> args, out string? svgPath, out string? wavPath)
 {
     svgPath = null;
+    wavPath = null;
     var rest = new List<string>();
     for (var i = 0; i < args.Length; i++)
     {
         if (args[i] == "--svg" && i + 1 < args.Length) { svgPath = args[++i]; }
+        else if (args[i] == "--wav" && i + 1 < args.Length) { wavPath = args[++i]; }
         else rest.Add(args[i]);
     }
     return rest;

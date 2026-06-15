@@ -38,7 +38,7 @@ token. Examples use uppercase by convention.
 
 **Jumps:** [GOTO](#goto) · [GOSUB / RETURN](#gosub--return) ·
 [ON ... GOTO / GOSUB](#on--goto--gosub) ·
-[STOP](#stop) · [END](#end) · [RANDOMIZE](#randomize) · [RUN](#run) · [SLEEP](#sleep)
+[STOP](#stop) · [END](#end) · [RANDOMIZE](#randomize) · [RUN](#run) · [SLEEP](#sleep) · [SOUND](#sound) · [BEEP](#beep) · [PLAY](#play)
 
 **Word-form operators:** [AND, OR, NOT, XOR, IMP, EQV](#logical-operators) ·
 [MOD, REMAINDER](#mod--remainder) ·
@@ -583,6 +583,48 @@ DO
   ! ... update + redraw ...
   SLEEP 0.05               ! ~20 frames/second
 LOOP
+```
+
+### `SOUND`
+
+`SOUND freq, duration` emits a tone: `freq` in Hz (37–32767), `duration` in
+clock ticks of 18.2/second (so `duration/18.2` seconds). `duration = 0` stops
+the current sound. **Extension:** Microsoft BASIC (GW-BASIC/QuickBASIC) — see the
+[Extensions table](conformance.md#extensions-beyond-isoecma-full-basic). Render
+audio with `arcade-basic run file.bas --wav out.wav`.
+
+```basic
+SOUND 440, 9               ! 440 Hz (concert A) for about half a second
+```
+
+### `BEEP`
+
+`BEEP` emits the standard alert tone (~800 Hz for ~0.25 s, like `PRINT CHR$(7)`).
+**Extension:** Microsoft BASIC (GW-BASIC/QuickBASIC).
+
+```basic
+BEEP
+```
+
+### `PLAY`
+
+`PLAY notes$` plays a Music Macro Language (MML) string. **Extension:** Microsoft
+BASIC (GW-BASIC/QuickBASIC). Commands (case-insensitive, spaces ignored):
+
+| | |
+|---|---|
+| `A`–`G` | a note in the current octave; suffix `#`/`+` sharp, `-` flat; optional length digit + dots |
+| `O n` / `>` / `<` | octave 0–6 (default 4) / up one / down one |
+| `N n` | note by number 0–84 (0 = rest) |
+| `L n` | default note length 1–64 (default 4 = quarter) |
+| `P n` | rest of length n |
+| `T n` | tempo: quarter notes per minute, 32–255 (default 120) |
+| `MN` / `ML` / `MS` | normal / legato / staccato articulation |
+| `MF` / `MB` | foreground / background (background is rendered as foreground for now) |
+
+```basic
+PLAY "T120 O4 L8 CDEFGAB>C"      ! a C major scale
+PLAY "MS T140 O5 L16 C C G G"    ! staccato
 ```
 
 ---

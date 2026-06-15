@@ -251,5 +251,8 @@ public enum Opcode : byte
     Stop,                  // STOP statement
     End,                   // END statement
     Sleep,                 // SLEEP statement — stack: seconds (numeric); pauses execution
+    Sound,                 // SOUND freq, dur — stack: dur (top), freq; emits a tone
+    Beep,                  // BEEP — fixed alert tone; no operands
+    Play,                  // PLAY notes$ — stack: notes (string); plays an MML string
     Nop,
 }

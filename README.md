@@ -62,6 +62,7 @@ Console.WriteLine(output);   //  42
 - **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
 - **Write real-time games.** `INKEY$` (non-blocking keyboard) and `SLEEP` (frame delay) drive a game loop; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) on the Braille console — in the IDE, the CLI, or a standalone binary. (Both are Microsoft-BASIC extensions, flagged as such in the docs.)
 - **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping. Render to SVG (`arcade-basic run examples/graphics.bas --svg out.svg`), live in **any terminal** (the CLI and standalone binaries draw with a Braille + ANSI backend), or on the **Graphics tab** in the IDE; a Unity backend is in progress.
+- **Make sound.** `SOUND`, `BEEP`, and `PLAY` (Music Macro Language) — the GW-BASIC/QuickBASIC audio verbs, flagged as Microsoft-dialect extensions in the docs. Render a program's audio to a WAV file: `arcade-basic run examples/music.bas --wav out.wav` (real-time audible playback is on the roadmap; see [docs/audio-extension.md](docs/audio-extension.md)).
 - **Edit and run BASIC in a TUI IDE.** `arcade-basic-ide` opens a full-screen Terminal.Gui editor with line numbers, syntax classification, a problems pane, and one-key Run/Stop. See [Try the IDE](#try-the-ide).
 - **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
 - **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into Unity (Mono and IL2CPP), Xamarin, .NET Framework, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.
@@ -134,7 +135,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-21 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, and real-time Space Invaders, Snake, Breakout, and Tetris. Highlights:
+22 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, real-time Space Invaders, Snake, Breakout, and Tetris, and a `PLAY`/`SOUND` music demo. Highlights:
 
 | Program | What it shows |
 |---|---|
@@ -151,6 +152,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
 | [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
+| [`music.bas`](examples/music.bas) | audio — `SOUND`, `BEEP`, and `PLAY` (MML); render to WAV with `--wav` |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 

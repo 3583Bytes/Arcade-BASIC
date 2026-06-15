@@ -393,6 +393,15 @@ public sealed class Analyzer
             case SleepStmt slp:
                 ExpectType(slp.Seconds, AnalyzeExpr(slp.Seconds, scope), BasicType.Numeric, "SLEEP seconds");
                 break;
+            case SoundStmt snd:
+                ExpectType(snd.Frequency, AnalyzeExpr(snd.Frequency, scope), BasicType.Numeric, "SOUND frequency");
+                ExpectType(snd.Duration, AnalyzeExpr(snd.Duration, scope), BasicType.Numeric, "SOUND duration");
+                break;
+            case BeepStmt:
+                break;
+            case PlayStmt ply:
+                ExpectType(ply.Notes, AnalyzeExpr(ply.Notes, scope), BasicType.String, "PLAY notes");
+                break;
 
             case DimStmt dim:
                 // Bounds expressions evaluated at runtime; resolve names here.

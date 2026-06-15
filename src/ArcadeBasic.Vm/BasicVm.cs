@@ -43,15 +43,19 @@ public sealed class BasicVm
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
     private readonly IKeyboard _keyboard;
+    private readonly IAudioDevice _audio;
+    private readonly AudioState _audioState = new();
 
     public BasicVm(BcProgram program, TextWriter @out, TextReader @in,
-        IGraphicsDevice? graphics = null, IKeyboard? keyboard = null)
+        IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
+        IAudioDevice? audio = null)
     {
         _program = program;
         _out = @out;
         _in = @in;
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
+        _audio = audio ?? NullAudioDevice.Instance;
     }
 
     public int Run()
@@ -121,6 +125,27 @@ public sealed class BasicVm
                         var secs = (double)((NumericValue)stack.Pop()).V;
                         if (secs > 0)
                             System.Threading.Thread.Sleep((int)Math.Min(secs * 1000.0, int.MaxValue));
+                        break;
+                    }
+
+                // -- Audio (SOUND/BEEP/PLAY): drive the same AudioState as the tree-walker --
+                case Opcode.Sound:
+                    {
+                        _graphics.Flush();
+                        var dur = (double)((NumericValue)stack.Pop()).V;   // pushed last → on top
+                        var freq = (double)((NumericValue)stack.Pop()).V;
+                        _audioState.EmitSound(freq, dur, _audio);
+                        break;
+                    }
+                case Opcode.Beep:
+                    _graphics.Flush();
+                    _audioState.EmitBeep(_audio);
+                    break;
+                case Opcode.Play:
+                    {
+                        _graphics.Flush();
+                        var notes = ((StringValue)stack.Pop()).V;
+                        _audioState.EmitPlay(notes, _audio);
                         break;
                     }
 

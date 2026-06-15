@@ -23,6 +23,7 @@ internal static class Keywords
             // Word-form operators
             ["AND"] = TokenKind.KwAnd,
             ["BAND"] = TokenKind.KwBand,
+            ["BEEP"] = TokenKind.KwBeep,
             ["BNOT"] = TokenKind.KwBnot,
             ["BOR"] = TokenKind.KwBor,
             ["BXOR"] = TokenKind.KwBxor,
@@ -129,6 +130,7 @@ internal static class Keywords
             ["PARALLEL"] = TokenKind.KwParallel,
             ["PIC"] = TokenKind.KwPic,
             ["PICTURE"] = TokenKind.KwPicture,
+            ["PLAY"] = TokenKind.KwPlay,
             ["PLOT"] = TokenKind.KwPlot,
             ["POINT"] = TokenKind.KwPoint,
             ["POINTS"] = TokenKind.KwPoints,
