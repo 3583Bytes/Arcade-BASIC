@@ -89,10 +89,17 @@ public sealed class AudioState
                 case 'M': i++; ParseModeCommand(mml, ref i); break;
                 case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
                     i++; EmitLetterNote(c, mml, ref i, device); break;
+                // X (execute substring) and = (variable substitution) are
+                // unsupported by design: in GW-BASIC they work only via VARPTR$
+                // (raw variable memory addresses spliced into the PLAY string),
+                // which has no analog in Arcade BASIC's managed runtime. See
+                // docs/conformance.md and docs/audio-extension.md.
                 case 'X':
-                    throw new BasicRuntimeException(5, "PLAY: X (substring) is not yet implemented");
+                    throw new BasicRuntimeException(5,
+                        "PLAY: X (execute substring) is not supported — it requires GW-BASIC VARPTR$ memory pointers");
                 case '=':
-                    throw new BasicRuntimeException(5, "PLAY: = (variable substitution) is not yet implemented");
+                    throw new BasicRuntimeException(5,
+                        "PLAY: = (variable substitution) is not supported — it requires GW-BASIC VARPTR$ memory pointers");
                 default:
                     throw new BasicRuntimeException(5, $"PLAY: unexpected character '{mml[i]}'");
             }

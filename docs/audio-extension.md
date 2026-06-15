@@ -167,9 +167,19 @@ on the timeline), so `MB`/`MF` don't change the deterministic WAV — no virtual
 clock needed. Covered by `RealtimeAudioDeviceTests` (queue→worker→sink→drain, via
 a recording sink).
 
-**Phase 4 — Advanced MML.**
-`X str;` (execute a substring variable) and `=var;` (numeric substitution into a
-command) — recursive MML evaluation with variable lookup. Small, self-contained.
+**Phase 4 — Advanced MML (`X` / `=`). ❌ WON'T IMPLEMENT (documented deviation).**
+Investigation showed these are not faithfully implementable: in GW-BASIC the `X`
+(execute substring) and `=` (variable substitution) commands work *only* through
+`VARPTR$` — the program builds `PLAY "X" + VARPTR$(A$)` or `PLAY "T=" + VARPTR$(t)`,
+where `VARPTR$` returns a string encoding the variable's **raw memory address**,
+which the PLAY interpreter dereferences at runtime. Arcade BASIC is a managed,
+`BigDecimal`-backed interpreter with no exposed memory model and no `VARPTR$`, so
+there is no faithful way to support `X`/`=`. Per the project's extension policy
+(track a real dialect faithfully; don't invent ad-hoc grammar), they remain
+parsed-and-rejected with a clear error rather than given a made-up `X<var>;` form.
+Recorded as a deviation in `docs/conformance.md`. *(If desired later, the only
+faithful route would be to add a real `VARPTR$` builtin returning an opaque handle
+that PLAY/DRAW can dereference — a separate, larger feature.)*
 
 **Phase 5 — Unity audio backend.**
 Procedural `AudioClip`/`AudioSource` fed by the same tone events, alongside the

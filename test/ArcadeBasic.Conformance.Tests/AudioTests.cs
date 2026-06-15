@@ -156,4 +156,14 @@ public class AudioTests
         Assert.Throws<BasicRuntimeException>(
             () => new AudioState().EmitPlay("T999 A", new RecordingAudioDevice()));
     }
+
+    [Fact]
+    public void PlayRejectsVarptrOnlyCommands()
+    {
+        // X (execute substring) and = (variable substitution) need GW-BASIC's
+        // VARPTR$ memory pointers, which have no analog here — deliberately
+        // unsupported rather than given an invented syntax (see conformance.md).
+        Assert.Throws<BasicRuntimeException>(() => new AudioState().EmitPlay("X", new RecordingAudioDevice()));
+        Assert.Throws<BasicRuntimeException>(() => new AudioState().EmitPlay("T=", new RecordingAudioDevice()));
+    }
 }
