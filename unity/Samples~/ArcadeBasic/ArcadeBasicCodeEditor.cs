@@ -189,6 +189,9 @@ namespace ArcadeBasic.Samples
         int _activeTab;            // 0 = source, 1 = output, 2 = graphics
         string _baseline = string.Empty;   // last-saved source; IsModified compares against it
 
+        // --- Audio (SOUND / BEEP / PLAY) ---
+        ArcadeBasic.Unity.BasicAudioOutput _audio;   // streams the program's audio out through Unity
+
         // --- Graphics (§13) ---
         ThreadSafeScreen _screen;       // thread-safe IGraphicsDevice the interpreter draws into
         RectTransform _contentRect;     // common parent of the panes (used to size the buffer)
@@ -367,6 +370,11 @@ namespace ArcadeBasic.Samples
             if (_keyboard == null) _keyboard = new UnityKeyboard();
             _keyboard.Clear();
 
+            // Audio output (SOUND / BEEP / PLAY). A streaming AudioClip pulls the
+            // program's PCM on Unity's audio thread; a fresh device per run.
+            if (_audio == null) _audio = gameObject.AddComponent<ArcadeBasic.Unity.BasicAudioOutput>();
+            var audio = _audio.BeginRun();
+
             SetStatus("Running...");
             if (runButton != null) runButton.interactable = false;
             if (stopButton != null) stopButton.gameObject.SetActive(true);
@@ -383,7 +391,7 @@ namespace ArcadeBasic.Samples
             {
                 try
                 {
-                    var res = BasicEngine.Run(source, writer, stdin: stdin, cancel: token, graphics: screen, keyboard: keyboard);
+                    var res = BasicEngine.Run(source, writer, stdin: stdin, cancel: token, graphics: screen, keyboard: keyboard, audio: audio);
                     return new RunResult(res.ExitCode, res.Diagnostics);
                 }
                 catch (Exception ex)
@@ -399,6 +407,8 @@ namespace ArcadeBasic.Samples
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { /* race with FinishRun */ }
             // Unblock any pending INPUT reader so the task can observe cancellation.
             _inputDone.Set();
+            // Release a program thread blocked waiting for foreground audio to finish.
+            _audio?.EndRun();
         }
 
         /// <summary>Wipe the output pane. Wired to the Clear Output button.</summary>
@@ -422,6 +432,7 @@ namespace ArcadeBasic.Samples
         void FinishRun()
         {
             DrainLiveOutput();
+            _audio?.EndRun();   // stop streaming this run's audio
 
             var task = _runTask;
             var cts = _cts;

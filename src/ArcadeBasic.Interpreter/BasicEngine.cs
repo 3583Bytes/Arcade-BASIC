@@ -48,7 +48,7 @@ public static class BasicEngine
     /// <param name="filename">Filename to attribute in diagnostics. Defaults to "&lt;embedded&gt;".</param>
     /// <param name="cancel">Cancellation token observed between BASIC statements. When triggered the program halts and the result reports <see cref="Result.ExitCode"/> = 2.</param>
     /// <returns>Exit code + collected diagnostic messages. ExitCode is 0 on success, 1 on parse/sema/runtime failure, 2 if the program was cancelled mid-flight.</returns>
-    public static Result Run(string source, TextWriter stdout, TextReader? stdin = null, string filename = "<embedded>", CancellationToken cancel = default, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null, ArcadeBasic.Runtime.IKeyboard? keyboard = null)
+    public static Result Run(string source, TextWriter stdout, TextReader? stdin = null, string filename = "<embedded>", CancellationToken cancel = default, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null, ArcadeBasic.Runtime.IKeyboard? keyboard = null, ArcadeBasic.Runtime.IAudioDevice? audio = null)
     {
         if (source is null) throw new ArgumentNullException(nameof(source));
         if (stdout is null) throw new ArgumentNullException(nameof(stdout));
@@ -70,7 +70,7 @@ public static class BasicEngine
             return new Result(1, RenderDiagnostics(diags));
         }
 
-        var interp = new ArcadeBasic.Interpreter.BasicInterpreter(program, info, stdout, stdin ?? TextReader.Null, cancel, graphics, keyboard);
+        var interp = new ArcadeBasic.Interpreter.BasicInterpreter(program, info, stdout, stdin ?? TextReader.Null, cancel, graphics, keyboard, audio);
         int exitCode;
         try
         {

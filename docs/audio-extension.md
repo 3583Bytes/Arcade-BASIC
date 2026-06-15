@@ -181,9 +181,18 @@ Recorded as a deviation in `docs/conformance.md`. *(If desired later, the only
 faithful route would be to add a real `VARPTR$` builtin returning an opaque handle
 that PLAY/DRAW can dereference — a separate, larger feature.)*
 
-**Phase 5 — Unity audio backend.**
-Procedural `AudioClip`/`AudioSource` fed by the same tone events, alongside the
-existing `BasicScreen` graphics backend.
+**Phase 5 — Unity audio backend. ✅ IMPLEMENTED (write-to-spec; not verified in Unity).**
+A pull-based `BufferedAudioDevice` (in `Runtime`, unit-tested, no UnityEngine
+dependency) buffers the program's PCM; a `BasicAudioOutput` MonoBehaviour
+(`unity/Runtime/UnityAudio/`) streams it out through a looping `AudioClip` whose
+PCM-reader callback drains the buffer on Unity's audio thread — the audio analogue
+of `BasicScreen`. Wired into the sample IDE's background-task run path
+(`BasicEngine.Run(..., audio:)`), with a fresh device per run and stop/finish
+teardown. The pull-based device is reusable for a future browser/WebAudio
+playground. **Not verified in Unity** — the Unity package isn't part of the dotnet
+solution, so the `BufferedAudioDevice` logic is unit-tested but the MonoBehaviour /
+`AudioClip` glue needs a human to confirm in the Editor (and `unity/scripts/copy-dlls.sh`
+must be run so the plugin DLLs include the new Runtime types).
 
 Docs (`conformance.md` extensions rows, README, `keywords.md`) and a `music.bas`
 example are updated incrementally as each phase lands — so the documentation

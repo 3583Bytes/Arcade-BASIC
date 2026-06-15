@@ -1,11 +1,7 @@
 {
-    "name": "ArcadeBasic.Samples",
-    "rootNamespace": "ArcadeBasic.Samples",
-    "references": [
-        "ArcadeBasic",
-        "ArcadeBasic.UnityAudio",
-        "Unity.TextMeshPro"
-    ],
+    "name": "ArcadeBasic.UnityAudio",
+    "rootNamespace": "ArcadeBasic.Unity",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
