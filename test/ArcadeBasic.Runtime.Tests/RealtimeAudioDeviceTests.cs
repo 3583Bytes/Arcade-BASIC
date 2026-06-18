@@ -20,6 +20,26 @@ public class RealtimeAudioDeviceTests
         public void Dispose() { }
     }
 
+    private sealed class ThrowingPcmSink : IPcmSink
+    {
+        public void Write(short[] s) => throw new System.IO.IOException("device went away");
+        public void Dispose() { }
+    }
+
+    /// <summary>Collects diagnostics from the worker thread for assertion on the
+    /// test thread. A <see cref="RealtimeAudioDevice.Flush"/> establishes the
+    /// happens-before, so messages reported before it returns are visible here.</summary>
+    private sealed class DiagnosticLog
+    {
+        private readonly object _gate = new();
+        private readonly System.Collections.Generic.List<string> _messages = new();
+        public void Record(string message, System.Exception? error)
+        {
+            lock (_gate) _messages.Add(error is null ? message : $"{message} :: {error.Message}");
+        }
+        public string[] Messages { get { lock (_gate) return _messages.ToArray(); } }
+    }
+
     [Fact]
     public void FlushDrainsEveryEmittedTone()
     {
@@ -46,6 +66,46 @@ public class RealtimeAudioDeviceTests
     {
         using var dev = new RealtimeAudioDevice(() => throw new System.InvalidOperationException("no audio"));
         // Must not throw despite the sink never initializing.
+        dev.Emit(new ToneEvent(440, 0.01, 0));
+        dev.Flush();
+    }
+
+    [Fact]
+    public void SinkFactoryFailureIsReportedToDiagnostic()
+    {
+        var log = new DiagnosticLog();
+        using (var dev = new RealtimeAudioDevice(
+            () => throw new System.InvalidOperationException("no audio"), log.Record))
+        {
+            dev.Emit(new ToneEvent(440, 0.01, 0));
+            dev.Flush();   // worker has tried (and failed) the factory by the time this returns
+        }
+        Assert.Single(log.Messages);
+        Assert.Contains("could not be initialized", log.Messages[0]);
+        Assert.Contains("no audio", log.Messages[0]);   // the underlying exception message is included
+    }
+
+    [Fact]
+    public void MidRunWriteFailureIsReportedAndDegradesToSilence()
+    {
+        var log = new DiagnosticLog();
+        using (var dev = new RealtimeAudioDevice(() => new ThrowingPcmSink(), log.Record))
+        {
+            dev.Emit(new ToneEvent(440, 0.01, 0));
+            dev.Flush();
+            // Further tones are silently dropped (sink torn down) and must not re-report.
+            dev.Emit(new ToneEvent(880, 0.01, 0));
+            dev.Flush();
+        }
+        Assert.Single(log.Messages);
+        Assert.Contains("playback failed", log.Messages[0]);
+    }
+
+    [Fact]
+    public void NoDiagnosticHandlerStillDegradesCleanly()
+    {
+        // The handler is optional: a failing sink with no handler must not throw.
+        using var dev = new RealtimeAudioDevice(() => new ThrowingPcmSink());
         dev.Emit(new ToneEvent(440, 0.01, 0));
         dev.Flush();
     }

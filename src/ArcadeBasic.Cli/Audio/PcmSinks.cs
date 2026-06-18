@@ -15,7 +15,7 @@ namespace ArcadeBasic.Cli.Audio;
 /// </summary>
 public static class PcmSinks
 {
-    public static IPcmSink CreateDefault()
+    public static IPcmSink CreateDefault(AudioDiagnostic? onDiagnostic = null)
     {
         try
         {
@@ -23,7 +23,11 @@ public static class PcmSinks
             if (OperatingSystem.IsLinux()) return new AlsaPcmSink();
             if (OperatingSystem.IsMacOS()) return new CoreAudioPcmSink();
         }
-        catch { /* fall through to silence */ }
+        catch (Exception ex)   // fall through to silence, but say why
+        {
+            try { onDiagnostic?.Invoke("native audio backend failed to initialize; continuing silently", ex); }
+            catch { /* a diagnostic sink must never break the run */ }
+        }
         return new SilentPcmSink();
     }
 }

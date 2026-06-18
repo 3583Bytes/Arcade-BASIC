@@ -465,9 +465,16 @@ static int RunProgram(ReadOnlySpan<string> args)
 static (IAudioDevice? audio, WavAudioDevice? wav) MakeAudio(string? wavPath)
 {
     if (wavPath is not null) { var w = new WavAudioDevice(); return (w, w); }
-    if (!Console.IsOutputRedirected) return (new RealtimeAudioDevice(PcmSinks.CreateDefault), null);
+    if (!Console.IsOutputRedirected)
+        return (new RealtimeAudioDevice(() => PcmSinks.CreateDefault(AudioWarn), AudioWarn), null);
     return (null, null);
 }
+
+/// <summary>Surface a non-fatal audio failure (no device, backend init failure, a
+/// mid-run write error) as a one-line stderr note so a silent run is explainable
+/// rather than mysterious. Audio is best-effort — this never aborts the program.</summary>
+static void AudioWarn(string message, Exception? error)
+    => Console.Error.WriteLine(error is null ? $"audio: {message}" : $"audio: {message} ({error.Message})");
 
 /// <summary>Write the rendered WAV to <paramref name="path"/> if a --wav device was used.</summary>
 static void WriteWav(string? path, WavAudioDevice? audio)

@@ -22,7 +22,13 @@ public sealed class BufferedAudioDevice : IAudioDevice
 {
     private readonly object _lock = new();
     private readonly Queue<short> _buffer = new();
+    private readonly AudioDiagnostic? _onDiagnostic;
+    private int _noConsumerReported;
     private bool _closed;
+
+    /// <param name="onDiagnostic">Optional sink for the non-fatal "no consumer is
+    /// draining the buffer" condition that makes <see cref="Flush"/> give up waiting.</param>
+    public BufferedAudioDevice(AudioDiagnostic? onDiagnostic = null) => _onDiagnostic = onDiagnostic;
 
     public void Emit(ToneEvent tone)
     {
@@ -39,14 +45,23 @@ public sealed class BufferedAudioDevice : IAudioDevice
     /// can't hang if no consumer is pulling.</summary>
     public void Flush()
     {
+        var timedOut = false;
         lock (_lock)
         {
             while (_buffer.Count > 0 && !_closed)
             {
                 // Buffered samples drain at the sample rate; wait at most that long.
                 var ms = (int)(_buffer.Count * 1000L / PcmRenderer.SampleRate) + 250;
-                if (!Monitor.Wait(_lock, ms)) break;   // timed out → no consumer; give up waiting
+                if (!Monitor.Wait(_lock, ms)) { timedOut = true; break; }   // no consumer; give up waiting
             }
+        }
+        // Report outside the lock (the handler may be slow / re-enter) and only
+        // once per device, so a music-heavy program with no consumer isn't spammed.
+        if (timedOut && _onDiagnostic is not null
+            && Interlocked.Exchange(ref _noConsumerReported, 1) == 0)
+        {
+            try { _onDiagnostic("audio flush timed out — no consumer is draining the buffer; continuing", null); }
+            catch { /* a diagnostic sink must never break the program */ }
         }
     }
 

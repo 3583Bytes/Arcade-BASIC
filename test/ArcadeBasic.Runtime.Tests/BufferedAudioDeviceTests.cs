@@ -64,6 +64,21 @@ public class BufferedAudioDeviceTests
     }
 
     [Fact]
+    public void FlushTimeoutWithNoConsumerIsReportedOnce()
+    {
+        var messages = new System.Collections.Generic.List<string>();
+        var dev = new BufferedAudioDevice((msg, _) => messages.Add(msg));
+        dev.Emit(new ToneEvent(440, 0.001, 0));   // a few samples → ~250ms wait, then timeout
+
+        dev.Flush();   // no consumer ever drains → times out and reports
+        dev.Emit(new ToneEvent(440, 0.001, 0));
+        dev.Flush();   // times out again, but the no-consumer note is reported only once
+
+        Assert.Single(messages);
+        Assert.Contains("no consumer", messages[0]);
+    }
+
+    [Fact]
     public async Task CloseUnblocksFlush()
     {
         var dev = new BufferedAudioDevice();
