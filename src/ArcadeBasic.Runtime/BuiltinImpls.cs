@@ -41,35 +41,40 @@ public static class BuiltinImpls
         t["TRUNCATE"] = args => Num(BigDecimal.Truncate(N(args[0])));
         t["CEIL"] = args => Num(BigDecimal.Ceiling(N(args[0])));
         t["ROUND"] = args => Num(BigDecimal.Round(N(args[0]), 0, RoundingMode.MidpointToEven));
-        t["SQR"] = args => Num(FromDouble(Math.Sqrt(ToDouble(args[0]))));
-        t["EXP"] = args => Num(FromDouble(Math.Exp(ToDouble(args[0]))));
+        t["SQR"] = args =>
+        {
+            var x = ToDouble(args[0]);
+            if (x < 0) throw new BasicRuntimeException(2001, "SQR requires non-negative argument");
+            return Num(FromDouble(Math.Sqrt(x), "SQR"));
+        };
+        t["EXP"] = args => Num(FromDouble(Math.Exp(ToDouble(args[0])), "EXP"));
         t["LOG"] = args =>
         {
             var x = ToDouble(args[0]);
             if (x <= 0) throw new BasicRuntimeException(2001, "LOG requires positive argument");
-            return Num(FromDouble(Math.Log(x)));
+            return Num(FromDouble(Math.Log(x), "LOG"));
         };
         t["LOG2"] = args =>
         {
             var x = ToDouble(args[0]);
             if (x <= 0) throw new BasicRuntimeException(2001, "LOG2 requires positive argument");
-            return Num(FromDouble(Math.Log(x, 2)));
+            return Num(FromDouble(Math.Log(x, 2), "LOG2"));
         };
         t["LOG10"] = args =>
         {
             var x = ToDouble(args[0]);
             if (x <= 0) throw new BasicRuntimeException(2001, "LOG10 requires positive argument");
-            return Num(FromDouble(Math.Log10(x)));
+            return Num(FromDouble(Math.Log10(x), "LOG10"));
         };
-        t["SIN"] = args => Num(FromDouble(Math.Sin(ToDouble(args[0]))));
-        t["COS"] = args => Num(FromDouble(Math.Cos(ToDouble(args[0]))));
-        t["TAN"] = args => Num(FromDouble(Math.Tan(ToDouble(args[0]))));
-        t["ATN"] = args => Num(FromDouble(Math.Atan(ToDouble(args[0]))));
-        t["ASIN"] = args => Num(FromDouble(Math.Asin(ToDouble(args[0]))));
-        t["ACOS"] = args => Num(FromDouble(Math.Acos(ToDouble(args[0]))));
-        t["SEC"] = args => Num(FromDouble(1.0 / Math.Cos(ToDouble(args[0]))));
-        t["CSC"] = args => Num(FromDouble(1.0 / Math.Sin(ToDouble(args[0]))));
-        t["COT"] = args => Num(FromDouble(1.0 / Math.Tan(ToDouble(args[0]))));
+        t["SIN"] = args => Num(FromDouble(Math.Sin(ToDouble(args[0])), "SIN"));
+        t["COS"] = args => Num(FromDouble(Math.Cos(ToDouble(args[0])), "COS"));
+        t["TAN"] = args => Num(FromDouble(Math.Tan(ToDouble(args[0])), "TAN"));
+        t["ATN"] = args => Num(FromDouble(Math.Atan(ToDouble(args[0])), "ATN"));
+        t["ASIN"] = args => Num(FromDouble(Math.Asin(ToDouble(args[0])), "ASIN"));
+        t["ACOS"] = args => Num(FromDouble(Math.Acos(ToDouble(args[0])), "ACOS"));
+        t["SEC"] = args => Num(FromDouble(1.0 / Math.Cos(ToDouble(args[0])), "SEC"));
+        t["CSC"] = args => Num(FromDouble(1.0 / Math.Sin(ToDouble(args[0])), "CSC"));
+        t["COT"] = args => Num(FromDouble(1.0 / Math.Tan(ToDouble(args[0])), "COT"));
 
         var rng = new Random();
         t["RND"] = args => Num(BigDecimal.Parse(
@@ -247,9 +252,16 @@ public static class BuiltinImpls
         return d;
     }
 
-    private static BigDecimal FromDouble(double d) =>
-        BigDecimal.Parse(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+    // NaN and infinity have no BigDecimal form; report them as BASIC exceptions
+    // (domain error / overflow) rather than letting the parse fail with a .NET
+    // FormatException, which surfaced as "Input string was not in a correct format".
+    private static BigDecimal FromDouble(double d, string function)
+    {
+        if (double.IsNaN(d)) throw new BasicRuntimeException(2001, $"{function} argument out of range");
+        if (double.IsInfinity(d)) throw new BasicRuntimeException(1001, $"{function} result overflows");
+        return BigDecimal.Parse(d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     private static int CountRunes(string s)
     {
