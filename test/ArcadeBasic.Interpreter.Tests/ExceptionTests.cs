@@ -268,4 +268,27 @@ public class ExceptionTests
         output.Should().Contain("outer caught");
         output.Should().Contain("1");
     }
+
+    // -- Math function domain errors -------------------------------------
+
+    [Theory]
+    [InlineData("SQR(-1)", 2001, "SQR requires non-negative argument")]
+    [InlineData("ASIN(2)", 2001, "ASIN argument out of range")]
+    [InlineData("ACOS(-2)", 2001, "ACOS argument out of range")]
+    [InlineData("EXP(1000)", 1001, "EXP result overflows")]
+    public void MathDomainErrorsRaiseBasicExceptions(string expr, int type, string text)
+    {
+        var src = $"""
+            WHEN EXCEPTION IN
+              LET X = {expr}
+            USE
+              PRINT EXTYPE
+              PRINT EXTEXT$
+            END WHEN
+            """;
+        var (output, exit) = Run(src);
+        exit.Should().Be(0);
+        // PRINT pads numbers with a trailing space, so compare trimmed lines.
+        output.Split('\n').Select(l => l.Trim()).Should().ContainInOrder(type.ToString(), text);
+    }
 }
