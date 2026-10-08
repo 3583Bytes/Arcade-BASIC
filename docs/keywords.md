@@ -19,7 +19,8 @@ token. Examples use uppercase by convention.
 
 **Declarations:** [DIM](#dim) · [REDIM](#redim) · [DEF](#def) ·
 [FUNCTION](#function) · [SUB](#sub) · [CALL](#call) · [MODULE](#module) ·
-[PUBLIC](#public) · [HANDLER](#handler) · [OPTION BASE](#option-base)
+[PUBLIC](#public) · [HANDLER](#handler) · [OPTION BASE](#option-base) ·
+[OPTION ARITHMETIC](#option-arithmetic)
 
 **Values & assignment:** [LET](#let) · [REM / `!`](#rem)
 
@@ -209,6 +210,25 @@ DIM A(2)                   ! indices 0..2
 LET A(0) = 10
 LET A(2) = 30
 PRINT A(0); A(2)           !  10   30
+```
+
+### `OPTION ARITHMETIC`
+
+Choose how numbers are represented. `DECIMAL` (the default) is exact,
+arbitrary-precision decimal — `0.1 + 0.2 = 0.3` holds, and money sums never
+drift. `NATIVE` uses the machine's IEEE double: about 16 significant digits and
+a range up to ~1.8E308, but several times faster — worth it for games and
+anything math-heavy. It applies to the whole program wherever it appears, so put
+it at the top. PRINT shows 9 significant digits either way, so most programs
+print the same under both.
+
+```basic
+OPTION ARITHMETIC NATIVE
+FOR A = 0 TO 90 STEP 30
+  PRINT SIN(A * PI / 180);  !  0   0.5   0.8660254   1
+NEXT A
+PRINT
+IF 0.1 + 0.2 = 0.3 THEN PRINT "equal" ELSE PRINT "not equal"   ! not equal (binary)
 ```
 
 ---

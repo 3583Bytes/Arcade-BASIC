@@ -10,7 +10,8 @@ namespace ArcadeBasic.Bytecode;
 ///
 /// Format (all multi-byte ints little-endian):
 ///   u32 magic = 0x46424358 ('FBCX')
-///   u32 version = 1
+///   u32 version
+///   bool native_arithmetic   (OPTION ARITHMETIC NATIVE)
 ///   string[] builtin_names
 ///   u32 sub_count   then SubMetadata + Chunk pairs
 ///   u32 fn_count    then FunctionMetadata + Chunk pairs
@@ -23,7 +24,7 @@ namespace ArcadeBasic.Bytecode;
 public static class BytecodeSerializer
 {
     private const uint Magic = 0x46424358u; // 'FBCX'
-    private const uint Version = 3;
+    private const uint Version = 4;
 
     public static byte[] Serialize(Program program)
     {
@@ -31,6 +32,7 @@ public static class BytecodeSerializer
         var w = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
         w.Write(Magic);
         w.Write(Version);
+        w.Write(program.NativeArithmetic);
 
         WriteStringList(w, program.BuiltinNames);
 
@@ -82,6 +84,7 @@ public static class BytecodeSerializer
         if (magic != Magic) throw new InvalidDataException("bytecode: bad magic");
         var version = r.ReadUInt32();
         if (version != Version) throw new InvalidDataException($"bytecode: unsupported version {version}");
+        var nativeArithmetic = r.ReadBoolean();
 
         var builtinNames = ReadStringList(r);
 
@@ -138,6 +141,7 @@ public static class BytecodeSerializer
             Defs = defs,
             BuiltinNames = builtinNames,
             DataPool = dataPool,
+            NativeArithmetic = nativeArithmetic,
         };
     }
 

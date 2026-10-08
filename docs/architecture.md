@@ -197,11 +197,13 @@ See [**standalone-builds.md**](standalone-builds.md) for a deeper write-up: the 
 
 ## Cross-cutting design choices
 
-### Numeric type: `Singulink.Numerics.BigDecimal`
+### Numeric type: `Singulink.Numerics.BigDecimal`, or `double` under `OPTION ARITHMETIC NATIVE`
 
-Arbitrary-precision decimal for every numeric value. No integer fast path — `42` and `42.0` are the same. The PRINT output rounds to 9 significant digits for display (`FormatNumeric` in `BasicInterpreter.Statements.cs`); internal arithmetic keeps full precision.
+By default every numeric value is an arbitrary-precision decimal. No integer fast path — `42` and `42.0` are the same. The PRINT output rounds to 9 significant digits for display (`DisplayFormat.FormatNumeric`); internal arithmetic keeps full precision.
 
 Why: ISO 10279 says numeric values are decimal, with implementation-defined precision and range. BigDecimal gets us the decimal semantics for free; the runtime cost is acceptable for a teaching/conformance interpreter.
+
+`OPTION ARITHMETIC NATIVE` (sema records it as `SemanticInfo.Arithmetic`; the compiler copies it into the bytecode header) switches the whole program to IEEE doubles for speed. A `NumericValue` holds either representation and exposes both views — `V` (decimal) and `D` (double) — so code that only needs "a number" (file I/O, PRINT USING, graphics coordinates) works unchanged under either mode. The operators in `Numbers` work in double whenever an operand is native; the engines create every fresh value (literals, INPUT/READ data, builtin results, booleans) in the program's mode; and `NumericArrayValue` stores `double[]` under NATIVE. The decimal path is untouched, so `DECIMAL` output is byte-identical to what it was before NATIVE existed.
 
 ### Strings are codepoint-aware
 

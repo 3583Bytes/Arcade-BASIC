@@ -255,4 +255,10 @@ public enum Opcode : byte
     Beep,                  // BEEP — fixed alert tone; no operands
     Play,                  // PLAY notes$ — stack: notes (string); plays an MML string
     Nop,
+
+    // -- FOR loops (appended so the values above stay stable) --
+    // ISO 10279 §8.3.5 evaluates the limit and step once, on entry; the compiler
+    // parks them in two hidden temp slots of the current frame.
+    ForPrep,               // operand: u32 limitSlot, u32 stepSlot — stack (top last): limit, step; pops both into the temps (step 0 raises 6002)
+    ForTest,               // operand: u32 limitSlot, u32 stepSlot — pops the control variable; pushes -1 if the loop is finished, else 0
 }

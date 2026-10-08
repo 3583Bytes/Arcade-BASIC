@@ -323,6 +323,40 @@ public class AnalyzerTests
         diags.WarningCount.Should().Be(0);
     }
 
+    // -- OPTION ARITHMETIC -------------------------------------------------
+
+    [Fact]
+    public void ArithmeticDefaultsToDecimal()
+    {
+        var (info, diags) = Analyze("PRINT 1 / 3");
+        diags.HasErrors.Should().BeFalse();
+        info.Arithmetic.Should().Be(ArithmeticMode.Decimal);
+    }
+
+    [Fact]
+    public void OptionArithmeticNativeAppliesProgramWide()
+    {
+        // Declared inside a module, it still switches the whole program.
+        var (info, diags) = Analyze("PRINT 1\nMODULE M\nOPTION ARITHMETIC NATIVE\nEND MODULE");
+        diags.HasErrors.Should().BeFalse();
+        info.Arithmetic.Should().Be(ArithmeticMode.Native);
+    }
+
+    [Fact]
+    public void MixingDecimalAndNativeIsRejected()
+    {
+        var (_, diags) = Analyze("OPTION ARITHMETIC NATIVE\nMODULE M\nOPTION ARITHMETIC DECIMAL\nEND MODULE");
+        ErrorsFor(diags, Analyzer.ErrArithmeticConflict).Should().ContainSingle();
+    }
+
+    [Fact]
+    public void RepeatingTheSameArithmeticModeIsAllowed()
+    {
+        var (info, diags) = Analyze("OPTION ARITHMETIC NATIVE\nMODULE M\nOPTION ARITHMETIC NATIVE\nEND MODULE");
+        diags.HasErrors.Should().BeFalse();
+        info.Arithmetic.Should().Be(ArithmeticMode.Native);
+    }
+
     // -- Helpers ---------------------------------------------------------
 
     private static Stmt? FindFirst(SemanticInfo info, Type kind)

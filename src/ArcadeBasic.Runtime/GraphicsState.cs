@@ -1,4 +1,3 @@
-using System.Globalization;
 using Singulink.Numerics;
 
 namespace ArcadeBasic.Runtime;
@@ -46,51 +45,48 @@ public sealed class GraphicsState
     /// <summary>Convert an evaluated numeric value to a drawing coordinate.
     /// Both engines route through this so they hand identical points to the
     /// device (preserving byte-for-byte parity).</summary>
-    public static double ToCoord(BigDecimal v) =>
-        double.Parse(v.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture);
+    public static double ToCoord(NumericValue v) => v.D;
 
     /// <summary>Round an evaluated numeric value to a style/colour index.</summary>
-    public static int ToIndex(BigDecimal v) =>
-        (int)BigDecimal.Round(v, 0, RoundingMode.MidpointToEven);
-
-    /// <summary>Convert a drawing coordinate back to a BASIC numeric value (for ASK).</summary>
-    public static BigDecimal FromCoord(double v) =>
-        BigDecimal.Parse(v.ToString("R", CultureInfo.InvariantCulture));
+    public static int ToIndex(NumericValue v) => v.IsNative
+        ? (int)Math.Round(v.D, MidpointRounding.ToEven)
+        : (int)BigDecimal.Round(v.V, 0, RoundingMode.MidpointToEven);
 
     /// <summary>
     /// Compute the value an ASK statement reads for the given object and target
     /// index. Both engines call this, so they assign identical values. Indices:
     /// rectangles 0..3 = left/right/bottom/top; DEVICE SIZE 0/1/2 = width/height/unit$.
     /// </summary>
-    public Value Query(GfxQuery q, int index, IGraphicsDevice dev) => q switch
+    public Value Query(GfxQuery q, int index, IGraphicsDevice dev, bool native) => q switch
     {
-        GfxQuery.Window => RectComponent(Window, index),
-        GfxQuery.Viewport => RectComponent(Viewport, index),
-        GfxQuery.DeviceWindow => RectComponent(DeviceWindow, index),
-        GfxQuery.DeviceViewport => RectComponent(DeviceViewport, index),
+        GfxQuery.Window => RectComponent(Window, index, native),
+        GfxQuery.Viewport => RectComponent(Viewport, index, native),
+        GfxQuery.DeviceWindow => RectComponent(DeviceWindow, index, native),
+        GfxQuery.DeviceViewport => RectComponent(DeviceViewport, index, native),
         GfxQuery.DeviceSize => index switch
         {
-            0 => Num(dev.DeviceSize.Width),
-            1 => Num(dev.DeviceSize.Height),
+            0 => Num(dev.DeviceSize.Width, native),
+            1 => Num(dev.DeviceSize.Height, native),
             _ => new StringValue(dev.DeviceSize.Unit),
         },
         GfxQuery.Clip => new StringValue(ClipEnabled ? "ON" : "OFF"),
-        GfxQuery.PointStyle => Num(PointStyle),
-        GfxQuery.LineStyle => Num(LineStyle),
-        GfxQuery.PointColor => Num(PointColor),
-        GfxQuery.LineColor => Num(LineColor),
-        GfxQuery.TextColor => Num(TextColor),
-        GfxQuery.AreaColor => Num(AreaColor),
-        GfxQuery.MaxColor => Num(dev.MaxColor),
-        GfxQuery.MaxPointStyle => Num(dev.MaxPointStyle),
-        GfxQuery.MaxLineStyle => Num(dev.MaxLineStyle),
-        _ => Num(0),
+        GfxQuery.PointStyle => Num(PointStyle, native),
+        GfxQuery.LineStyle => Num(LineStyle, native),
+        GfxQuery.PointColor => Num(PointColor, native),
+        GfxQuery.LineColor => Num(LineColor, native),
+        GfxQuery.TextColor => Num(TextColor, native),
+        GfxQuery.AreaColor => Num(AreaColor, native),
+        GfxQuery.MaxColor => Num(dev.MaxColor, native),
+        GfxQuery.MaxPointStyle => Num(dev.MaxPointStyle, native),
+        GfxQuery.MaxLineStyle => Num(dev.MaxLineStyle, native),
+        _ => Num(0, native),
     };
 
-    private static Value RectComponent(GfxRect r, int i) =>
-        Num(i switch { 0 => r.Left, 1 => r.Right, 2 => r.Bottom, _ => r.Top });
+    private static Value RectComponent(GfxRect r, int i, bool native) =>
+        Num(i switch { 0 => r.Left, 1 => r.Right, 2 => r.Bottom, _ => r.Top }, native);
 
-    private static Value Num(double v) => new NumericValue(FromCoord(v));
+    private static Value Num(double v, bool native) =>
+        native ? NumericValue.FromDouble(v) : new NumericValue(Numbers.ToDecimal(v));
 
     // -- SET handling ----------------------------------------------------
     // Invalid bounds (zero/negative size, out of range) leave the current

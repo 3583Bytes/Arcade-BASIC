@@ -126,6 +126,8 @@ public sealed class Program
     public required IReadOnlyList<string> BuiltinNames { get; init; }
     /// <summary>Items collected from all DATA statements, in source order. Read via READ / MAT READ; rewound via RESTORE.</summary>
     public required IReadOnlyList<BcDataItem> DataPool { get; init; }
+    /// <summary>OPTION ARITHMETIC NATIVE: the VM computes in IEEE double instead of decimal.</summary>
+    public bool NativeArithmetic { get; init; }
 }
 
 public sealed record class CompiledSub(string Name, int ParamCount, Chunk Body);

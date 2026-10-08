@@ -50,6 +50,17 @@ public class SerializationTests
     }
 
     [Fact]
+    public void RoundTripPreservesNativeArithmetic()
+    {
+        // The standalone binary must keep running in double, or 0.1 + 0.2 = 0.3 flips.
+        var compiled = Compile("OPTION ARITHMETIC NATIVE\nIF 0.1 + 0.2 = 0.3 THEN PRINT \"equal\" ELSE PRINT \"not equal\"");
+        compiled.NativeArithmetic.Should().BeTrue();
+        var back = BytecodeSerializer.Deserialize(BytecodeSerializer.Serialize(compiled));
+        back.NativeArithmetic.Should().BeTrue();
+        RunCompiled(back).Should().Be("not equal\n");
+    }
+
+    [Fact]
     public void RoundTripStringConstantsAndPi()
     {
         var compiled = Compile("PRINT \"hello\"\nPRINT PI");

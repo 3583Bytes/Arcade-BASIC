@@ -9,10 +9,10 @@ public sealed partial class BasicInterpreter
 {
     private FlowControl ExecSetBounds(SetBoundsStmt sb, ActivationRecord frame)
     {
-        var l = GraphicsState.ToCoord(EvalNumeric(sb.Left, frame));
-        var r = GraphicsState.ToCoord(EvalNumeric(sb.Right, frame));
-        var b = GraphicsState.ToCoord(EvalNumeric(sb.Bottom, frame));
-        var t = GraphicsState.ToCoord(EvalNumeric(sb.Top, frame));
+        var l = GraphicsState.ToCoord(EvalNumber(sb.Left, frame));
+        var r = GraphicsState.ToCoord(EvalNumber(sb.Right, frame));
+        var b = GraphicsState.ToCoord(EvalNumber(sb.Bottom, frame));
+        var t = GraphicsState.ToCoord(EvalNumber(sb.Top, frame));
         switch (sb.Object)
         {
             case GfxRectKind.Window: _gfx.SetWindow(l, r, b, t); break;
@@ -34,7 +34,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecSetStyle(SetStyleStmt ss, ActivationRecord frame)
     {
-        var n = GraphicsState.ToIndex(EvalNumeric(ss.Index, frame));
+        var n = GraphicsState.ToIndex(EvalNumber(ss.Index, frame));
         if (ss.Prim == GfxStyleKind.Point) { _gfx.PointStyle = n; _graphics.SetPointStyle(n); }
         else { _gfx.LineStyle = n; _graphics.SetLineStyle(n); }
         return FlowControl.Continue;
@@ -42,7 +42,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecSetColor(SetColorStmt scl, ActivationRecord frame)
     {
-        var n = GraphicsState.ToIndex(EvalNumeric(scl.Index, frame));
+        var n = GraphicsState.ToIndex(EvalNumber(scl.Index, frame));
         switch (scl.Target)
         {
             case GfxColorKind.Point: _gfx.PointColor = n; _graphics.SetColor(GfxColorTarget.Point, n); break;
@@ -59,8 +59,8 @@ public sealed partial class BasicInterpreter
         foreach (var c in g.Points)
         {
             pts.Add(new GfxPoint(
-                GraphicsState.ToCoord(EvalNumeric(c.X, frame)),
-                GraphicsState.ToCoord(EvalNumeric(c.Y, frame))));
+                GraphicsState.ToCoord(EvalNumber(c.X, frame)),
+                GraphicsState.ToCoord(EvalNumber(c.Y, frame))));
         }
         switch (g.Kind)
         {
@@ -74,8 +74,8 @@ public sealed partial class BasicInterpreter
     private FlowControl ExecGraphText(GraphTextStmt gt, ActivationRecord frame)
     {
         var at = new GfxPoint(
-            GraphicsState.ToCoord(EvalNumeric(gt.AtX, frame)),
-            GraphicsState.ToCoord(EvalNumeric(gt.AtY, frame)));
+            GraphicsState.ToCoord(EvalNumber(gt.AtX, frame)),
+            GraphicsState.ToCoord(EvalNumber(gt.AtY, frame)));
         string text;
         if (gt.Image is null)
         {
@@ -99,11 +99,11 @@ public sealed partial class BasicInterpreter
         var q = (GfxQuery)ag.Object;
         for (var i = 0; i < ag.Targets.Count; i++)
         {
-            WriteAssignableTarget(ag.Targets[i], _gfx.Query(q, i, _graphics), frame);
+            WriteAssignableTarget(ag.Targets[i], _gfx.Query(q, i, _graphics, _native), frame);
         }
         // A status-clause always reports success (0) for the values we answer.
         if (ag.Status is not null)
-            WriteAssignableTarget(ag.Status, new NumericValue(GraphicsState.FromCoord(0)), frame);
+            WriteAssignableTarget(ag.Status, NumericValue.Zeroed(_native), frame);
         return FlowControl.Continue;
     }
 }

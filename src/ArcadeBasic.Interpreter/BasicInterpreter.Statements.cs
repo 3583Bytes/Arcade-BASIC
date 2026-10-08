@@ -87,7 +87,7 @@ public sealed partial class BasicInterpreter
                     break;
 
                 case PrintTab t:
-                    var target = (int)EvalNumeric(t.Column, frame) - 1;
+                    var target = EvalInt(t.Column, frame) - 1;
                     if (target < 0) target = 0;
                     if (target > col)
                     {
@@ -183,7 +183,7 @@ public sealed partial class BasicInterpreter
                 }
                 else if (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                 {
-                    parsed[i] = new NumericValue(bd);
+                    parsed[i] = NumericValue.From(bd, _native);
                 }
                 else
                 {
@@ -256,7 +256,7 @@ public sealed partial class BasicInterpreter
                     throw new BasicRuntimeException(5002,
                         $"READ: data item '{item.Text}' is not numeric");
                 }
-                value = new NumericValue(bd);
+                value = NumericValue.From(bd, _native);
             }
             WriteAssignableTarget(target, value, frame);
         }
@@ -292,7 +292,7 @@ public sealed partial class BasicInterpreter
         // drawn so far (the console backend paints here; the IDE redraws on its
         // own pump), then pause.
         _graphics.Flush();
-        var secs = (double)EvalNumeric(slp.Seconds, frame);
+        var secs = EvalNumber(slp.Seconds, frame).D;
         if (secs <= 0) return FlowControl.Continue;
         // Sleep in short slices so a cancellation (e.g. the IDE's Stop) is
         // observed promptly rather than after the full delay.
@@ -311,8 +311,8 @@ public sealed partial class BasicInterpreter
     private FlowControl ExecSound(SoundStmt snd, ActivationRecord frame)
     {
         _graphics.Flush();   // a tone is a frame boundary like SLEEP
-        var freq = (double)EvalNumeric(snd.Frequency, frame);
-        var dur = (double)EvalNumeric(snd.Duration, frame);
+        var freq = EvalNumber(snd.Frequency, frame).D;
+        var dur = EvalNumber(snd.Duration, frame).D;
         _audioState.EmitSound(freq, dur, _audio);
         return FlowControl.Continue;
     }
@@ -345,8 +345,8 @@ public sealed partial class BasicInterpreter
             var upper = new int[rank];
             for (var i = 0; i < rank; i++)
             {
-                lower[i] = spec.Bounds[i].Lower is null ? _optionBase : (int)EvalNumeric(spec.Bounds[i].Lower!, frame);
-                upper[i] = (int)EvalNumeric(spec.Bounds[i].Upper, frame);
+                lower[i] = spec.Bounds[i].Lower is null ? _optionBase : EvalInt(spec.Bounds[i].Lower!, frame);
+                upper[i] = EvalInt(spec.Bounds[i].Upper, frame);
                 if (upper[i] < lower[i])
                 {
                     throw new BasicRuntimeException(6001,
@@ -356,8 +356,7 @@ public sealed partial class BasicInterpreter
             var bounds = new Bounds(lower, upper);
             Value array = spec.IsString
                 ? new StringArrayValue(new string[bounds.Length], bounds)
-                : new NumericArrayValue(new BigDecimal[bounds.Length], bounds);
-            // Initialize numeric arrays to BigDecimal.Zero (default(BigDecimal) is 0 already).
+                : NumericArrayValue.Create(bounds, _native);
             WriteSlot(frame, sym.OwnerScope!, sym.Slot, array);
         }
         return FlowControl.Continue;
@@ -387,7 +386,7 @@ public sealed partial class BasicInterpreter
 
     private static bool Truthy(Value v) => v switch
     {
-        NumericValue n => n.V != BigDecimal.Zero,
+        NumericValue n => !n.IsZero,
         StringValue s => s.V.Length > 0,
         _ => false,
     };
@@ -396,31 +395,34 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecFor(ForStmt f, ActivationRecord frame)
     {
-        var from = EvalNumeric(f.From, frame);
-        var to = EvalNumeric(f.To, frame);
-        var step = f.Step is null ? BigDecimal.One : EvalNumeric(f.Step, frame);
-        if (step == BigDecimal.Zero)
+        // ISO 10279 §8.3.5 defines FOR as LET own1 = limit, LET own2 = step,
+        // LET v = initial, then DO UNTIL (v - own1) * SGN(own2) > 0 … LET v = v + own2.
+        // So limit and step are evaluated once, in that order, and the increment
+        // reads v's current value (a body that assigns v steers the loop).
+        var to = EvalNumber(f.To, frame);
+        var step = f.Step is null ? NumericValue.From(1, _native) : EvalNumber(f.Step, frame);
+        if (step.IsZero)
             throw new BasicRuntimeException(6002, "FOR step cannot be zero");
+        var from = EvalNumber(f.From, frame);
 
         // The loop variable is resolved to a slot in the same scope as `frame`.
         var resolved = (ResolvedVariable)_info.Resolve(f.Variable);
-        WriteSlot(frame, resolved.Symbol.OwnerScope!, resolved.Symbol.Slot, new NumericValue(from));
+        var owner = resolved.Symbol.OwnerScope!;
+        var slot = resolved.Symbol.Slot;
+        WriteSlot(frame, owner, slot, from);
 
         while (true)
         {
             _cancel.ThrowIfCancellationRequested();
-            var current = ((NumericValue)ReadSlot(frame, resolved.Symbol.OwnerScope!,
-                resolved.Symbol.Slot, false)).V;
-            if (step > BigDecimal.Zero && current > to) break;
-            if (step < BigDecimal.Zero && current < to) break;
+            var cmp = Numbers.Compare((NumericValue)ReadSlot(frame, owner, slot, false), to);
+            if (step.IsNegative ? cmp < 0 : cmp > 0) break;
 
             var fc = ExecuteStatementList(f.Body, frame);
             if (fc is FlowControl.Exit ex && ex.Kind == ExitKind.For) return FlowControl.Continue;
             if (fc is FlowControl.End or FlowControl.Stop or FlowControl.Return) return fc;
             if (fc is FlowControl.Goto or FlowControl.Gosub) return fc;
 
-            var next = current + step;
-            WriteSlot(frame, resolved.Symbol.OwnerScope!, resolved.Symbol.Slot, new NumericValue(next));
+            WriteSlot(frame, owner, slot, Numbers.Add((NumericValue)ReadSlot(frame, owner, slot, false), step));
         }
         return FlowControl.Continue;
     }
@@ -489,7 +491,7 @@ public sealed partial class BasicInterpreter
                     var hi = EvalExpr(cr.Hi, frame);
                     if (subj is NumericValue n && lo is NumericValue ln && hi is NumericValue hn)
                     {
-                        return n.V >= ln.V && n.V <= hn.V;
+                        return Numbers.Compare(n, ln) >= 0 && Numbers.Compare(n, hn) <= 0;
                     }
                     if (subj is StringValue ss && lo is StringValue sl && hi is StringValue sh)
                     {
@@ -510,7 +512,7 @@ public sealed partial class BasicInterpreter
     private static bool ValueEquals(Value a, Value b) =>
         (a, b) switch
         {
-            (NumericValue x, NumericValue y) => x.V == y.V,
+            (NumericValue x, NumericValue y) => Numbers.Compare(x, y) == 0,
             (StringValue x, StringValue y) => x.V == y.V,
             _ => false,
         };
@@ -518,28 +520,22 @@ public sealed partial class BasicInterpreter
     private static bool CompareWithOp(Value a, Value b, BinaryOp op) =>
         (a, b) switch
         {
-            (NumericValue x, NumericValue y) => op switch
-            {
-                BinaryOp.Equal => x.V == y.V,
-                BinaryOp.NotEqual => x.V != y.V,
-                BinaryOp.Less => x.V < y.V,
-                BinaryOp.LessEqual => x.V <= y.V,
-                BinaryOp.Greater => x.V > y.V,
-                BinaryOp.GreaterEqual => x.V >= y.V,
-                _ => false,
-            },
-            (StringValue x, StringValue y) => op switch
-            {
-                BinaryOp.Equal => x.V == y.V,
-                BinaryOp.NotEqual => x.V != y.V,
-                BinaryOp.Less => string.CompareOrdinal(x.V, y.V) < 0,
-                BinaryOp.LessEqual => string.CompareOrdinal(x.V, y.V) <= 0,
-                BinaryOp.Greater => string.CompareOrdinal(x.V, y.V) > 0,
-                BinaryOp.GreaterEqual => string.CompareOrdinal(x.V, y.V) >= 0,
-                _ => false,
-            },
+            (NumericValue x, NumericValue y) => Holds(Numbers.Compare(x, y), op),
+            (StringValue x, StringValue y) => Holds(string.CompareOrdinal(x.V, y.V), op),
             _ => false,
         };
+
+    /// <summary>Whether a three-way comparison result satisfies relational <paramref name="op"/>.</summary>
+    private static bool Holds(int cmp, BinaryOp op) => op switch
+    {
+        BinaryOp.Equal => cmp == 0,
+        BinaryOp.NotEqual => cmp != 0,
+        BinaryOp.Less => cmp < 0,
+        BinaryOp.LessEqual => cmp <= 0,
+        BinaryOp.Greater => cmp > 0,
+        BinaryOp.GreaterEqual => cmp >= 0,
+        _ => false,
+    };
 
     // -- CALL / function invocation --------------------------------------
 
@@ -561,7 +557,7 @@ public sealed partial class BasicInterpreter
         // Function-name slot was allocated *after* params at sema time.
         var nameSlot = ((VariableSymbol)fs.BodyScope.LocalLookup(Scope.Key(fs.Name, fs.IsString))!).Slot;
         var rv = InvokeSubOrFunction(fs.BodyScope, fs.Stmt.Params, args, fs.Stmt.Body, returnSlot: nameSlot);
-        return rv ?? (fs.IsString ? StringValue.Empty : NumericValue.Zero);
+        return rv ?? (fs.IsString ? StringValue.Empty : NumericValue.Zeroed(_native));
     }
 
     private Value? InvokeSubOrFunction(Scope bodyScope, IReadOnlyList<Param> ps, Value[] args, IReadOnlyList<Stmt> body, int returnSlot)
@@ -606,9 +602,9 @@ public sealed partial class BasicInterpreter
             // For Phase 3 we evaluate the body and return zero/empty if no assignment
             // captures it. (A follow-up will tighten this.)
             ExecuteStatementList(ds.Stmt.MultiLineBody, defFrame);
-            return ds.IsString ? StringValue.Empty : NumericValue.Zero;
+            return ds.IsString ? StringValue.Empty : NumericValue.Zeroed(_native);
         }
-        return ds.IsString ? StringValue.Empty : NumericValue.Zero;
+        return ds.IsString ? StringValue.Empty : NumericValue.Zeroed(_native);
     }
 
     private Value CallBuiltin(BuiltinSymbol b, Value[] args)
@@ -619,13 +615,9 @@ public sealed partial class BasicInterpreter
         switch (b.Name.ToUpperInvariant())
         {
             case "EXTYPE":
-                return _currentException is null
-                    ? NumericValue.Zero
-                    : new NumericValue(BigDecimal.Parse(_currentException.Type.ToString()));
+                return NumericValue.From(_currentException?.Type ?? 0, _native);
             case "EXLINE":
-                return _currentException is null
-                    ? NumericValue.Zero
-                    : new NumericValue(BigDecimal.Parse(_currentException.Line.ToString()));
+                return NumericValue.From(_currentException?.Line ?? 0, _native);
             case "EXTEXT":
                 return _currentException is null
                     ? StringValue.Empty
@@ -640,7 +632,7 @@ public sealed partial class BasicInterpreter
         {
             throw new BasicRuntimeException(0, $"builtin '{b.Name}' has no implementation");
         }
-        return fn(args);
+        return fn(args, _native);
     }
 
     // -- Array read/write ------------------------------------------------
@@ -652,7 +644,7 @@ public sealed partial class BasicInterpreter
         {
             if (arrVal is NumericArrayValue narr)
             {
-                return new NumericValue(narr.Data[narr.Bounds.IndexOf(EvalIndices(indices, frame))]);
+                return narr[narr.Bounds.IndexOf(EvalIndices(indices, frame))];
             }
             if (arrVal is StringArrayValue sarr)
             {
@@ -678,7 +670,7 @@ public sealed partial class BasicInterpreter
             if (arrVal is NumericArrayValue narr)
             {
                 var idx = narr.Bounds.IndexOf(EvalIndices(indices, frame));
-                narr.Data[idx] = ((NumericValue)value).V;
+                narr[idx] = (NumericValue)value;
                 return;
             }
             if (arrVal is StringArrayValue sarr)
@@ -702,7 +694,7 @@ public sealed partial class BasicInterpreter
     private int[] EvalIndices(IReadOnlyList<Expr> indices, ActivationRecord frame)
     {
         var arr = new int[indices.Count];
-        for (var i = 0; i < indices.Count; i++) arr[i] = (int)EvalNumeric(indices[i], frame);
+        for (var i = 0; i < indices.Count; i++) arr[i] = EvalInt(indices[i], frame);
         return arr;
     }
 }

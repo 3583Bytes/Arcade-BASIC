@@ -29,6 +29,7 @@ public sealed class Analyzer
     public const string WarnImplicitVariable = "FB0308";
     public const string ErrInvalidStringOp = "FB0309";
     public const string ErrGraphics = "FB0310";
+    public const string ErrArithmeticConflict = "FB0311";
 
     private readonly DiagnosticBag _diags;
     private readonly Dictionary<Expr, ResolvedRef> _resolutions = new(ReferenceEqualityComparer.Instance);
@@ -37,6 +38,7 @@ public sealed class Analyzer
     private readonly List<DataItem> _dataPool = new();
     private readonly Dictionary<ModuleStmt, Scope> _moduleScopes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CallStmt, SubSymbol> _callTargets = new(ReferenceEqualityComparer.Instance);
+    private OptionArithmeticStmt? _arithmetic;
 
     private Analyzer(DiagnosticBag diagnostics)
     {
@@ -60,6 +62,7 @@ public sealed class Analyzer
             LineLabels = a._labels,
             CallTargets = a._callTargets,
             ModuleScopes = a._moduleScopes,
+            Arithmetic = a._arithmetic?.Mode == ArithmeticMode.Native ? ArithmeticMode.Native : ArithmeticMode.Decimal,
         };
     }
 
@@ -190,6 +193,32 @@ public sealed class Analyzer
             case ModuleStmt mod:
                 Pass1Module(mod, scope);
                 break;
+
+            case OptionArithmeticStmt oa:
+                DeclareArithmetic(oa);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// ISO 10279 scopes OPTION ARITHMETIC to its program-unit; here the engines
+    /// run one numeric representation for the whole program, so the option
+    /// applies program-wide and units that name different modes are rejected
+    /// (FIXED, not implemented, counts as DECIMAL).
+    /// </summary>
+    private void DeclareArithmetic(OptionArithmeticStmt oa)
+    {
+        static bool IsNative(OptionArithmeticStmt s) => s.Mode == ArithmeticMode.Native;
+        if (_arithmetic is null)
+        {
+            _arithmetic = oa;
+        }
+        else if (IsNative(_arithmetic) != IsNative(oa))
+        {
+            _diags.Error(ErrArithmeticConflict, oa.Span,
+                $"OPTION ARITHMETIC {oa.Mode.ToString().ToUpperInvariant()} conflicts with the earlier " +
+                $"OPTION ARITHMETIC {_arithmetic.Mode.ToString().ToUpperInvariant()}; " +
+                "one program can't mix decimal and native arithmetic");
         }
     }
 

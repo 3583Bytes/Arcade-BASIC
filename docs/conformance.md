@@ -31,7 +31,11 @@ The **Real-time** module (ANSI X3.113 §14) is a different beast: parallel secti
 
 **IMPLEMENTATION-DEFINED:** PRINT output rounds to **9 significant digits**. ISO 10279 requires at least 6. Internal computation keeps full precision; only the display is rounded. `PRINT USING` uses its picture string verbatim and is unaffected.
 
-**DEVIATION:** `OPTION ARITHMETIC FIXED` is parsed but currently treated as a no-op (still decimal arithmetic). The fixed-decimal subset was deferred per the project plan.
+**IMPLEMENTATION-DEFINED:** `OPTION ARITHMETIC NATIVE` (§5.6) selects IEEE 754 binary64 (`double`): ~15–17 significant digits and a range of ~2.2E-308 to ~1.8E308, well past the standard's minimum of six digits and 2E-38 to 1E+38. Every number the program creates — literals, `INPUT`/`READ`/`DATA` items, supplied-function results, array elements — is a double, and arithmetic runs in hardware; PRINT still rounds to 9 significant digits, so most programs print identically under both modes. Decimal fractions are no longer exact (`0.1 + 0.2 = 0.3` is false), integers are exact only up to 2^53, and a result past the double range raises exception **1002** (decimal arithmetic is unbounded, so it never overflows). `MAT` operations compute in decimal and store the result back as doubles. INTERNAL files written under one mode read back under the other (the record holds the shortest decimal that round-trips the double). Typical speed-up over `DECIMAL` is 2–8× on the tree-walker (largest for trig/`SQR`/array-heavy code) and 1.3–4× on the VM.
+
+**DEVIATION:** ISO 10279 scopes `OPTION ARITHMETIC` to its program-unit; here it applies to the **whole program**, wherever it appears (the main program or a `MODULE`). Units that name different modes are rejected at analysis time (`FB0311`), so a program never mixes representations.
+
+**DEVIATION:** `OPTION ARITHMETIC FIXED` is parsed but runs as `DECIMAL`. The fixed-decimal subset was deferred per the project plan.
 
 ## Strings
 
@@ -61,7 +65,7 @@ STOP / END / RUN
 RANDOMIZE [seed]
 REM / !
 DIM
-OPTION BASE 0|1 / OPTION ARITHMETIC ...   (ARITHMETIC is no-op)
+OPTION BASE 0|1 / OPTION ARITHMETIC DECIMAL|NATIVE   (FIXED runs as DECIMAL)
 IF / THEN / ELSE / ELSEIF / END IF    (block and single-line)
 FOR / NEXT / EXIT FOR
 DO / LOOP (WHILE/UNTIL pre or post) / EXIT DO
@@ -91,6 +95,18 @@ back to the statement after the `ON`. The bytecode VM lowers the statement to a
 compare-and-jump chain (the index rounded via the `ROUND` builtin), so `run`,
 `vm`, and `build` produce identical output.
 
+### `FOR` / `NEXT`
+
+Follows the §8.3.5 equivalence on both engines: the limit and the step are
+evaluated **once**, on entry (limit first, then step, then the initial value),
+and `NEXT` adds the step to the control variable's *current* value — so a body
+that assigns the control variable steers the loop. After a loop that runs to
+completion the variable holds the first value past the limit.
+
+**DEVIATION:** a zero step raises exception **6002** ("FOR step cannot be zero")
+when the loop is entered. The equivalence's exit test `(v - limit) * SGN(step) > 0`
+never fires for a zero step, so the standard would loop forever.
+
 ### Bare `IF cond THEN <line>`
 
 `IF cond THEN 1990` is supported as the ISO shorthand for an implicit `GOTO`: a bare line-number in the THEN (or ELSE) arm of a single-line `IF` parses to a `GotoStmt`. `IF cond THEN 100 ELSE 200` works too. No statement otherwise begins with a numeric literal, so the form is unambiguous.
@@ -110,7 +126,7 @@ Cross-section jumps (e.g. into an `END IF` label from inside an `ELSE` arm) are 
 
 | Op | Form | Notes |
 |---|---|---|
-| `^` | numeric ^ numeric | Integer exponents use `BigDecimal.Pow`; non-integer exponents go through `double` |
+| `^` | numeric ^ numeric | Integer exponents are exact under `DECIMAL` (a negative one is a reciprocal rounded like `/`); non-integer exponents go through `double`. A negative base with a non-integer exponent raises 3002, zero to a negative power 3003 |
 | `*` `/` | numeric only | `*` capped at 40 significant digits, `/` at 30 (see Numeric representation) |
 | `MOD` `REMAINDER` | numeric, both as operators and as 2-arg builtins | `MOD` follows mathematical modulo (result has sign of divisor); `REMAINDER` has sign of dividend, per spec |
 | `+` `-` | numeric only | **`+` is rejected for strings** (see DEVIATION above) |
@@ -145,6 +161,10 @@ Constants:           PI EPS INF MAXNUM
 
 Extensions (non-ISO): INKEY$   ← Microsoft BASIC (see "Extensions" below)
 ```
+
+`STR$(x)` is the string `PRINT` shows for `x` without its leading and trailing spaces (§6.4), so it rounds to the same 9 significant digits: `STR$(1/3)` is `"0.33333333"`.
+
+Domain errors raise the §5.4 exceptions: `SQR` of a negative (3005), `ASIN`/`ACOS` outside [-1, 1] (3007), and a non-finite result from any supplied function (1003). `LOG`/`LOG2`/`LOG10` of a non-positive argument raises 2001 (the standard's code is 3004).
 
 **IMPLEMENTATION-DEFINED:** `RND` takes 0 or 1 arguments. The argument is **ignored**; every call advances the underlying PRNG. ISO permits dialect-specific behaviour; MS-BASIC's `RND(0) = last value` is not implemented.
 

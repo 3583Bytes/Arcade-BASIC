@@ -211,6 +211,7 @@ public sealed class BasicCompiler
             Defs = compiledDefs,
             BuiltinNames = _builtinNames,
             DataPool = dataPool,
+            NativeArithmetic = _info.Arithmetic == ArithmeticMode.Native,
         };
     }
 
@@ -1091,55 +1092,45 @@ public sealed class BasicCompiler
         var slot = resolved.Symbol.Slot;
         var ownerScope = resolved.Symbol.OwnerScope!;
 
-        // Initialize: var = from
+        // ISO 10279 §8.3.5 defines FOR as LET own1 = limit, LET own2 = step,
+        // LET v = initial, then DO UNTIL (v - own1) * SGN(own2) > 0 … LET v = v + own2.
+        // So limit and step are evaluated once, in that order, into hidden temps,
+        // and the increment reads v's current value (a body that assigns v steers
+        // the loop). Mirrors the tree-walker's ExecFor.
+        var limitSlot = AllocTemp();
+        var stepSlot = AllocTemp();
+        CompileExpr(f.To);
+        if (f.Step is null) _current.Emit(Opcode.LoadOne);
+        else CompileExpr(f.Step);
+        _current.Emit(Opcode.ForPrep); _current.EmitU32(limitSlot); _current.EmitU32(stepSlot);
         CompileExpr(f.From);
         EmitStoreSymbolSlot(ownerScope, slot);
-
-        // Compute step (default 1) and store in a hidden temporary.
-        // For simplicity, we re-evaluate the step each iteration via a separate
-        // local-emission strategy. Here we just inline the step-known-positive
-        // case: assume step >= 0 and check var <= to. Negative steps fall back
-        // to runtime detection on each iteration.
-        // Simpler: emit a guard `if step > 0 && var > to: exit` style.
 
         _exitForJumps.Push([]);
         var loopStart = _current.CodeLength;
 
-        // Guard — depends on step's sign. For correctness we'd need a two-branch
-        // check; for Phase-9 simplicity we emit a runtime test that handles
-        // both signs:  if (step > 0 && var > to) exit;  if (step < 0 && var < to) exit
-        // (Compile each comparison; logical AND/OR on top of stack.)
-        CompileForGuard(f, ownerScope, slot);
+        EmitLoadSymbolSlot(ownerScope, slot);
+        _current.Emit(Opcode.ForTest); _current.EmitU32(limitSlot); _current.EmitU32(stepSlot);
         var exitJump = _current.EmitJumpPlaceholder(Opcode.JumpIfTrue);
 
-        // Body
         CompileStatements(f.Body);
 
-        // Increment: var = var + step
+        // NEXT: v = v + own2
         EmitLoadSymbolSlot(ownerScope, slot);
-        if (f.Step is null) _current.Emit(Opcode.LoadOne);
-        else CompileExpr(f.Step);
+        _current.Emit(Opcode.LoadLocal); _current.EmitU32(stepSlot);
         _current.Emit(Opcode.Add);
         EmitStoreSymbolSlot(ownerScope, slot);
-
-        // Loop back
         _current.EmitJumpToAbsolute(Opcode.Jump, loopStart);
 
-        // Patch exit
         _current.PatchJump(exitJump);
         foreach (var j in _exitForJumps.Pop()) _current.PatchJump(j);
     }
 
-    private void CompileForGuard(ForStmt f, Scope ownerScope, int slot)
-    {
-        // exit if (var - to) * sign(step) > 0, where sign(step) is +1 or -1.
-        // Phase-9 simplification: only handle constant +1 step (default) cleanly.
-        // For non-constant or non-positive steps the guard tests the positive-step path,
-        // which means negative-step loops over-iterate. Document as VM limitation.
-        EmitLoadSymbolSlot(ownerScope, slot);
-        CompileExpr(f.To);
-        _current.Emit(Opcode.Gt);
-    }
+    /// <summary>Reserve a hidden slot at the end of the current chunk's frame for a
+    /// compiler-introduced temporary (FOR limit/step, SELECT CASE subject) that sema
+    /// doesn't know about. Every call gets a fresh slot, so nested constructs — and
+    /// recursive calls, which get their own frame — never share one.</summary>
+    private uint AllocTemp() => (uint)_current.FrameSize++;
 
     private void CompileDo(DoStmt d)
     {
@@ -1175,8 +1166,13 @@ public sealed class BasicCompiler
 
     private void CompileSelect(SelectStmt s)
     {
-        // Strategy: compute subject once, store in a temp local at the end of frame.
-        // Simpler for Phase-9: re-evaluate subject for each comparison.
+        // The subject is evaluated exactly once (like the tree-walker) and parked in
+        // a temp, so a side-effecting subject — SELECT CASE INKEY$, a FUNCTION call —
+        // isn't re-run for every CASE comparison.
+        var subjectSlot = AllocTemp();
+        CompileExpr(s.Subject);
+        _current.Emit(Opcode.StoreLocal); _current.EmitU32(subjectSlot);
+
         _exitSelectJumps.Push([]);
         var jumpsToEnd = new List<int>();
 
@@ -1186,7 +1182,7 @@ public sealed class BasicCompiler
             var matchJumps = new List<int>();
             foreach (var spec in c.Values)
             {
-                CompileExpr(s.Subject);
+                _current.Emit(Opcode.LoadLocal); _current.EmitU32(subjectSlot);
                 switch (spec)
                 {
                     case CaseValue cv:
@@ -1194,10 +1190,10 @@ public sealed class BasicCompiler
                         _current.Emit(Opcode.Eq);
                         break;
                     case CaseRange cr:
-                        // (subj >= lo) AND (subj <= hi) — re-evaluate subject for hi check
+                        // (subj >= lo) AND (subj <= hi)
                         CompileExpr(cr.Lo);
                         _current.Emit(Opcode.Ge);
-                        CompileExpr(s.Subject);
+                        _current.Emit(Opcode.LoadLocal); _current.EmitU32(subjectSlot);
                         CompileExpr(cr.Hi);
                         _current.Emit(Opcode.Le);
                         _current.Emit(Opcode.And);

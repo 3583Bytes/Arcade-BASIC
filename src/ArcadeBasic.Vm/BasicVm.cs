@@ -46,6 +46,15 @@ public sealed class BasicVm
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
+    /// <summary>OPTION ARITHMETIC NATIVE: numbers the program creates (constants,
+    /// INPUT/READ data, builtin results) are doubles instead of decimals.</summary>
+    private readonly bool _native;
+    private readonly NumericValue _zero;
+    private readonly NumericValue _one;
+
+    /// <summary>Each chunk's numeric constant pool, materialised once in the program's representation.</summary>
+    private readonly Dictionary<Chunk, NumericValue[]> _constants = new(ReferenceEqualityComparer.Instance);
+
     public BasicVm(BcProgram program, TextWriter @out, TextReader @in,
         IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
         IAudioDevice? audio = null)
@@ -56,6 +65,9 @@ public sealed class BasicVm
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _audio = audio ?? NullAudioDevice.Instance;
+        _native = program.NativeArithmetic;
+        _zero = NumericValue.Zeroed(_native);
+        _one = NumericValue.From(1, _native);
     }
 
     public int Run()
@@ -88,6 +100,7 @@ public sealed class BasicVm
     private bool ExecuteChunk(Chunk chunk, ActivationRecord frame, ActivationRecord programFrame)
     {
         var code = chunk.Code;
+        var constants = ConstantsOf(chunk);
         var stack = new Stack<Value>(64);
         var pc = 0;
         var col = 0; // current PRINT column for zone padding
@@ -118,11 +131,31 @@ public sealed class BasicVm
                     while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
                     return true;
                 case Opcode.Nop: break;
+                case Opcode.ForPrep:
+                    {
+                        var limitSlot = (int)ReadU32(code, ref pc);
+                        var stepSlot = (int)ReadU32(code, ref pc);
+                        var step = stack.Pop();
+                        var limit = stack.Pop();
+                        if (((NumericValue)step).IsZero)
+                            throw new BasicRuntimeException(6002, "FOR step cannot be zero");
+                        frame.Set(limitSlot, limit);
+                        frame.Set(stepSlot, step);
+                        break;
+                    }
+                case Opcode.ForTest:
+                    {
+                        var limit = (NumericValue)frame.Get((int)ReadU32(code, ref pc));
+                        var step = (NumericValue)frame.Get((int)ReadU32(code, ref pc));
+                        var cmp = Numbers.Compare((NumericValue)stack.Pop(), limit);
+                        stack.Push(NumericValue.Bool(step.IsNegative ? cmp < 0 : cmp > 0, _native));
+                        break;
+                    }
                 case Opcode.Sleep:
                     {
                         // Frame boundary: present what's drawn, then pause.
                         _graphics.Flush();
-                        var secs = (double)((NumericValue)stack.Pop()).V;
+                        var secs = ((NumericValue)stack.Pop()).D;
                         if (secs > 0)
                             System.Threading.Thread.Sleep((int)Math.Min(secs * 1000.0, int.MaxValue));
                         break;
@@ -132,8 +165,8 @@ public sealed class BasicVm
                 case Opcode.Sound:
                     {
                         _graphics.Flush();
-                        var dur = (double)((NumericValue)stack.Pop()).V;   // pushed last → on top
-                        var freq = (double)((NumericValue)stack.Pop()).V;
+                        var dur = ((NumericValue)stack.Pop()).D;   // pushed last → on top
+                        var freq = ((NumericValue)stack.Pop()).D;
                         _audioState.EmitSound(freq, dur, _audio);
                         break;
                     }
@@ -153,10 +186,10 @@ public sealed class BasicVm
                 case Opcode.GfxSetBounds:
                     {
                         var kind = (int)ReadU32(code, ref pc);
-                        var t = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
-                        var b = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
-                        var r = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
-                        var l = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        var t = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var b = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var r = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var l = GraphicsState.ToCoord((NumericValue)stack.Pop());
                         switch (kind)
                         {
                             case 0: _gfx.SetWindow(l, r, b, t); break;
@@ -176,7 +209,7 @@ public sealed class BasicVm
                 case Opcode.GfxSetStyle:
                     {
                         var prim = (int)ReadU32(code, ref pc);
-                        var n = GraphicsState.ToIndex(((NumericValue)stack.Pop()).V);
+                        var n = GraphicsState.ToIndex((NumericValue)stack.Pop());
                         if (prim == 0) { _gfx.PointStyle = n; _graphics.SetPointStyle(n); }
                         else { _gfx.LineStyle = n; _graphics.SetLineStyle(n); }
                         break;
@@ -184,7 +217,7 @@ public sealed class BasicVm
                 case Opcode.GfxSetColor:
                     {
                         var tgt = (GfxColorTarget)(int)ReadU32(code, ref pc);
-                        var n = GraphicsState.ToIndex(((NumericValue)stack.Pop()).V);
+                        var n = GraphicsState.ToIndex((NumericValue)stack.Pop());
                         switch (tgt)
                         {
                             case GfxColorTarget.Point: _gfx.PointColor = n; break;
@@ -203,8 +236,8 @@ public sealed class BasicVm
                         var pts = new GfxPoint[count];
                         for (var i = count - 1; i >= 0; i--)
                         {
-                            var y = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
-                            var x = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                            var y = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                            var x = GraphicsState.ToCoord((NumericValue)stack.Pop());
                             pts[i] = new GfxPoint(x, y);
                         }
                         switch (geom)
@@ -231,8 +264,8 @@ public sealed class BasicVm
                             var image = ((StringValue)stack.Pop()).V;
                             text = PictureFormat.Apply(PictureFormat.Parse(image), items);
                         }
-                        var ay = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
-                        var ax = GraphicsState.ToCoord(((NumericValue)stack.Pop()).V);
+                        var ay = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var ax = GraphicsState.ToCoord((NumericValue)stack.Pop());
                         _gfx.EmitText(new GfxPoint(ax, ay), text, _graphics);
                         break;
                     }
@@ -240,7 +273,7 @@ public sealed class BasicVm
                     {
                         var q = (GfxQuery)(int)ReadU32(code, ref pc);
                         var index = (int)ReadU32(code, ref pc);
-                        stack.Push(_gfx.Query(q, index, _graphics));
+                        stack.Push(_gfx.Query(q, index, _graphics, _native));
                         break;
                     }
 
@@ -253,19 +286,19 @@ public sealed class BasicVm
                     break;
 
                 case Opcode.LoadConstNumber:
-                    stack.Push(new NumericValue(chunk.Numbers[(int)ReadU32(code, ref pc)]));
+                    stack.Push(constants[(int)ReadU32(code, ref pc)]);
                     break;
                 case Opcode.LoadConstString:
                     stack.Push(new StringValue(chunk.Strings[(int)ReadU32(code, ref pc)]));
                     break;
-                case Opcode.LoadZero: stack.Push(NumericValue.Zero); break;
-                case Opcode.LoadOne: stack.Push(NumericValue.One); break;
-                case Opcode.LoadMinusOne: stack.Push(NumericValue.MinusOne); break;
+                case Opcode.LoadZero: stack.Push(_zero); break;
+                case Opcode.LoadOne: stack.Push(_one); break;
+                case Opcode.LoadMinusOne: stack.Push(NumericValue.Bool(true, _native)); break;
 
                 case Opcode.LoadLocal:
                     {
                         var slot = (int)ReadU32(code, ref pc);
-                        stack.Push(frame.GetOrDefault(slot, NumericValue.Zero));
+                        stack.Push(frame.GetOrDefault(slot, _zero));
                         break;
                     }
                 case Opcode.StoreLocal:
@@ -281,7 +314,7 @@ public sealed class BasicVm
                         var f = frame;
                         for (var i = 0; i < depth && f is not null; i++) f = f.Parent;
                         f ??= programFrame;
-                        stack.Push(f.GetOrDefault(slot, NumericValue.Zero));
+                        stack.Push(f.GetOrDefault(slot, _zero));
                         break;
                     }
                 case Opcode.StoreOuter:
@@ -295,25 +328,13 @@ public sealed class BasicVm
                         break;
                     }
 
-                case Opcode.Add: BinaryNumeric(stack, Numbers.Add); break;
-                case Opcode.Sub: BinaryNumeric(stack, Numbers.Subtract); break;
-                case Opcode.Mul: BinaryNumeric(stack, Numbers.Multiply); break;
-                case Opcode.Div: BinaryNumeric(stack, (a, b) =>
-                {
-                    if (b == BigDecimal.Zero) throw new BasicRuntimeException(1001, "division by zero");
-                    return BigDecimal.Divide(a, b, 30, RoundingMode.MidpointToEven);
-                }); break;
-                case Opcode.Pow: BinaryNumeric(stack, Pow); break;
-                case Opcode.Mod: BinaryNumeric(stack, (a, b) =>
-                {
-                    if (b == BigDecimal.Zero) throw new BasicRuntimeException(1001, "MOD by zero");
-                    return a - BigDecimal.Floor(a / b) * b;
-                }); break;
-                case Opcode.Rem: BinaryNumeric(stack, (a, b) =>
-                {
-                    if (b == BigDecimal.Zero) throw new BasicRuntimeException(1001, "REMAINDER by zero");
-                    return a - BigDecimal.Truncate(a / b) * b;
-                }); break;
+                case Opcode.Add: Arithmetic(stack, Numbers.Add); break;
+                case Opcode.Sub: Arithmetic(stack, Numbers.Subtract); break;
+                case Opcode.Mul: Arithmetic(stack, Numbers.Multiply); break;
+                case Opcode.Div: Arithmetic(stack, Numbers.Divide); break;
+                case Opcode.Pow: Arithmetic(stack, Numbers.Power); break;
+                case Opcode.Mod: Arithmetic(stack, Numbers.Mod); break;
+                case Opcode.Rem: Arithmetic(stack, Numbers.Remainder); break;
                 case Opcode.Concat:
                     {
                         var br = ((StringValue)stack.Pop()).V;
@@ -322,44 +343,30 @@ public sealed class BasicVm
                         break;
                     }
                 case Opcode.Neg:
-                    stack.Push(new NumericValue(-((NumericValue)stack.Pop()).V));
+                    stack.Push(Numbers.Negate((NumericValue)stack.Pop()));
                     break;
 
-                case Opcode.Eq: Compare(stack, (a, b) => a == b, (a, b) => a == b); break;
-                case Opcode.Ne: Compare(stack, (a, b) => a != b, (a, b) => a != b); break;
-                case Opcode.Lt: Compare(stack, (a, b) => a < b, (a, b) => string.CompareOrdinal(a, b) < 0); break;
-                case Opcode.Le: Compare(stack, (a, b) => a <= b, (a, b) => string.CompareOrdinal(a, b) <= 0); break;
-                case Opcode.Gt: Compare(stack, (a, b) => a > b, (a, b) => string.CompareOrdinal(a, b) > 0); break;
-                case Opcode.Ge: Compare(stack, (a, b) => a >= b, (a, b) => string.CompareOrdinal(a, b) >= 0); break;
+                case Opcode.Eq: Compare(stack, c => c == 0); break;
+                case Opcode.Ne: Compare(stack, c => c != 0); break;
+                case Opcode.Lt: Compare(stack, c => c < 0); break;
+                case Opcode.Le: Compare(stack, c => c <= 0); break;
+                case Opcode.Gt: Compare(stack, c => c > 0); break;
+                case Opcode.Ge: Compare(stack, c => c >= 0); break;
 
-                case Opcode.And: BinaryNumeric(stack, (a, b) =>
-                    a != BigDecimal.Zero && b != BigDecimal.Zero ? -BigDecimal.One : BigDecimal.Zero); break;
-                case Opcode.Or: BinaryNumeric(stack, (a, b) =>
-                    a != BigDecimal.Zero || b != BigDecimal.Zero ? -BigDecimal.One : BigDecimal.Zero); break;
-                case Opcode.Xor: BinaryNumeric(stack, (a, b) =>
-                    (a != BigDecimal.Zero) != (b != BigDecimal.Zero) ? -BigDecimal.One : BigDecimal.Zero); break;
+                case Opcode.And: Logical(stack, (a, b) => a && b); break;
+                case Opcode.Or: Logical(stack, (a, b) => a || b); break;
+                case Opcode.Xor: Logical(stack, (a, b) => a != b); break;
                 case Opcode.Not:
-                    {
-                        var v = ((NumericValue)stack.Pop()).V;
-                        stack.Push(v == BigDecimal.Zero ? NumericValue.One : NumericValue.Zero);
-                        break;
-                    }
-                case Opcode.Imp: BinaryNumeric(stack, (a, b) =>
-                    a == BigDecimal.Zero || b != BigDecimal.Zero ? -BigDecimal.One : BigDecimal.Zero); break;
-                case Opcode.Eqv: BinaryNumeric(stack, (a, b) =>
-                    (a != BigDecimal.Zero) == (b != BigDecimal.Zero) ? -BigDecimal.One : BigDecimal.Zero); break;
-                case Opcode.Band: BinaryNumeric(stack, (a, b) =>
-                    BigDecimal.Parse(((long)a & (long)b).ToString())); break;
-                case Opcode.Bor: BinaryNumeric(stack, (a, b) =>
-                    BigDecimal.Parse(((long)a | (long)b).ToString())); break;
-                case Opcode.Bxor: BinaryNumeric(stack, (a, b) =>
-                    BigDecimal.Parse(((long)a ^ (long)b).ToString())); break;
+                    stack.Push(NumericValue.From(((NumericValue)stack.Pop()).IsZero ? 1 : 0, _native));
+                    break;
+                case Opcode.Imp: Logical(stack, (a, b) => !a || b); break;
+                case Opcode.Eqv: Logical(stack, (a, b) => a == b); break;
+                case Opcode.Band: Bitwise(stack, (a, b) => a & b); break;
+                case Opcode.Bor: Bitwise(stack, (a, b) => a | b); break;
+                case Opcode.Bxor: Bitwise(stack, (a, b) => a ^ b); break;
                 case Opcode.Bnot:
-                    {
-                        var v = (long)((NumericValue)stack.Pop()).V;
-                        stack.Push(new NumericValue(BigDecimal.Parse((~v).ToString())));
-                        break;
-                    }
+                    stack.Push(NumericValue.From(~((NumericValue)stack.Pop()).ToInt64(), _native));
+                    break;
 
                 case Opcode.Jump:
                     {
@@ -370,13 +377,13 @@ public sealed class BasicVm
                 case Opcode.JumpIfTrue:
                     {
                         var off = ReadI32(code, ref pc);
-                        if (((NumericValue)stack.Pop()).V != BigDecimal.Zero) pc += off;
+                        if (!((NumericValue)stack.Pop()).IsZero) pc += off;
                         break;
                     }
                 case Opcode.JumpIfFalse:
                     {
                         var off = ReadI32(code, ref pc);
-                        if (((NumericValue)stack.Pop()).V == BigDecimal.Zero) pc += off;
+                        if (((NumericValue)stack.Pop()).IsZero) pc += off;
                         break;
                     }
                 case Opcode.GosubFlow:
@@ -408,15 +415,11 @@ public sealed class BasicVm
                         // so we intercept here before the BuiltinImpls dispatch.
                         if (string.Equals(name, "EXTYPE", StringComparison.OrdinalIgnoreCase))
                         {
-                            stack.Push(_currentException is null
-                                ? NumericValue.Zero
-                                : new NumericValue(BigDecimal.Parse(_currentException.Type.ToString(CultureInfo.InvariantCulture))));
+                            stack.Push(NumericValue.From(_currentException?.Type ?? 0, _native));
                         }
                         else if (string.Equals(name, "EXLINE", StringComparison.OrdinalIgnoreCase))
                         {
-                            stack.Push(_currentException is null
-                                ? NumericValue.Zero
-                                : new NumericValue(BigDecimal.Parse(_currentException.Line.ToString(CultureInfo.InvariantCulture))));
+                            stack.Push(NumericValue.From(_currentException?.Line ?? 0, _native));
                         }
                         else if (string.Equals(name, "EXTEXT", StringComparison.OrdinalIgnoreCase))
                         {
@@ -430,7 +433,7 @@ public sealed class BasicVm
                         }
                         else if (BuiltinImpls.All.TryGetValue(name, out var fn))
                         {
-                            stack.Push(fn(args));
+                            stack.Push(fn(args, _native));
                         }
                         else
                         {
@@ -464,7 +467,7 @@ public sealed class BasicVm
                         // Capture by re-running the chunk and reading the slot.
                         ExecuteChunk(fn.Body, fnFrame, programFrame);
                         stack.Push(fnFrame.GetOrDefault(fn.ReturnSlot,
-                            fn.IsString ? StringValue.Empty : NumericValue.Zero));
+                            fn.IsString ? StringValue.Empty : _zero));
                         break;
                     }
                 case Opcode.CallDef:
@@ -481,7 +484,7 @@ public sealed class BasicVm
                         for (var i = 0; i < argc; i++) defFrame.Set(i, args[i]);
                         ExecuteChunk(def.Body, defFrame, programFrame);
                         stack.Push(defFrame.GetOrDefault(def.ReturnSlot,
-                            def.IsString ? StringValue.Empty : NumericValue.Zero));
+                            def.IsString ? StringValue.Empty : _zero));
                         break;
                     }
                 case Opcode.LeaveSub:
@@ -522,7 +525,7 @@ public sealed class BasicVm
                     {
                         // BASIC TAB(n) is 1-based; clamp negatives to column 0,
                         // and never move backwards (TAB to before current column is a no-op).
-                        var target = (int)((NumericValue)stack.Pop()).V - 1;
+                        var target = ((NumericValue)stack.Pop()).ToInt32() - 1;
                         if (target < 0) target = 0;
                         if (target > col)
                         {
@@ -551,7 +554,7 @@ public sealed class BasicVm
                     break;
                 case Opcode.Cause:
                     {
-                        var type = (int)((NumericValue)stack.Pop()).V;
+                        var type = ((NumericValue)stack.Pop()).ToInt32();
                         throw new BasicRuntimeException(type, $"user-raised exception {type}");
                     }
                 case Opcode.Retry:
@@ -572,13 +575,13 @@ public sealed class BasicVm
                         var rectype = ReadU32(code, ref pc);
                         _ = organization; // SEQUENTIAL and STREAM both map to DisplayFile; RANDOM is unsupported.
                         var name = ((StringValue)stack.Pop()).V;
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         OpenChannel(channel, name, access, create, rectype);
                         break;
                     }
                 case Opcode.Close:
                     {
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         _channels.Close(channel);
                         break;
                     }
@@ -593,7 +596,7 @@ public sealed class BasicVm
                             kinds[i] = ReadU32(code, ref pc);
                             if (kinds[i] <= 1 || kinds[i] == 4) stackItemCount++;
                         }
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         var stackValues = new Value[stackItemCount];
                         for (var i = stackItemCount - 1; i >= 0; i--) stackValues[i] = stack.Pop();
                         PerformPrintFile(channel, kinds, stackValues);
@@ -611,7 +614,7 @@ public sealed class BasicVm
                                 IsString: ReadU32(code, ref pc) != 0,
                                 Rank: (int)ReadU32(code, ref pc));
                         }
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         var indices = new int[targetCount][];
                         for (var i = targetCount - 1; i >= 0; i--)
                         {
@@ -642,7 +645,7 @@ public sealed class BasicVm
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var rank = (int)ReadU32(code, ref pc);
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         var indices = PopIndices(stack, rank);
                         var file = _channels.Get(channel);
                         var line = file.ReadLine()
@@ -654,7 +657,7 @@ public sealed class BasicVm
                 case Opcode.WriteFile:
                     {
                         var itemCount = (int)ReadU32(code, ref pc);
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         var values = new Value[itemCount];
                         for (var i = itemCount - 1; i >= 0; i--) values[i] = stack.Pop();
                         PerformWriteFile(channel, values);
@@ -672,7 +675,7 @@ public sealed class BasicVm
                                 IsString: ReadU32(code, ref pc) != 0,
                                 Rank: (int)ReadU32(code, ref pc));
                         }
-                        var channel = (int)((NumericValue)stack.Pop()).V;
+                        var channel = ((NumericValue)stack.Pop()).ToInt32();
                         var indices = new int[targetCount][];
                         for (var i = targetCount - 1; i >= 0; i--) indices[i] = PopIndices(stack, descs[i].Rank);
                         PerformReadFile(channel, descs, indices, frame, programFrame);
@@ -748,7 +751,7 @@ public sealed class BasicVm
                                 var item = _program.DataPool[_dataCursor++];
                                 if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                                     throw new BasicRuntimeException(5002, $"MAT READ: '{item.Text}' is not numeric");
-                                narr.Data[i] = bd;
+                                narr[i] = new NumericValue(bd);
                             }
                         }
                         break;
@@ -760,9 +763,14 @@ public sealed class BasicVm
                         var slot = (int)ReadU32(code, ref pc);
                         var f = ResolveOuter(frame, programFrame, depth);
                         var arr = f.GetOrDefault(slot, NumericValue.Zero);
-                        if (arr is not (NumericArrayValue or StringArrayValue))
-                            throw new BasicRuntimeException(6004, "MAT operand: array has not been DIM-ed");
-                        stack.Push(arr);
+                        // Push a copy, like the tree-walker's MatRhsName: after MAT A = B the
+                        // two arrays must not share storage.
+                        stack.Push(arr switch
+                        {
+                            NumericArrayValue n => new NumericArrayValue((BigDecimal[])n.ToDecimals().Clone(), n.Bounds),
+                            StringArrayValue s => new StringArrayValue((string[])s.Data.Clone(), s.Bounds),
+                            _ => throw new BasicRuntimeException(6004, "MAT operand: array has not been DIM-ed"),
+                        });
                         break;
                     }
                 case Opcode.MatBinAdd: MatBinaryNumeric(stack, (a, ab, b, bb) => MatOps.ElementWise(a, ab, b, bb, (x, y) => x + y, "+")); break;
@@ -772,20 +780,20 @@ public sealed class BasicVm
                     {
                         var matrix = (NumericArrayValue)stack.Pop();
                         var scalar = ((NumericValue)stack.Pop()).V;
-                        stack.Push(new NumericArrayValue(MatOps.ScalarMultiply(scalar, matrix.Data), matrix.Bounds));
+                        stack.Push(new NumericArrayValue(MatOps.ScalarMultiply(scalar, matrix.ToDecimals()), matrix.Bounds));
                         break;
                     }
                 case Opcode.MatTrn:
                     {
                         var m = (NumericArrayValue)stack.Pop();
-                        var (data, bounds) = MatOps.Transpose(m.Data, m.Bounds);
+                        var (data, bounds) = MatOps.Transpose(m.ToDecimals(), m.Bounds);
                         stack.Push(new NumericArrayValue(data, bounds));
                         break;
                     }
                 case Opcode.MatInv:
                     {
                         var m = (NumericArrayValue)stack.Pop();
-                        stack.Push(new NumericArrayValue(MatOps.Inverse(m.Data, m.Bounds), m.Bounds));
+                        stack.Push(new NumericArrayValue(MatOps.Inverse(m.ToDecimals(), m.Bounds), m.Bounds));
                         break;
                     }
                 case Opcode.MatAssign:
@@ -798,6 +806,8 @@ public sealed class BasicVm
                             throw new BasicRuntimeException(0, "MAT assign: RHS is not a string array");
                         if (!isString && newArr is not NumericArrayValue)
                             throw new BasicRuntimeException(0, "MAT assign: RHS is not a numeric array");
+                        // MAT kernels compute in decimal; store the result in the program's representation.
+                        if (newArr is NumericArrayValue n) newArr = NumericArrayValue.FromDecimals(n.ToDecimals(), n.Bounds, _native);
                         ResolveOuter(frame, programFrame, depth).Set(slot, newArr);
                         break;
                     }
@@ -843,8 +853,8 @@ public sealed class BasicVm
                         var upper = new int[rank];
                         for (var i = rank - 1; i >= 0; i--)
                         {
-                            upper[i] = (int)((NumericValue)stack.Pop()).V;
-                            lower[i] = (int)((NumericValue)stack.Pop()).V;
+                            upper[i] = ((NumericValue)stack.Pop()).ToInt32();
+                            lower[i] = ((NumericValue)stack.Pop()).ToInt32();
                             if (upper[i] < lower[i])
                                 throw new BasicRuntimeException(6001,
                                     $"MAT REDIM: upper bound {upper[i]} less than lower bound {lower[i]}");
@@ -860,9 +870,9 @@ public sealed class BasicVm
                         }
                         else
                         {
-                            var newData = new BigDecimal[newBounds.Length];
-                            if (current is NumericArrayValue oldN) MatOps.PreserveNumericElements(oldN, newData, newBounds);
-                            target.Set(slot, new NumericArrayValue(newData, newBounds));
+                            var fresh = NumericArrayValue.Create(newBounds, _native);
+                            if (current is NumericArrayValue oldN) MatOps.PreserveNumericElements(oldN, fresh);
+                            target.Set(slot, fresh);
                         }
                         break;
                     }
@@ -871,7 +881,7 @@ public sealed class BasicVm
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var arr = ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero);
-                        if (arr is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.Data, narr.Bounds, FormatNumeric);
+                        if (arr is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.ToDecimals(), narr.Bounds, FormatNumeric);
                         else if (arr is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
                         else throw new BasicRuntimeException(6004, "MAT PRINT requires the target to be DIM-ed first");
                         col = 0;
@@ -926,7 +936,7 @@ public sealed class BasicVm
                         var slot = (int)ReadU32(code, ref pc);
                         var rank = (int)ReadU32(code, ref pc);
                         var isString = ReadU32(code, ref pc) != 0;
-                        AllocArray(stack, frame, slot, rank, isString);
+                        AllocArray(stack, frame, slot, rank, isString, _native);
                         break;
                     }
                 case Opcode.DimArrayOuter:
@@ -935,7 +945,7 @@ public sealed class BasicVm
                         var slot = (int)ReadU32(code, ref pc);
                         var rank = (int)ReadU32(code, ref pc);
                         var isString = ReadU32(code, ref pc) != 0;
-                        AllocArray(stack, ResolveOuter(frame, programFrame, depth), slot, rank, isString);
+                        AllocArray(stack, ResolveOuter(frame, programFrame, depth), slot, rank, isString, _native);
                         break;
                     }
                 case Opcode.LoadElement:
@@ -970,16 +980,16 @@ public sealed class BasicVm
                     }
 
                 case Opcode.LoadConstantPi:
-                    stack.Push(BuiltinImpls.EvalConstant("PI"));
+                    stack.Push(BuiltinImpls.EvalConstant("PI", _native));
                     break;
                 case Opcode.LoadConstantEps:
-                    stack.Push(BuiltinImpls.EvalConstant("EPS"));
+                    stack.Push(BuiltinImpls.EvalConstant("EPS", _native));
                     break;
                 case Opcode.LoadConstantInf:
-                    stack.Push(BuiltinImpls.EvalConstant("INF"));
+                    stack.Push(BuiltinImpls.EvalConstant("INF", _native));
                     break;
                 case Opcode.LoadConstantMaxnum:
-                    stack.Push(BuiltinImpls.EvalConstant("MAXNUM"));
+                    stack.Push(BuiltinImpls.EvalConstant("MAXNUM", _native));
                     break;
 
                 default:
@@ -1012,13 +1022,13 @@ public sealed class BasicVm
     /// <summary>Build a numeric or string constant array matching the
     /// given <paramref name="bounds"/>. Kind values match Parser.Ast.MatConstKind:
     /// 0=Identity (IDN), 1=Zeros (ZER), 2=Ones (CON), 3=NullString (NUL$).</summary>
-    private static Value BuildMatConst(uint kind, bool isString, Bounds bounds)
+    private Value BuildMatConst(uint kind, bool isString, Bounds bounds)
     {
         return (kind, isString) switch
         {
-            (0u, false) => new NumericArrayValue(MatOps.Identity(bounds), bounds),
-            (1u, false) => new NumericArrayValue(new BigDecimal[bounds.Length], bounds),
-            (2u, false) => new NumericArrayValue(MatOps.Fill(bounds, BigDecimal.One), bounds),
+            (0u, false) => NumericArrayValue.FromDecimals(MatOps.Identity(bounds), bounds, _native),
+            (1u, false) => NumericArrayValue.Create(bounds, _native),
+            (2u, false) => NumericArrayValue.FromDecimals(MatOps.Fill(bounds, BigDecimal.One), bounds, _native),
             (3u, true) => new StringArrayValue(FillStrings(bounds.Length, ""), bounds),
             _ => throw new BasicRuntimeException(0,
                 $"MAT constant kind {kind} not valid for {(isString ? "string" : "numeric")} target"),
@@ -1031,7 +1041,7 @@ public sealed class BasicVm
     {
         var r = (NumericArrayValue)stack.Pop();
         var l = (NumericArrayValue)stack.Pop();
-        var (data, bounds) = op(l.Data, l.Bounds, r.Data, r.Bounds);
+        var (data, bounds) = op(l.ToDecimals(), l.Bounds, r.ToDecimals(), r.Bounds);
         stack.Push(new NumericArrayValue(data, bounds));
     }
 
@@ -1073,7 +1083,7 @@ public sealed class BasicVm
             {
                 if (!BigDecimal.TryParse(values[i], NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                     throw new BasicRuntimeException(4002, $"MAT INPUT: '{values[i]}' is not numeric");
-                narr.Data[i] = bd;
+                narr[i] = new NumericValue(bd);
             }
         }
     }
@@ -1159,7 +1169,7 @@ public sealed class BasicVm
                     break;
                 case 4u: // Tab(n) → pad spaces to 1-based column n (no-op if already past)
                     {
-                        var target = (int)((NumericValue)stackValues[nextStackItem++]).V - 1;
+                        var target = ((NumericValue)stackValues[nextStackItem++]).ToInt32() - 1;
                         if (target < 0) target = 0;
                         if (target > col)
                         {
@@ -1204,7 +1214,7 @@ public sealed class BasicVm
             {
                 if (!BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                     throw new BasicRuntimeException(7022, $"INPUT #{channel}: '{raw}' is not numeric");
-                v = new NumericValue(bd);
+                v = NumericValue.From(bd, _native);
             }
             AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], v);
         }
@@ -1234,7 +1244,7 @@ public sealed class BasicVm
             if (descs[i].IsString)
                 v = new StringValue(line);
             else if (BigDecimal.TryParse(line, NumberStyles.Float, CultureInfo.InvariantCulture, out var bd))
-                v = new NumericValue(bd);
+                v = NumericValue.From(bd, _native);
             else
                 throw new BasicRuntimeException(7022, $"READ #{channel}: '{line}' is not numeric");
             AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], v);
@@ -1256,7 +1266,7 @@ public sealed class BasicVm
         if (isString) return new StringValue(item.Text);
         if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
             throw new BasicRuntimeException(5002, $"READ: data item '{item.Text}' is not numeric");
-        return new NumericValue(bd);
+        return NumericValue.From(bd, _native);
     }
 
     private readonly record struct InputTargetDesc(int Depth, int Slot, bool IsString, int Rank);
@@ -1297,7 +1307,7 @@ public sealed class BasicVm
                 }
                 else if (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                 {
-                    parsed[i] = new NumericValue(bd);
+                    parsed[i] = NumericValue.From(bd, _native);
                 }
                 else
                 {
@@ -1331,7 +1341,7 @@ public sealed class BasicVm
         var arr = target.GetOrDefault(desc.Slot, NumericValue.Zero);
         try
         {
-            if (arr is NumericArrayValue narr) { narr.Data[narr.Bounds.IndexOf(indices)] = ((NumericValue)value).V; return; }
+            if (arr is NumericArrayValue narr) { narr[narr.Bounds.IndexOf(indices)] = (NumericValue)value; return; }
             if (arr is StringArrayValue sarr) { sarr.Data[sarr.Bounds.IndexOf(indices)] = ((StringValue)value).V; return; }
         }
         catch (ArgumentOutOfRangeException ex)
@@ -1352,7 +1362,7 @@ public sealed class BasicVm
         return f ?? programFrame;
     }
 
-    private static void AllocArray(Stack<Value> stack, ActivationRecord target, int slot, int rank, bool isString)
+    private static void AllocArray(Stack<Value> stack, ActivationRecord target, int slot, int rank, bool isString, bool native)
     {
         var lower = new int[rank];
         var upper = new int[rank];
@@ -1360,8 +1370,8 @@ public sealed class BasicVm
         // Popping reverses, so iterate from the highest dim downward.
         for (var i = rank - 1; i >= 0; i--)
         {
-            upper[i] = (int)((NumericValue)stack.Pop()).V;
-            lower[i] = (int)((NumericValue)stack.Pop()).V;
+            upper[i] = ((NumericValue)stack.Pop()).ToInt32();
+            lower[i] = ((NumericValue)stack.Pop()).ToInt32();
             if (upper[i] < lower[i])
                 throw new BasicRuntimeException(6001,
                     $"DIM: upper bound {upper[i]} less than lower bound {lower[i]}");
@@ -1369,7 +1379,7 @@ public sealed class BasicVm
         var bounds = new Bounds(lower, upper);
         Value array = isString
             ? new StringArrayValue(new string[bounds.Length], bounds)
-            : new NumericArrayValue(new BigDecimal[bounds.Length], bounds);
+            : NumericArrayValue.Create(bounds, native);
         target.Set(slot, array);
     }
 
@@ -1379,7 +1389,7 @@ public sealed class BasicVm
         var arr = frame.GetOrDefault(slot, NumericValue.Zero);
         try
         {
-            if (arr is NumericArrayValue narr) return new NumericValue(narr.Data[narr.Bounds.IndexOf(indices)]);
+            if (arr is NumericArrayValue narr) return narr[narr.Bounds.IndexOf(indices)];
             if (arr is StringArrayValue sarr) return new StringValue(sarr.Data[sarr.Bounds.IndexOf(indices)] ?? "");
         }
         catch (ArgumentOutOfRangeException ex)
@@ -1400,7 +1410,7 @@ public sealed class BasicVm
         var arr = frame.GetOrDefault(slot, NumericValue.Zero);
         try
         {
-            if (arr is NumericArrayValue narr) { narr.Data[narr.Bounds.IndexOf(indices)] = ((NumericValue)value).V; return; }
+            if (arr is NumericArrayValue narr) { narr[narr.Bounds.IndexOf(indices)] = (NumericValue)value; return; }
             if (arr is StringArrayValue sarr) { sarr.Data[sarr.Bounds.IndexOf(indices)] = ((StringValue)value).V; return; }
         }
         catch (ArgumentOutOfRangeException ex)
@@ -1417,7 +1427,7 @@ public sealed class BasicVm
     private static int[] PopIndices(Stack<Value> stack, int rank)
     {
         var indices = new int[rank];
-        for (var i = rank - 1; i >= 0; i--) indices[i] = (int)((NumericValue)stack.Pop()).V;
+        for (var i = rank - 1; i >= 0; i--) indices[i] = ((NumericValue)stack.Pop()).ToInt32();
         return indices;
     }
 
@@ -1432,37 +1442,49 @@ public sealed class BasicVm
 
     private static int ReadI32(IReadOnlyList<byte> code, ref int pc) => (int)ReadU32(code, ref pc);
 
-    private static void BinaryNumeric(Stack<Value> stack, Func<BigDecimal, BigDecimal, BigDecimal> op)
+    private NumericValue[] ConstantsOf(Chunk chunk)
     {
-        var b = ((NumericValue)stack.Pop()).V;
-        var a = ((NumericValue)stack.Pop()).V;
-        stack.Push(new NumericValue(op(a, b)));
+        if (!_constants.TryGetValue(chunk, out var values))
+        {
+            values = chunk.Numbers.Select(n => NumericValue.From(n, _native)).ToArray();
+            _constants[chunk] = values;
+        }
+        return values;
     }
 
-    private static void Compare(Stack<Value> stack,
-        Func<BigDecimal, BigDecimal, bool> numericOp,
-        Func<string, string, bool> stringOp)
+    private static void Arithmetic(Stack<Value> stack, Func<NumericValue, NumericValue, NumericValue> op)
+    {
+        var b = (NumericValue)stack.Pop();
+        var a = (NumericValue)stack.Pop();
+        stack.Push(op(a, b));
+    }
+
+    private void Compare(Stack<Value> stack, Func<int, bool> holds)
     {
         var b = stack.Pop();
         var a = stack.Pop();
-        bool result = (a, b) switch
+        var cmp = (a, b) switch
         {
-            (NumericValue x, NumericValue y) => numericOp(x.V, y.V),
-            (StringValue x, StringValue y) => stringOp(x.V, y.V),
+            (NumericValue x, NumericValue y) => Numbers.Compare(x, y),
+            (StringValue x, StringValue y) => string.CompareOrdinal(x.V, y.V),
             _ => throw new BasicRuntimeException(0, "type mismatch in comparison"),
         };
-        stack.Push(result ? NumericValue.MinusOne : NumericValue.Zero);
+        stack.Push(NumericValue.Bool(holds(cmp), _native));
     }
 
-    private static BigDecimal Pow(BigDecimal a, BigDecimal b)
+    /// <summary>AND/OR/XOR/IMP/EQV over the operands' truth (nonzero = true).</summary>
+    private void Logical(Stack<Value> stack, Func<bool, bool, bool> op)
     {
-        if (b == BigDecimal.Truncate(b) && b >= int.MinValue && b <= int.MaxValue)
-        {
-            return BigDecimal.Pow(a, (int)b);
-        }
-        var ad = double.Parse(a.ToString(), CultureInfo.InvariantCulture);
-        var bd = double.Parse(b.ToString(), CultureInfo.InvariantCulture);
-        return BigDecimal.Parse(Math.Pow(ad, bd).ToString("R", CultureInfo.InvariantCulture));
+        var b = !((NumericValue)stack.Pop()).IsZero;
+        var a = !((NumericValue)stack.Pop()).IsZero;
+        stack.Push(NumericValue.Bool(op(a, b), _native));
+    }
+
+    private void Bitwise(Stack<Value> stack, Func<long, long, long> op)
+    {
+        var b = ((NumericValue)stack.Pop()).ToInt64();
+        var a = ((NumericValue)stack.Pop()).ToInt64();
+        stack.Push(NumericValue.From(op(a, b), _native));
     }
 
     private static string FormatNumeric(BigDecimal x) => DisplayFormat.FormatNumeric(x);

@@ -69,7 +69,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecCause(CauseStmt cause, ActivationRecord frame)
     {
-        var type = (int)EvalNumeric(cause.Type, frame);
+        var type = EvalInt(cause.Type, frame);
         var line = cause.Span.StartPosition.LineCol.Line;
         return new FlowControl.Cause(new BasicException(type, line, $"user-raised exception {type}"));
     }

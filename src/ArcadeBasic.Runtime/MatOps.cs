@@ -154,10 +154,10 @@ public static class MatOps
 
     // -- REDIM overlap preservation --------------------------------------
 
-    public static void PreserveNumericElements(NumericArrayValue old, BigDecimal[] newData, Bounds newBounds)
+    public static void PreserveNumericElements(NumericArrayValue old, NumericArrayValue fresh)
     {
-        if (old.Bounds.Rank != newBounds.Rank) return;
-        WalkOverlap(old.Bounds, newBounds, (oldIdx, newIdx) => newData[newIdx] = old.Data[oldIdx]);
+        if (old.Bounds.Rank != fresh.Bounds.Rank) return;
+        WalkOverlap(old.Bounds, fresh.Bounds, (oldIdx, newIdx) => fresh[newIdx] = old[oldIdx]);
     }
 
     public static void PreserveStringElements(StringArrayValue old, string[] newData, Bounds newBounds)

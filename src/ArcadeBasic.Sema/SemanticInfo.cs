@@ -26,6 +26,11 @@ public sealed class SemanticInfo
     /// <summary>Per-module local scope. PUBLIC declarations are also re-exported into ProgramScope, but private ones live only here. The compiler needs this to enumerate module-private callables when emitting bytecode.</summary>
     public required IReadOnlyDictionary<ModuleStmt, Scope> ModuleScopes { get; init; }
 
+    /// <summary>Numeric representation for the whole program: <see cref="ArithmeticMode.Native"/>
+    /// (IEEE double) when an OPTION ARITHMETIC NATIVE appears anywhere, otherwise
+    /// <see cref="ArithmeticMode.Decimal"/>.</summary>
+    public ArithmeticMode Arithmetic { get; init; } = ArithmeticMode.Decimal;
+
     /// <summary>Lookup the resolution for a given expression. Returns ResolvedError for unresolved names.</summary>
     public ResolvedRef Resolve(Expr expr) =>
         Resolutions.TryGetValue(expr, out var r) ? r : new ResolvedError("not resolved");

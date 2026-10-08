@@ -36,6 +36,13 @@ public sealed partial class BasicInterpreter
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
+    /// <summary>OPTION ARITHMETIC NATIVE: numbers the program creates (literals,
+    /// INPUT/READ data, builtin results) are doubles instead of decimals.</summary>
+    private readonly bool _native;
+
+    /// <summary>Each numeric literal parsed once, in the program's representation.</summary>
+    private readonly Dictionary<NumberExpr, NumericValue> _literals = new(ReferenceEqualityComparer.Instance);
+
     public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in,
         CancellationToken cancel = default, IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
         IAudioDevice? audio = null)
@@ -49,6 +56,7 @@ public sealed partial class BasicInterpreter
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _audio = audio ?? NullAudioDevice.Instance;
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
+        _native = info.Arithmetic == ArithmeticMode.Native;
     }
 
     /// <summary>Run the program. Returns 0 on normal termination, 1 on runtime error.</summary>
@@ -231,16 +239,8 @@ public sealed partial class BasicInterpreter
             case ReadStmt r: return ExecRead(r, frame);
             case DataStmt: return FlowControl.Continue; // collected at sema time
             case RestoreStmt rs: return ExecRestore(rs);
-            case GotoStmt g:
-                {
-                    var n = (int)EvalNumeric(g.LabelTarget, frame);
-                    return new FlowControl.Goto(n);
-                }
-            case GosubStmt g:
-                {
-                    var n = (int)EvalNumeric(g.LabelTarget, frame);
-                    return new FlowControl.Gosub(n);
-                }
+            case GotoStmt g: return new FlowControl.Goto(EvalInt(g.LabelTarget, frame));
+            case GosubStmt g: return new FlowControl.Gosub(EvalInt(g.LabelTarget, frame));
             case OnJumpStmt on:
                 {
                     // Spec §8.2: the index is *rounded* (not truncated like a plain
@@ -339,7 +339,7 @@ public sealed partial class BasicInterpreter
         switch (expr)
         {
             case NumberExpr n:
-                return new NumericValue(BigDecimal.Parse(n.Text, NumberStyles.Float, CultureInfo.InvariantCulture));
+                return Literal(n);
 
             case StringExpr s:
                 return new StringValue(s.Value);
@@ -364,9 +364,24 @@ public sealed partial class BasicInterpreter
         }
     }
 
-    private BigDecimal EvalNumeric(Expr e, ActivationRecord frame) => e is null
+    private NumericValue Literal(NumberExpr n)
+    {
+        if (!_literals.TryGetValue(n, out var v))
+        {
+            v = NumericValue.From(BigDecimal.Parse(n.Text, NumberStyles.Float, CultureInfo.InvariantCulture), _native);
+            _literals[n] = v;
+        }
+        return v;
+    }
+
+    private NumericValue EvalNumber(Expr e, ActivationRecord frame) => e is null
         ? throw new BasicRuntimeException(0, "expected numeric expression")
-        : ((NumericValue)EvalExpr(e, frame)).V;
+        : (NumericValue)EvalExpr(e, frame);
+
+    private BigDecimal EvalNumeric(Expr e, ActivationRecord frame) => EvalNumber(e, frame).V;
+
+    /// <summary>A numeric expression truncated to an int (subscripts, labels, bounds).</summary>
+    private int EvalInt(Expr e, ActivationRecord frame) => EvalNumber(e, frame).ToInt32();
 
     private string EvalString(Expr e, ActivationRecord frame) =>
         ((StringValue)EvalExpr(e, frame)).V;
@@ -378,7 +393,7 @@ public sealed partial class BasicInterpreter
         {
             ResolvedVariable rv => ReadSlot(frame, rv.Symbol.OwnerScope!, rv.Symbol.Slot, rv.Symbol.IsString),
             ResolvedParam rp => ReadSlot(frame, rp.Symbol.OwnerScope!, rp.Symbol.Slot, rp.Symbol.IsString),
-            ResolvedConstant rc => BuiltinImpls.EvalConstant(rc.Symbol.Name),
+            ResolvedConstant rc => BuiltinImpls.EvalConstant(rc.Symbol.Name, _native),
             ResolvedBuiltinCall rb => CallBuiltin(rb.Symbol, []),
             _ => throw new BasicRuntimeException(0, $"unresolved name '{nr.Name}'"),
         };
@@ -406,14 +421,13 @@ public sealed partial class BasicInterpreter
 
     private Value EvalUnary(UnaryExpr u, ActivationRecord frame)
     {
-        var inner = EvalExpr(u.Operand, frame);
-        var n = ((NumericValue)inner).V;
+        var n = EvalNumber(u.Operand, frame);
         return u.Op switch
         {
-            UnaryOp.Plus => inner,
-            UnaryOp.Negate => new NumericValue(-n),
-            UnaryOp.Not => new NumericValue(n == BigDecimal.Zero ? BigDecimal.One : BigDecimal.Zero),
-            UnaryOp.BNot => new NumericValue(BigDecimal.Parse((~(long)n).ToString())),
+            UnaryOp.Plus => n,
+            UnaryOp.Negate => Numbers.Negate(n),
+            UnaryOp.Not => NumericValue.From(n.IsZero ? 1 : 0, _native),
+            UnaryOp.BNot => NumericValue.From(~n.ToInt64(), _native),
             _ => throw new BasicRuntimeException(0, $"unsupported unary {u.Op}"),
         };
     }
@@ -425,88 +439,38 @@ public sealed partial class BasicInterpreter
             return new StringValue(EvalString(b.Left, frame) + EvalString(b.Right, frame));
         }
 
-        var lt = _info.TypeOf(b.Left);
-        var rt = _info.TypeOf(b.Right);
-
         // Relational: both sides may be string or numeric.
         if (b.Op is BinaryOp.Equal or BinaryOp.NotEqual or BinaryOp.Less
                  or BinaryOp.LessEqual or BinaryOp.Greater or BinaryOp.GreaterEqual)
         {
-            if (lt == BasicType.String && rt == BasicType.String)
-            {
-                var ls = EvalString(b.Left, frame);
-                var rs = EvalString(b.Right, frame);
-                var cmp = string.CompareOrdinal(ls, rs);
-                return BoolValue(b.Op switch
-                {
-                    BinaryOp.Equal => cmp == 0,
-                    BinaryOp.NotEqual => cmp != 0,
-                    BinaryOp.Less => cmp < 0,
-                    BinaryOp.LessEqual => cmp <= 0,
-                    BinaryOp.Greater => cmp > 0,
-                    BinaryOp.GreaterEqual => cmp >= 0,
-                    _ => false,
-                });
-            }
-            else
-            {
-                var ln = EvalNumeric(b.Left, frame);
-                var rn = EvalNumeric(b.Right, frame);
-                return BoolValue(b.Op switch
-                {
-                    BinaryOp.Equal => ln == rn,
-                    BinaryOp.NotEqual => ln != rn,
-                    BinaryOp.Less => ln < rn,
-                    BinaryOp.LessEqual => ln <= rn,
-                    BinaryOp.Greater => ln > rn,
-                    BinaryOp.GreaterEqual => ln >= rn,
-                    _ => false,
-                });
-            }
+            var cmp = _info.TypeOf(b.Left) == BasicType.String && _info.TypeOf(b.Right) == BasicType.String
+                ? string.CompareOrdinal(EvalString(b.Left, frame), EvalString(b.Right, frame))
+                : Numbers.Compare(EvalNumber(b.Left, frame), EvalNumber(b.Right, frame));
+            return BoolValue(Holds(cmp, b.Op));
         }
 
         // All other binaries are numeric.
-        var a = EvalNumeric(b.Left, frame);
-        var bv = EvalNumeric(b.Right, frame);
+        var a = EvalNumber(b.Left, frame);
+        var bv = EvalNumber(b.Right, frame);
         return b.Op switch
         {
-            BinaryOp.Add => new NumericValue(Numbers.Add(a, bv)),
-            BinaryOp.Subtract => new NumericValue(Numbers.Subtract(a, bv)),
-            BinaryOp.Multiply => new NumericValue(Numbers.Multiply(a, bv)),
-            BinaryOp.Divide => bv == BigDecimal.Zero
-                ? throw new BasicRuntimeException(1001, "division by zero")
-                : new NumericValue(BigDecimal.Divide(a, bv, 30, RoundingMode.MidpointToEven)),
-            BinaryOp.Power => new NumericValue(Pow(a, bv)),
-            BinaryOp.Mod => bv == BigDecimal.Zero
-                ? throw new BasicRuntimeException(1001, "MOD by zero")
-                : new NumericValue(a - BigDecimal.Floor(a / bv) * bv),
-            BinaryOp.Remainder => bv == BigDecimal.Zero
-                ? throw new BasicRuntimeException(1001, "REMAINDER by zero")
-                : new NumericValue(a - BigDecimal.Truncate(a / bv) * bv),
-            BinaryOp.And => BoolValue(NonZero(a) && NonZero(bv)),
-            BinaryOp.Or => BoolValue(NonZero(a) || NonZero(bv)),
-            BinaryOp.Xor => BoolValue(NonZero(a) != NonZero(bv)),
-            BinaryOp.Imp => BoolValue(!NonZero(a) || NonZero(bv)),
-            BinaryOp.Eqv => BoolValue(NonZero(a) == NonZero(bv)),
-            BinaryOp.Band => new NumericValue(BigDecimal.Parse(((long)a & (long)bv).ToString())),
-            BinaryOp.Bor => new NumericValue(BigDecimal.Parse(((long)a | (long)bv).ToString())),
-            BinaryOp.Bxor => new NumericValue(BigDecimal.Parse(((long)a ^ (long)bv).ToString())),
+            BinaryOp.Add => Numbers.Add(a, bv),
+            BinaryOp.Subtract => Numbers.Subtract(a, bv),
+            BinaryOp.Multiply => Numbers.Multiply(a, bv),
+            BinaryOp.Divide => Numbers.Divide(a, bv),
+            BinaryOp.Power => Numbers.Power(a, bv),
+            BinaryOp.Mod => Numbers.Mod(a, bv),
+            BinaryOp.Remainder => Numbers.Remainder(a, bv),
+            BinaryOp.And => BoolValue(!a.IsZero && !bv.IsZero),
+            BinaryOp.Or => BoolValue(!a.IsZero || !bv.IsZero),
+            BinaryOp.Xor => BoolValue(!a.IsZero != !bv.IsZero),
+            BinaryOp.Imp => BoolValue(a.IsZero || !bv.IsZero),
+            BinaryOp.Eqv => BoolValue(!a.IsZero == !bv.IsZero),
+            BinaryOp.Band => NumericValue.From(a.ToInt64() & bv.ToInt64(), _native),
+            BinaryOp.Bor => NumericValue.From(a.ToInt64() | bv.ToInt64(), _native),
+            BinaryOp.Bxor => NumericValue.From(a.ToInt64() ^ bv.ToInt64(), _native),
             _ => throw new BasicRuntimeException(0, $"unsupported binary {b.Op}"),
         };
-    }
-
-    private static BigDecimal Pow(BigDecimal a, BigDecimal b)
-    {
-        // Integer exponent: use BigDecimal.Pow.
-        if (b == BigDecimal.Truncate(b) && b >= int.MinValue && b <= int.MaxValue)
-        {
-            var n = (int)b;
-            return BigDecimal.Pow(a, n);
-        }
-        // Otherwise approximate via doubles.
-        var ad = double.Parse(a.ToString(), CultureInfo.InvariantCulture);
-        var bd = double.Parse(b.ToString(), CultureInfo.InvariantCulture);
-        return BigDecimal.Parse(Math.Pow(ad, bd).ToString("R", CultureInfo.InvariantCulture));
     }
 
     // -- Slot read/write helpers -----------------------------------------
@@ -514,7 +478,7 @@ public sealed partial class BasicInterpreter
     private Value ReadSlot(ActivationRecord frame, Scope ownerScope, int slot, bool isString)
     {
         var f = ResolveFrameForScope(frame, ownerScope);
-        return f.GetOrDefault(slot, isString ? StringValue.Empty : NumericValue.Zero);
+        return f.GetOrDefault(slot, isString ? StringValue.Empty : NumericValue.Zeroed(_native));
     }
 
     private void WriteSlot(ActivationRecord frame, Scope ownerScope, int slot, Value value)
@@ -548,7 +512,5 @@ public sealed partial class BasicInterpreter
         return _programFrame;
     }
 
-    private static NumericValue BoolValue(bool b) => b ? NumericValue.MinusOne : NumericValue.Zero;
-
-    private static bool NonZero(BigDecimal v) => v != BigDecimal.Zero;
+    private NumericValue BoolValue(bool b) => NumericValue.Bool(b, _native);
 }

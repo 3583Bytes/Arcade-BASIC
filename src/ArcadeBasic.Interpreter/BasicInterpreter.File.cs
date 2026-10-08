@@ -15,7 +15,7 @@ public sealed partial class BasicInterpreter
 {
     private FlowControl ExecOpen(OpenStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         var path = EvalString(stmt.Name, frame);
 
         // Map ACCESS + CREATE → System.IO FileMode + FileAccess.
@@ -67,14 +67,14 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecClose(CloseStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         _channels.Close(channel);
         return FlowControl.Continue;
     }
 
     private FlowControl ExecPrintFile(PrintFileStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         var file = _channels.Get(channel);
 
         var sb = new StringBuilder();
@@ -111,7 +111,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecInputFile(InputFileStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         var file = _channels.Get(channel);
 
         var line = file.ReadLine() ?? throw new BasicRuntimeException(7020,
@@ -142,7 +142,7 @@ public sealed partial class BasicInterpreter
                 if (!BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                     throw new BasicRuntimeException(7022,
                         $"INPUT #{channel}: '{raw}' is not numeric");
-                v = new NumericValue(bd);
+                v = NumericValue.From(bd, _native);
             }
             WriteAssignableTarget(target, v, frame);
         }
@@ -151,7 +151,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecLineInputFile(LineInputFileStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         var file = _channels.Get(channel);
         var line = file.ReadLine() ?? throw new BasicRuntimeException(7020,
             $"LINE INPUT #{channel}: end of file");
@@ -165,7 +165,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecWriteFile(WriteFileStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         var file = _channels.Get(channel);
         if (!file.IsInternal)
             throw new BasicRuntimeException(7030, $"WRITE #{channel}: channel is not open RECTYPE INTERNAL");
@@ -178,7 +178,7 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecReadFile(ReadFileStmt stmt, ActivationRecord frame)
     {
-        var channel = (int)EvalNumeric(stmt.Channel, frame);
+        var channel = EvalInt(stmt.Channel, frame);
         var file = _channels.Get(channel);
         if (!file.IsInternal)
             throw new BasicRuntimeException(7030, $"READ #{channel}: channel is not open RECTYPE INTERNAL");
@@ -193,7 +193,7 @@ public sealed partial class BasicInterpreter
             }
             else if (BigDecimal.TryParse(line, NumberStyles.Float, CultureInfo.InvariantCulture, out var bd))
             {
-                v = new NumericValue(bd);
+                v = NumericValue.From(bd, _native);
             }
             else
             {

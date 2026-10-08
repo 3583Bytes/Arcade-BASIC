@@ -34,7 +34,7 @@ public sealed partial class BasicInterpreter
         else
         {
             var (data, bounds) = EvalNumericMatRhs(stmt.Rhs, frame, MatOps.BoundsOf(current));
-            WriteSlot(frame, sym.OwnerScope!, sym.Slot, new NumericArrayValue(data, bounds));
+            WriteSlot(frame, sym.OwnerScope!, sym.Slot, NumericArrayValue.FromDecimals(data, bounds, _native));
         }
         return FlowControl.Continue;
     }
@@ -49,8 +49,8 @@ public sealed partial class BasicInterpreter
         var upper = new int[rank];
         for (var i = 0; i < rank; i++)
         {
-            lower[i] = stmt.Bounds[i].Lower is null ? _optionBase : (int)EvalNumeric(stmt.Bounds[i].Lower!, frame);
-            upper[i] = (int)EvalNumeric(stmt.Bounds[i].Upper, frame);
+            lower[i] = stmt.Bounds[i].Lower is null ? _optionBase : EvalInt(stmt.Bounds[i].Lower!, frame);
+            upper[i] = EvalInt(stmt.Bounds[i].Upper, frame);
             if (upper[i] < lower[i])
             {
                 throw new BasicRuntimeException(6001,
@@ -68,9 +68,9 @@ public sealed partial class BasicInterpreter
         }
         else
         {
-            var newData = new BigDecimal[newBounds.Length];
-            if (current is NumericArrayValue oldN) MatOps.PreserveNumericElements(oldN, newData, newBounds);
-            WriteSlot(frame, sym.OwnerScope!, sym.Slot, new NumericArrayValue(newData, newBounds));
+            var fresh = NumericArrayValue.Create(newBounds, _native);
+            if (current is NumericArrayValue oldN) MatOps.PreserveNumericElements(oldN, fresh);
+            WriteSlot(frame, sym.OwnerScope!, sym.Slot, fresh);
         }
         return FlowControl.Continue;
     }
@@ -109,7 +109,7 @@ public sealed partial class BasicInterpreter
                 {
                     throw new BasicRuntimeException(4002, $"MAT INPUT: '{values[i]}' is not numeric");
                 }
-                narr.Data[i] = bd;
+                narr[i] = new NumericValue(bd);
             }
         }
         return FlowControl.Continue;
@@ -121,7 +121,7 @@ public sealed partial class BasicInterpreter
         var current = TryReadArray(sym, frame)
             ?? throw new BasicRuntimeException(6004, $"MAT PRINT requires {stmt.TargetName} to be DIM-ed first");
 
-        if (current is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.Data, narr.Bounds, FormatNumeric);
+        if (current is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.ToDecimals(), narr.Bounds, FormatNumeric);
         else if (current is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
         return FlowControl.Continue;
     }
@@ -155,7 +155,7 @@ public sealed partial class BasicInterpreter
                 {
                     throw new BasicRuntimeException(5002, $"MAT READ: '{item.Text}' is not numeric");
                 }
-                narr.Data[i] = bd;
+                narr[i] = new NumericValue(bd);
             }
         }
         return FlowControl.Continue;
@@ -169,7 +169,7 @@ public sealed partial class BasicInterpreter
         {
             case MatRhsName n:
                 var arr = (NumericArrayValue)RequireArray(n.Name, n.IsString, frame);
-                return ((BigDecimal[])arr.Data.Clone(), arr.Bounds);
+                return ((BigDecimal[])arr.ToDecimals().Clone(), arr.Bounds);
 
             case MatRhsBinary b:
                 {
