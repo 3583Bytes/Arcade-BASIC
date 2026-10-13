@@ -135,6 +135,57 @@ public class ExampleParityTests
         Assert.Equal(0, vmExit);
     }
 
+    /// <summary>(source, stdin, expected output, expected exit code). Procedure calls
+    /// and PRINT state: the tree-walker used to drop a callee's STOP and unhandled
+    /// exceptions (the caller ran on; a FUNCTION returned 0), both engines restarted
+    /// the PRINT column inside a SUB, and the tree-walker restarted it at every PRINT
+    /// and buffered the line, so a FUNCTION printing mid-PRINT came out first.</summary>
+    public static IEnumerable<object[]> CallAndPrintSemantics() =>
+    [
+        // STOP inside a SUB ends the program (ECMA-116 §4.2.4, §9.1.4)
+        ["CALL S\nPRINT \"after\"\nEND\nSUB S\nPRINT \"in\"\nSTOP\nEND SUB\n", "", "in\n", 0],
+        // … and inside a FUNCTION, mid-expression
+        ["PRINT \"a\"\nLET Y = G(1)\nPRINT \"after\"\nEND\nFUNCTION G(X)\nSTOP\nLET G = X\nEND FUNCTION\n", "", "a\n", 0],
+        // … two calls deep, and a WHEN around the call doesn't intercept it
+        ["WHEN EXCEPTION IN\nCALL OUTER\nUSE\nPRINT \"handler\"\nEND WHEN\nPRINT \"after\"\nEND\n" +
+         "SUB OUTER\nCALL INNER\nPRINT \"outer\"\nEND SUB\nSUB INNER\nSTOP\nEND SUB\n", "", "", 0],
+        // an exception a SUB doesn't handle reaches the WHEN around the CALL
+        ["WHEN EXCEPTION IN\nCALL S\nPRINT \"after call\"\nUSE\nPRINT \"caught\"\nEND WHEN\nEND\n" +
+         "SUB S\nCAUSE EXCEPTION 42\nPRINT \"rest\"\nEND SUB\n", "", "caught\n", 0],
+        // … and CONTINUE resumes after the CALL
+        ["WHEN EXCEPTION IN\nCALL S\nPRINT \"next\"\nUSE\nCONTINUE\nEND WHEN\nEND\nSUB S\nCAUSE EXCEPTION 7\nEND SUB\n",
+         "", "next\n", 0],
+        // unhandled in a FUNCTION, it stops the program instead of returning 0
+        ["PRINT G(0)\nPRINT \"after\"\nEND\nFUNCTION G(X)\nLET G = 1 / X\nEND FUNCTION\n", "", "", 1],
+        // the PRINT column carries across statements: comma zones …
+        ["PRINT \"AAAAAAAAAAAAAAAAAAAA\";\nPRINT \"B\",\nPRINT \"C\"\n", "", "AAAAAAAAAAAAAAAAAAAAB           C\n", 0],
+        // … and TAB
+        ["PRINT \"XYZ\";\nPRINT TAB(10); \"T\"\n", "", "XYZ      T\n", 0],
+        // … into a SUB
+        ["PRINT \"AAAAAAAAAAAAAAAAAAAA\";\nCALL T\nPRINT \"C\"\nEND\nSUB T\nPRINT \"B\",\nEND SUB\n", "",
+         "AAAAAAAAAAAAAAAAAAAAB           C\n", 0],
+        // … and back out of one
+        ["CALL T\nPRINT TAB(10); \"T\"\nEND\nSUB T\nPRINT \"XYZ\";\nEND SUB\n", "", "XYZ      T\n", 0],
+        // a FUNCTION's own PRINT lands between the items around its call
+        ["PRINT \"a\"; G(1)\nEND\nFUNCTION G(X)\nPRINT \"in\";\nLET G = X\nEND FUNCTION\n", "", "ain 1 \n", 0],
+        // the INPUT reply ends the line, so the next PRINT starts at column 0
+        ["PRINT \"ABC\";\nINPUT X\nPRINT \"D\", \"E\"\n", "5\n", "ABC? D               E\n", 0],
+    ];
+
+    [Theory]
+    [MemberData(nameof(CallAndPrintSemantics))]
+    public void CallAndPrintSemanticsAgreeOnBothEngines(string source, string stdin, string expected, int expectedExit)
+    {
+        var (program, info) = FrontEndSource("calls.bas", source);
+        var (interpOut, interpExit) = RunInterpreter(program, info, stdin);
+        var (vmOut, vmExit) = RunVm(program, info, stdin);
+
+        Assert.Equal(expected, interpOut);
+        Assert.Equal(expected, vmOut);
+        Assert.Equal(expectedExit, interpExit);
+        Assert.Equal(expectedExit, vmExit);
+    }
+
     [Theory]
     [MemberData(nameof(DeterministicExamples))]
     public void NativeArithmeticPrintsTheSameAsDecimal(string name, string stdin)

@@ -87,6 +87,7 @@ public sealed partial class BasicInterpreter
         {
             _out.Write("? "); _out.Flush();
             var line = _in.ReadLine() ?? throw new BasicRuntimeException(6005, "MAT INPUT: end of input");
+            _col = 0;
             foreach (var part in line.Split(','))
             {
                 var t = part.Trim();
@@ -123,6 +124,7 @@ public sealed partial class BasicInterpreter
 
         if (current is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.ToDecimals(), narr.Bounds, FormatNumeric);
         else if (current is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
+        _col = 0;
         return FlowControl.Continue;
     }
 

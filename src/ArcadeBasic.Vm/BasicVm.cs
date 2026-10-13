@@ -40,6 +40,11 @@ public sealed class BasicVm
 
     private readonly record struct HandlerFrame(int UsePc, int StackBaseline);
 
+    /// <summary>Current column of the output line, for PRINT's comma zones and TAB.
+    /// Program-wide rather than per chunk: a PRINT ending in ';' or ',' inside a SUB
+    /// leaves the caller's next PRINT on the same line, at the same column.</summary>
+    private int _col;
+
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
     private readonly IKeyboard _keyboard;
@@ -75,6 +80,7 @@ public sealed class BasicVm
         try
         {
             _dataCursor = 0;
+            _col = 0;
             var programFrame = new ActivationRecord(_program.Main.FrameSize, parent: null);
             ExecuteChunk(_program.Main, programFrame, programFrame);
             return 0;
@@ -103,7 +109,6 @@ public sealed class BasicVm
         var constants = ConstantsOf(chunk);
         var stack = new Stack<Value>(64);
         var pc = 0;
-        var col = 0; // current PRINT column for zone padding
         var pendingNewline = false;
         // Handlers pushed below this depth belong to an enclosing chunk — if a
         // BasicRuntimeException is thrown here and the topmost handler isn't ours,
@@ -128,8 +133,7 @@ public sealed class BasicVm
                 case Opcode.Halt:
                 case Opcode.Stop:
                 case Opcode.End:
-                    while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
-                    return true;
+                    return Halt(entryHandlerDepth);
                 case Opcode.Nop: break;
                 case Opcode.ForPrep:
                     {
@@ -450,7 +454,8 @@ public sealed class BasicVm
                         for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
                         var subFrame = new ActivationRecord(sub.Body.FrameSize, programFrame);
                         for (var i = 0; i < argc; i++) subFrame.Set(i, args[i]);
-                        ExecuteChunk(sub.Body, subFrame, programFrame);
+                        // A STOP in the callee ends the whole program, not just the call.
+                        if (ExecuteChunk(sub.Body, subFrame, programFrame)) return Halt(entryHandlerDepth);
                         break;
                     }
                 case Opcode.CallFunction:
@@ -465,7 +470,7 @@ public sealed class BasicVm
                         // Run; the function chunk's body ends with LoadLocal(returnSlot) + LeaveFunction
                         // which means whatever the body left in the return slot bubbles up.
                         // Capture by re-running the chunk and reading the slot.
-                        ExecuteChunk(fn.Body, fnFrame, programFrame);
+                        if (ExecuteChunk(fn.Body, fnFrame, programFrame)) return Halt(entryHandlerDepth);
                         stack.Push(fnFrame.GetOrDefault(fn.ReturnSlot,
                             fn.IsString ? StringValue.Empty : _zero));
                         break;
@@ -482,7 +487,7 @@ public sealed class BasicVm
                         // SUB/FUNCTION whose parent is programFrame.
                         var defFrame = new ActivationRecord(def.Body.FrameSize, frame);
                         for (var i = 0; i < argc; i++) defFrame.Set(i, args[i]);
-                        ExecuteChunk(def.Body, defFrame, programFrame);
+                        if (ExecuteChunk(def.Body, defFrame, programFrame)) return Halt(entryHandlerDepth);
                         stack.Push(defFrame.GetOrDefault(def.ReturnSlot,
                             def.IsString ? StringValue.Empty : _zero));
                         break;
@@ -497,7 +502,7 @@ public sealed class BasicVm
                         var v = ((NumericValue)stack.Pop()).V;
                         var text = FormatNumeric(v);
                         _out.Write(text);
-                        col += text.Length;
+                        _col += text.Length;
                         pendingNewline = true;
                         break;
                     }
@@ -505,20 +510,20 @@ public sealed class BasicVm
                     {
                         var s = ((StringValue)stack.Pop()).V;
                         _out.Write(s);
-                        col += s.Length;
+                        _col += s.Length;
                         pendingNewline = true;
                         break;
                     }
                 case Opcode.PrintNewline:
                     _out.WriteLine();
-                    col = 0;
+                    _col = 0;
                     pendingNewline = false;
                     break;
                 case Opcode.PrintZonePad:
                     {
-                        var next = ((col / DefaultZoneWidth) + 1) * DefaultZoneWidth;
-                        for (var i = col; i < next; i++) _out.Write(' ');
-                        col = next;
+                        var next = ((_col / DefaultZoneWidth) + 1) * DefaultZoneWidth;
+                        for (var i = _col; i < next; i++) _out.Write(' ');
+                        _col = next;
                         break;
                     }
                 case Opcode.PrintTab:
@@ -527,10 +532,10 @@ public sealed class BasicVm
                         // and never move backwards (TAB to before current column is a no-op).
                         var target = ((NumericValue)stack.Pop()).ToInt32() - 1;
                         if (target < 0) target = 0;
-                        if (target > col)
+                        if (target > _col)
                         {
-                            for (var i = col; i < target; i++) _out.Write(' ');
-                            col = target;
+                            for (var i = _col; i < target; i++) _out.Write(' ');
+                            _col = target;
                         }
                         break;
                     }
@@ -636,7 +641,7 @@ public sealed class BasicVm
                             ?? throw new BasicRuntimeException(4003, "LINE INPUT: end of input stream");
                         var desc = new InputTargetDesc(depth, slot, IsString: true, rank);
                         AssignInputTarget(ResolveOuter(frame, programFrame, depth), desc, indices, new StringValue(line));
-                        col = 0;
+                        _col = 0;
                         pendingNewline = false;
                         break;
                     }
@@ -690,7 +695,7 @@ public sealed class BasicVm
                         var format = ((StringValue)stack.Pop()).V;
                         var parts = PictureFormat.Parse(format);
                         _out.WriteLine(PictureFormat.Apply(parts, items));
-                        col = 0;
+                        _col = 0;
                         pendingNewline = false;
                         break;
                     }
@@ -884,7 +889,7 @@ public sealed class BasicVm
                         if (arr is NumericArrayValue narr) MatOps.PrintMatrix(_out, narr.ToDecimals(), narr.Bounds, FormatNumeric);
                         else if (arr is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
                         else throw new BasicRuntimeException(6004, "MAT PRINT requires the target to be DIM-ed first");
-                        col = 0;
+                        _col = 0;
                         pendingNewline = false;
                         break;
                     }
@@ -897,7 +902,7 @@ public sealed class BasicVm
                         if (arr is not (NumericArrayValue or StringArrayValue))
                             throw new BasicRuntimeException(6004, "MAT INPUT requires the target to be DIM-ed first");
                         PerformMatInput(arr, isString);
-                        col = 0;
+                        _col = 0;
                         pendingNewline = false;
                         break;
                     }
@@ -923,10 +928,10 @@ public sealed class BasicVm
                             indices[i] = PopIndices(stack, descs[i].Rank);
                         }
                         // Prompt text (if any) was already emitted via PrintString
-                        // before this opcode. col was updated then; PerformInput
-                        // resets col after its own writes since INPUT always
+                        // before this opcode. _col was updated then; PerformInput
+                        // resets _col after its own writes since INPUT always
                         // consumes a full line.
-                        col = PerformInput(descs, indices, suppressQuestionMark, frame, programFrame);
+                        _col = PerformInput(descs, indices, suppressQuestionMark, frame, programFrame);
                         pendingNewline = false;
                         break;
                     }
@@ -1017,6 +1022,14 @@ public sealed class BasicVm
         while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
         _ = pendingNewline;
         return false;
+    }
+
+    /// <summary>Leave this chunk because the program is ending: drop the handlers it
+    /// opened and report "halted" so every caller's ExecuteChunk returns too.</summary>
+    private bool Halt(int entryHandlerDepth)
+    {
+        while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
+        return true;
     }
 
     /// <summary>Build a numeric or string constant array matching the

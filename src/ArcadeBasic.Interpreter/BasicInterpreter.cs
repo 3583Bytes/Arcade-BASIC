@@ -43,6 +43,24 @@ public sealed partial class BasicInterpreter
     /// <summary>Each numeric literal parsed once, in the program's representation.</summary>
     private readonly Dictionary<NumberExpr, NumericValue> _literals = new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>Current column of the output line. It belongs to the output, not to
+    /// one PRINT statement, so a PRINT ending in ';' or ',' — in any SUB or FUNCTION —
+    /// leaves comma zones and TAB lined up for the next one (the VM's <c>_col</c>).</summary>
+    private int _col;
+
+    /// <summary>STOP inside a SUB, FUNCTION or DEF ends the whole program (ECMA-116
+    /// §4.2.4, §9.1.4: "shall terminate execution of the entire program"). A function call can
+    /// sit mid-expression, where no FlowControl can be returned, so the signal
+    /// unwinds to <see cref="Run"/> as an exception.</summary>
+    private sealed class ProgramHalted : Exception;
+
+    /// <summary>An exception the procedure didn't handle, on its way to the caller's
+    /// statement (and any WHEN around it) with its original type, line and text.</summary>
+    private sealed class PropagatedCause(BasicException exception) : Exception(exception.Text)
+    {
+        public BasicException Exception { get; } = exception;
+    }
+
     public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in,
         CancellationToken cancel = default, IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
         IAudioDevice? audio = null)
@@ -86,6 +104,19 @@ public sealed partial class BasicInterpreter
                 FlowControl.End or FlowControl.Stop or FlowControl.Next => 0,
                 _ => 0, // unhandled flow at top level — treat as normal end
             };
+        }
+        catch (ProgramHalted)
+        {
+            return 0;
+        }
+        catch (PropagatedCause p)
+        {
+            // Every call runs inside some statement, whose ExecStmt turns this back
+            // into FlowControl.Cause — so this is only a backstop.
+            _out.Flush();
+            Console.Error.WriteLine(
+                $"unhandled exception type {p.Exception.Type} at line {p.Exception.Line}: {p.Exception.Text}");
+            return 1;
         }
         catch (BasicRuntimeException ex)
         {
@@ -216,6 +247,12 @@ public sealed partial class BasicInterpreter
         try
         {
             return ExecStmtImpl(stmt, frame);
+        }
+        catch (PropagatedCause p)
+        {
+            // Raised inside a SUB/FUNCTION this statement called: keep the original
+            // exception (EXTYPE/EXLINE as the VM reports them).
+            return new FlowControl.Cause(p.Exception);
         }
         catch (BasicRuntimeException ex)
         {

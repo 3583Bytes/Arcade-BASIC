@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using ArcadeBasic.Parser.Ast;
 using ArcadeBasic.Runtime;
 using ArcadeBasic.Sema;
@@ -67,12 +66,13 @@ public sealed partial class BasicInterpreter
         if (p.Items.Count == 0)
         {
             _out.WriteLine();
+            _col = 0;
             return FlowControl.Continue;
         }
 
-        var col = 0;
+        // Each item is written as soon as it's evaluated, like the VM's PrintString /
+        // PrintNumber, so output from a FUNCTION called mid-PRINT lands in order.
         var suppressNewline = false;
-        var sb = new StringBuilder();
 
         for (var i = 0; i < p.Items.Count; i++)
         {
@@ -81,27 +81,27 @@ public sealed partial class BasicInterpreter
             {
                 case PrintExprItem ei:
                     var text = FormatForPrint(EvalExpr(ei.Value, frame));
-                    sb.Append(text);
-                    col += text.Length;
+                    _out.Write(text);
+                    _col += text.Length;
                     suppressNewline = false;
                     break;
 
                 case PrintTab t:
                     var target = EvalInt(t.Column, frame) - 1;
                     if (target < 0) target = 0;
-                    if (target > col)
+                    if (target > _col)
                     {
-                        sb.Append(' ', target - col);
-                        col = target;
+                        _out.Write(new string(' ', target - _col));
+                        _col = target;
                     }
                     suppressNewline = false;
                     break;
 
                 case PrintComma:
                     // Pad to next zone boundary.
-                    var next = ((col / DefaultZoneWidth) + 1) * DefaultZoneWidth;
-                    sb.Append(' ', next - col);
-                    col = next;
+                    var next = ((_col / DefaultZoneWidth) + 1) * DefaultZoneWidth;
+                    _out.Write(new string(' ', next - _col));
+                    _col = next;
                     suppressNewline = i == p.Items.Count - 1;
                     break;
 
@@ -111,8 +111,11 @@ public sealed partial class BasicInterpreter
             }
         }
 
-        if (suppressNewline) _out.Write(sb.ToString());
-        else _out.WriteLine(sb.ToString());
+        if (!suppressNewline)
+        {
+            _out.WriteLine();
+            _col = 0;
+        }
         return FlowControl.Continue;
     }
 
@@ -129,6 +132,7 @@ public sealed partial class BasicInterpreter
         var values = stmt.Items.Select(e => EvalExpr(e, frame)).ToList();
         var parts = PictureFormat.Parse(format);
         _out.WriteLine(PictureFormat.Apply(parts, values));
+        _col = 0;
         return FlowControl.Continue;
     }
 
@@ -163,6 +167,7 @@ public sealed partial class BasicInterpreter
             {
                 throw new BasicRuntimeException(4003, "INPUT: end of input stream");
             }
+            _col = 0;   // the reply ends the line
             var fields = rawLine.Split(',');
             if (fields.Length < input.Targets.Count)
             {
@@ -221,6 +226,7 @@ public sealed partial class BasicInterpreter
 
         var line = _in.ReadLine()
             ?? throw new BasicRuntimeException(4003, "LINE INPUT: end of input stream");
+        _col = 0;
         WriteAssignableTarget(stmt.Target, new StringValue(line), frame);
         return FlowControl.Continue;
     }
@@ -572,6 +578,7 @@ public sealed partial class BasicInterpreter
             callFrame.Set(i, args[i]);
         }
         var fc = ExecuteStatementList(body, callFrame);
+        PropagateFromCall(fc);
         // FunctionStmt assigns to the function-name slot to return a value.
         if (returnSlot >= 0 && callFrame.IsSet(returnSlot)) return callFrame.Get(returnSlot);
         return null;
@@ -601,10 +608,22 @@ public sealed partial class BasicInterpreter
             // capturing assignments to the DEF's name into a sentinel local.
             // For Phase 3 we evaluate the body and return zero/empty if no assignment
             // captures it. (A follow-up will tighten this.)
-            ExecuteStatementList(ds.Stmt.MultiLineBody, defFrame);
+            PropagateFromCall(ExecuteStatementList(ds.Stmt.MultiLineBody, defFrame));
             return ds.IsString ? StringValue.Empty : NumericValue.Zeroed(_native);
         }
         return ds.IsString ? StringValue.Empty : NumericValue.Zeroed(_native);
+    }
+
+    /// <summary>A procedure body's STOP halts the program, and an exception it didn't
+    /// handle carries on into the caller; both used to be dropped here, so the
+    /// caller kept running (and a FUNCTION returned 0).</summary>
+    private static void PropagateFromCall(FlowControl fc)
+    {
+        switch (fc)
+        {
+            case FlowControl.Stop or FlowControl.End: throw new ProgramHalted();
+            case FlowControl.Cause c: throw new PropagatedCause(c.Exception);
+        }
     }
 
     private Value CallBuiltin(BuiltinSymbol b, Value[] args)
