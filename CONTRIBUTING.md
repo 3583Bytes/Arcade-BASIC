@@ -124,6 +124,7 @@ If you want VM coverage, add an `Opcode.Swap` (already exists for the stack op �
 
 1. **`src/ArcadeBasic.Bytecode/Opcode.cs`** — add the enum entry in the appropriate section (stack / arithmetic / control flow / etc.).
 2. **`src/ArcadeBasic.Vm/BasicVm.cs`** — add a `case Opcode.X:` to the dispatch loop. Push/pop operands explicitly; the VM's stack is `Stack<Value>`.
+   An opcode that has to wait for something (time, input, audio) must not block: save `cf.Pc` and return a `StepResult` from `RunFrames`, so a host stepping the VM keeps its main loop (see `Opcode.Sleep` and `Opcode.Input`). An opcode that can pause and then re-run, like `Input`, should decode its operands and check it can proceed before popping anything.
 3. **`src/ArcadeBasic.Compiler/BasicCompiler.cs`** — emit the opcode from the relevant AST lowering path.
 4. **Test** in `test/ArcadeBasic.Vm.Tests/`. Tests compile a snippet, run it on the VM, and assert on captured output.
 

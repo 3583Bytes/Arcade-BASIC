@@ -51,6 +51,10 @@ public sealed class BasicVm
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
+    /// <summary>What <see cref="_audioState"/> plays through: passes tones to the
+    /// device but turns a foreground statement's blocking drain into a pause.</summary>
+    private readonly DeferredDrainAudio _audioPort;
+
     /// <summary>OPTION ARITHMETIC NATIVE: numbers the program creates (constants,
     /// INPUT/READ data, builtin results) are doubles instead of decimals.</summary>
     private readonly bool _native;
@@ -103,8 +107,8 @@ public sealed class BasicVm
         /// <summary>Operand-stack depth on entry; leaving the frame discards anything above it.</summary>
         public readonly int StackBase = stackBase;
 
-        /// <summary>Where this frame resumes. Only kept up to date while another frame
-        /// runs (the dispatch loop works on a local copy).</summary>
+        /// <summary>Where this frame resumes. The dispatch loop works on a local copy and
+        /// saves it here whenever it leaves the frame — for a call, or a pause.</summary>
         public int Pc;
 
         /// <summary>PC of the statement after the one executing (from LineNote) —
@@ -125,55 +129,140 @@ public sealed class BasicVm
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _audio = audio ?? NullAudioDevice.Instance;
+        _audioPort = new DeferredDrainAudio(_audio);
+        _lineReader = @in as INonBlockingLineReader;
         _native = program.NativeArithmetic;
         _zero = NumericValue.Zeroed(_native);
         _one = NumericValue.From(1, _native);
     }
 
-    public int Run()
+    /// <summary>Run the program to the end on this thread, doing the waiting itself —
+    /// SLEEP sleeps, INPUT blocks on the reader, foreground audio drains. Returns the
+    /// exit code (0 normal end, 1 unhandled exception — reported on stderr).</summary>
+    public int Run() => Run(CancellationToken.None);
+
+    /// <summary><see cref="Run()"/>, stopping with <see cref="OperationCanceledException"/>
+    /// when <paramref name="cancel"/> fires (checked between slices of instructions and
+    /// during SLEEP; a blocking reader's ReadLine can't be interrupted).</summary>
+    public int Run(CancellationToken cancel)
     {
         try
         {
-            _dataCursor = 0;
-            _col = 0;
-            _programFrame = new ActivationRecord(_program.Main.FrameSize, parent: null);
-            PushFrame(_program.Main, _programFrame, returnsValue: false, returnSlot: 0, returnsString: false);
-            Execute();
-            return 0;
-        }
-        catch (BasicRuntimeException ex)
-        {
-            _out.Flush();
-            // Match the tree-walker's "unhandled exception" format so the two
-            // engines produce identical stderr for an unhandled runtime error.
-            // _currentLine is the most recent LineNote, which matches the
-            // failing statement when the exception originates in user code.
-            Console.Error.WriteLine(
-                $"unhandled exception type {ex.TypeCode} at line {_currentLine}: {ex.Message}");
-            return 1;
+            while (true)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var r = Step(RunSlice);
+                switch (r.Status)
+                {
+                    case StepStatus.Halted:
+                        if (r.Error is not null)
+                        {
+                            _out.Flush();
+                            Console.Error.WriteLine(r.Error);
+                        }
+                        return r.ExitCode;
+                    case StepStatus.Sleeping:
+                        Wait(TimeSpan.FromMilliseconds(Math.Min(r.SleepSeconds * 1000.0, int.MaxValue)), cancel);
+                        break;
+                    case StepStatus.AwaitingAudio:
+                        _audio.Flush();   // real-time devices block until their queue drains
+                        break;
+                    case StepStatus.NeedsInput:
+                        // A non-blocking reader with nothing queued: poll until a line arrives.
+                        Wait(InputPollInterval, cancel);
+                        break;
+                }
+            }
         }
         finally
         {
-            _channels.Dispose();
+            if (!_halted) Finish(StepResult.Failed(2, "program cancelled"));
         }
     }
 
-    /// <summary>Run until the program halts, handing each runtime exception to the
-    /// innermost active WHEN handler. Unhandled ones propagate to <see cref="Run"/>.</summary>
-    private void Execute()
+    /// <summary>Instructions per <see cref="Step"/> inside <see cref="Run(CancellationToken)"/>:
+    /// how often cancellation is checked.</summary>
+    private const int RunSlice = 100_000;
+
+    private static readonly TimeSpan InputPollInterval = TimeSpan.FromMilliseconds(10);
+
+    private static void Wait(TimeSpan duration, CancellationToken cancel)
     {
-        while (true)
+        if (duration <= TimeSpan.Zero) return;
+        if (cancel.CanBeCanceled)
         {
-            try
+            cancel.WaitHandle.WaitOne(duration);
+            cancel.ThrowIfCancellationRequested();
+        }
+        else
+        {
+            Thread.Sleep(duration);
+        }
+    }
+
+    /// <summary>
+    /// Run at most <paramref name="maxInstructions"/> bytecode instructions, returning
+    /// early when the program sleeps, needs input, waits for audio, or ends. Nothing
+    /// here blocks except a plain (blocking) <see cref="TextReader"/> or a device
+    /// call, so a host that owns the main loop — a browser page, a game's frame
+    /// update — calls this repeatedly and does the waiting itself. The first call
+    /// starts the program. Not thread-safe: step a VM from one thread at a time.
+    /// </summary>
+    public StepResult Step(int maxInstructions)
+    {
+        if (maxInstructions < 1) throw new ArgumentOutOfRangeException(nameof(maxInstructions));
+        if (_halted) return _final;
+        _budget = maxInstructions;
+        try
+        {
+            while (true)
             {
-                RunFrames();
-                return;
-            }
-            catch (BasicRuntimeException ex)
-            {
-                if (!Dispatch(ex)) throw;
+                try
+                {
+                    if (!_started)
+                    {
+                        _started = true;
+                        _programFrame = new ActivationRecord(_program.Main.FrameSize, parent: null);
+                        PushFrame(_program.Main, _programFrame, returnsValue: false, returnSlot: 0, returnsString: false);
+                    }
+                    var r = RunFrames();
+                    return r.Status == StepStatus.Halted ? Finish(r) : r;
+                }
+                catch (BasicRuntimeException ex)
+                {
+                    // Hand it to the innermost active WHEN handler, or end the program.
+                    // _currentLine is the most recent LineNote: the failing statement.
+                    // (Same "unhandled exception" text as the tree-walker.)
+                    if (!Dispatch(ex))
+                        return Finish(StepResult.Failed(1,
+                            $"unhandled exception type {ex.TypeCode} at line {_currentLine}: {ex.Message}"));
+                }
             }
         }
+        catch
+        {
+            // Not a BASIC exception — a VM or device fault. Close the program's files on the way out.
+            if (!_halted) Finish(StepResult.Failed(1, "the VM stopped on an internal error"));
+            throw;
+        }
+    }
+
+    private bool _started;
+    private bool _halted;
+    private StepResult _final;
+
+    /// <summary>Instructions left in the current <see cref="Step"/>.</summary>
+    private int _budget;
+
+    /// <summary>The program is over: release its files and keep the result for later steps.</summary>
+    private StepResult Finish(StepResult result)
+    {
+        _halted = true;
+        _final = result;
+        _frames.Clear();
+        _handlerStack.Clear();
+        _channels.Dispose();
+        return result;
     }
 
     /// <summary>Unwind to the frame owning the innermost handler and point it at the
@@ -218,8 +307,9 @@ public sealed class BasicVm
     }
 
     /// <summary>The dispatch loop. Works on locals copied from the current frame;
-    /// a call or return saves <c>pc</c> into the frame and reloads them.</summary>
-    private void RunFrames()
+    /// a call or return saves <c>pc</c> into the frame and reloads them, and so does
+    /// every pause, so the next <see cref="Step"/> picks up where this one stopped.</summary>
+    private StepResult RunFrames()
     {
         var stack = _stack;
         var programFrame = _programFrame;
@@ -240,11 +330,16 @@ public sealed class BasicVm
 
         while (true)
         {
+            if (--_budget < 0)
+            {
+                cf.Pc = pc;
+                return StepResult.Running;
+            }
             if (pc >= code.Length)
             {
                 // Ran off the end of the chunk — the same as LeaveSub/LeaveFunction
                 // (well-formed bytecode ends with one, or with End in main).
-                if (!LeaveFrame()) return;
+                if (!LeaveFrame()) return StepResult.Ended;
                 goto SwitchFrame;
             }
             var op = (Opcode)code[pc++];
@@ -253,9 +348,7 @@ public sealed class BasicVm
                 case Opcode.Halt:
                 case Opcode.Stop:
                 case Opcode.End:
-                    _frames.Clear();
-                    _handlerStack.Clear();
-                    return;
+                    return StepResult.Ended;
                 case Opcode.Nop: break;
                 case Opcode.ForPrep:
                     {
@@ -283,7 +376,10 @@ public sealed class BasicVm
                         _graphics.Flush();
                         var secs = ((NumericValue)stack.Pop()).D;
                         if (secs > 0)
-                            System.Threading.Thread.Sleep((int)Math.Min(secs * 1000.0, int.MaxValue));
+                        {
+                            cf.Pc = pc;
+                            return StepResult.Sleep(secs);
+                        }
                         break;
                     }
 
@@ -293,18 +389,21 @@ public sealed class BasicVm
                         _graphics.Flush();
                         var dur = ((NumericValue)stack.Pop()).D;   // pushed last → on top
                         var freq = ((NumericValue)stack.Pop()).D;
-                        _audioState.EmitSound(freq, dur, _audio);
+                        _audioState.EmitSound(freq, dur, _audioPort);
+                        if (_audioPort.TakeDrainRequest()) { cf.Pc = pc; return StepResult.AwaitingAudio; }
                         break;
                     }
                 case Opcode.Beep:
                     _graphics.Flush();
-                    _audioState.EmitBeep(_audio);
+                    _audioState.EmitBeep(_audioPort);
+                    if (_audioPort.TakeDrainRequest()) { cf.Pc = pc; return StepResult.AwaitingAudio; }
                     break;
                 case Opcode.Play:
                     {
                         _graphics.Flush();
                         var notes = ((StringValue)stack.Pop()).V;
-                        _audioState.EmitPlay(notes, _audio);
+                        _audioState.EmitPlay(notes, _audioPort);
+                        if (_audioPort.TakeDrainRequest()) { cf.Pc = pc; return StepResult.AwaitingAudio; }
                         break;
                     }
 
@@ -607,7 +706,7 @@ public sealed class BasicVm
                     }
                 case Opcode.LeaveSub:
                 case Opcode.LeaveFunction:
-                    if (!LeaveFrame()) return;
+                    if (!LeaveFrame()) return StepResult.Ended;
                     goto SwitchFrame;
 
                 case Opcode.PrintNumber:
@@ -740,15 +839,18 @@ public sealed class BasicVm
                     }
                 case Opcode.LineInput:
                     {
+                        var opStart = pc - 1;
                         var suppressQuestionMark = ReadU32(code, ref pc) != 0;
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var rank = (int)ReadU32(code, ref pc);
+                        if (!TryReadInputLine(suppressQuestionMark ? " " : "? ", out var line))
+                        {
+                            cf.Pc = opStart;   // re-run this instruction once a line is queued
+                            return StepResult.NeedsInput;
+                        }
+                        if (line is null) throw new BasicRuntimeException(4003, "LINE INPUT: end of input stream");
                         var indices = PopIndices(stack, rank);
-                        _out.Write(suppressQuestionMark ? " " : "? ");
-                        _out.Flush();
-                        var line = _in.ReadLine()
-                            ?? throw new BasicRuntimeException(4003, "LINE INPUT: end of input stream");
                         var desc = new InputTargetDesc(depth, slot, IsString: true, rank);
                         AssignInputTarget(ResolveOuter(frame, programFrame, depth), desc, indices, new StringValue(line));
                         _col = 0;
@@ -1002,19 +1104,26 @@ public sealed class BasicVm
                     }
                 case Opcode.MatInput:
                     {
+                        var opStart = pc - 1;
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var isString = ReadU32(code, ref pc) != 0;
                         var arr = ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero);
                         if (arr is not (NumericArrayValue or StringArrayValue))
                             throw new BasicRuntimeException(6004, "MAT INPUT requires the target to be DIM-ed first");
-                        PerformMatInput(arr, isString);
+                        if (!TryCollectMatInput(MatOps.BoundsOf(arr)!.Length, out var values))
+                        {
+                            cf.Pc = opStart;   // the values so far wait in _matInputValues
+                            return StepResult.NeedsInput;
+                        }
+                        AssignMatInput(arr, isString, values);
                         _col = 0;
                         break;
                     }
 
                 case Opcode.Input:
                     {
+                        var opStart = pc - 1;
                         var suppressQuestionMark = ReadU32(code, ref pc) != 0;
                         var targetCount = (int)ReadU32(code, ref pc);
                         var descs = new InputTargetDesc[targetCount];
@@ -1026,6 +1135,20 @@ public sealed class BasicVm
                                 IsString: ReadU32(code, ref pc) != 0,
                                 Rank: (int)ReadU32(code, ref pc));
                         }
+                        // Prompt text (if any) was already emitted via PrintString
+                        // before this opcode; this adds the "? " (or " ").
+                        if (!TryReadInputLine(suppressQuestionMark ? " " : "? ", out var rawLine))
+                        {
+                            cf.Pc = opStart;   // re-run this instruction once a line is queued
+                            return StepResult.NeedsInput;
+                        }
+                        if (rawLine is null) throw new BasicRuntimeException(4003, "INPUT: end of input stream");
+                        var parsed = ParseInputReply(rawLine, descs);
+                        if (parsed is null)
+                        {
+                            pc = opStart;      // "redo from start" printed: prompt and read again
+                            break;
+                        }
                         // Subscripts were pushed in target order; pop in reverse so
                         // we end up with one int[] per target keyed by declaration index.
                         var indices = new int[targetCount][];
@@ -1033,11 +1156,9 @@ public sealed class BasicVm
                         {
                             indices[i] = PopIndices(stack, descs[i].Rank);
                         }
-                        // Prompt text (if any) was already emitted via PrintString
-                        // before this opcode. _col was updated then; PerformInput
-                        // resets _col after its own writes since INPUT always
-                        // consumes a full line.
-                        _col = PerformInput(descs, indices, suppressQuestionMark, frame, programFrame);
+                        for (var i = 0; i < targetCount; i++)
+                            AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], parsed[i]);
+                        _col = 0;   // the reply ended the line
                         break;
                     }
 
@@ -1141,18 +1262,23 @@ public sealed class BasicVm
         return arr;
     }
 
-    private void PerformMatInput(Value arr, bool isString)
+    /// <summary>MAT INPUT's values read so far, kept across pauses for input.</summary>
+    private List<string>? _matInputValues;
+
+    /// <summary>Collect MAT INPUT's <paramref name="n"/> comma-separated values, prompting
+    /// "? " per line (mirrors BasicInterpreter.ExecMatInput). False if a non-blocking
+    /// reader runs dry first — the values so far are kept for the retry.</summary>
+    private bool TryCollectMatInput(int n, out List<string> values)
     {
-        // Mirrors BasicInterpreter.ExecMatInput: prompt with "? " per line and
-        // collect comma-separated fields until the array is filled. Errors
-        // line up with the tree-walker (4002 non-numeric, 6005 EOF).
-        var n = MatOps.BoundsOf(arr)!.Length;
-        var values = new List<string>();
+        values = _matInputValues ??= new List<string>();
         while (values.Count < n)
         {
-            _out.Write("? "); _out.Flush();
-            var line = _in.ReadLine()
-                ?? throw new BasicRuntimeException(6005, "MAT INPUT: end of input");
+            if (!TryReadInputLine("? ", out var line)) return false;
+            if (line is null)
+            {
+                _matInputValues = null;
+                throw new BasicRuntimeException(6005, "MAT INPUT: end of input");
+            }
             foreach (var part in line.Split(','))
             {
                 var t = part.Trim();
@@ -1160,6 +1286,14 @@ public sealed class BasicVm
                 if (values.Count == n) break;
             }
         }
+        _matInputValues = null;
+        return true;
+    }
+
+    /// <summary>Store MAT INPUT's values; errors line up with the tree-walker (4002 non-numeric).</summary>
+    private static void AssignMatInput(Value arr, bool isString, List<string> values)
+    {
+        var n = values.Count;
         if (isString)
         {
             var sarr = (StringArrayValue)arr;
@@ -1175,6 +1309,35 @@ public sealed class BasicVm
                 narr[i] = new NumericValue(bd);
             }
         }
+    }
+
+    /// <summary>The prompt has been shown for the line now awaited, so a resumed
+    /// INPUT doesn't print it twice.</summary>
+    private bool _promptShown;
+
+    /// <summary>Non-null when the input reader can report "no line yet" instead of blocking.</summary>
+    private readonly INonBlockingLineReader? _lineReader;
+
+    /// <summary>Print <paramref name="prompt"/> (once per line wanted) and read a line.
+    /// False if a non-blocking reader has none yet; true with null at end of input.</summary>
+    private bool TryReadInputLine(string prompt, out string? line)
+    {
+        if (!_promptShown)
+        {
+            _out.Write(prompt);
+            _out.Flush();
+            _promptShown = true;
+        }
+        if (_lineReader is not null)
+        {
+            if (!_lineReader.TryReadLine(out line)) return false;
+        }
+        else
+        {
+            line = _in.ReadLine();
+        }
+        _promptShown = false;
+        return true;
     }
 
     // -- File-I/O helpers (mirror BasicInterpreter.File.cs) ---------------
@@ -1360,64 +1523,37 @@ public sealed class BasicVm
 
     private readonly record struct InputTargetDesc(int Depth, int Slot, bool IsString, int Rank);
 
-    private int PerformInput(
-        InputTargetDesc[] descs,
-        int[][] indices,
-        bool suppressQuestionMark,
-        ActivationRecord frame,
-        ActivationRecord programFrame)
+    /// <summary>Split and convert an INPUT reply, one value per target. A short or
+    /// non-numeric reply prints the "redo from start" message and returns null.
+    /// Mirrors BasicInterpreter.ExecInput: same messages, so the engines agree.</summary>
+    private Value[]? ParseInputReply(string rawLine, InputTargetDesc[] descs)
     {
-        // Bad-input retry loop. Mirrors BasicInterpreter.ExecInput; same error
-        // codes and user-facing messages so the VM and tree-walker agree.
-        while (true)
+        var fields = rawLine.Split(',');
+        if (fields.Length < descs.Length)
         {
-            _out.Write(suppressQuestionMark ? " " : "? ");
-            _out.Flush();
-
-            var rawLine = _in.ReadLine();
-            if (rawLine is null)
-                throw new BasicRuntimeException(4003, "INPUT: end of input stream");
-
-            var fields = rawLine.Split(',');
-            if (fields.Length < descs.Length)
-            {
-                _out.WriteLine("Not enough data — redo from start.");
-                continue;
-            }
-
-            var parsed = new Value[descs.Length];
-            var badField = -1;
-            for (var i = 0; i < descs.Length; i++)
-            {
-                var raw = fields[i].Trim();
-                if (descs[i].IsString)
-                {
-                    parsed[i] = new StringValue(raw);
-                }
-                else if (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
-                {
-                    parsed[i] = NumericValue.From(bd, _native);
-                }
-                else
-                {
-                    badField = i;
-                    break;
-                }
-            }
-
-            if (badField >= 0)
-            {
-                _out.WriteLine($"'{fields[badField].Trim()}' is not numeric — redo from start.");
-                continue;
-            }
-
-            for (var i = 0; i < descs.Length; i++)
-            {
-                var target = ResolveOuter(frame, programFrame, descs[i].Depth);
-                AssignInputTarget(target, descs[i], indices[i], parsed[i]);
-            }
-            return 0;
+            _out.WriteLine("Not enough data — redo from start.");
+            return null;
         }
+
+        var parsed = new Value[descs.Length];
+        for (var i = 0; i < descs.Length; i++)
+        {
+            var raw = fields[i].Trim();
+            if (descs[i].IsString)
+            {
+                parsed[i] = new StringValue(raw);
+            }
+            else if (BigDecimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
+            {
+                parsed[i] = NumericValue.From(bd, _native);
+            }
+            else
+            {
+                _out.WriteLine($"'{raw}' is not numeric — redo from start.");
+                return null;
+            }
+        }
+        return parsed;
     }
 
     private static void AssignInputTarget(ActivationRecord target, InputTargetDesc desc, int[] indices, Value value)
@@ -1577,4 +1713,24 @@ public sealed class BasicVm
     }
 
     private static string FormatNumeric(BigDecimal x) => DisplayFormat.FormatNumeric(x);
+
+    /// <summary>Forwards tones to the real device, but records a foreground statement's
+    /// <c>Flush()</c> — AudioState's "wait until it has played" — instead of blocking in
+    /// it, so the VM can pause with <see cref="StepStatus.AwaitingAudio"/> and leave
+    /// the waiting to the host.</summary>
+    private sealed class DeferredDrainAudio(IAudioDevice device) : IAudioDevice
+    {
+        private bool _drainRequested;
+
+        public void Emit(ToneEvent tone) => device.Emit(tone);
+
+        public void Flush() => _drainRequested = true;
+
+        public bool TakeDrainRequest()
+        {
+            var requested = _drainRequested;
+            _drainRequested = false;
+            return requested;
+        }
+    }
 }

@@ -61,6 +61,29 @@ public class ExampleParityTests
         Assert.Equal(interpExit, vmExit);
     }
 
+    /// <summary>Pausing after every single instruction — and at every INPUT, fed its
+    /// line only once the VM asks — must not change what a program does: the VM's
+    /// whole state survives between steps.</summary>
+    [Theory]
+    [MemberData(nameof(DeterministicExamples))]
+    public void SteppingOneInstructionAtATimeMatchesRun(string name, string stdin)
+    {
+        var (program, info) = FrontEnd(name);
+        var (runOut, runExit) = RunVm(program, info, stdin);
+        var (stepOut, stepExit) = StepVm(program, info, stdin, budget: 1);
+
+        Assert.Equal(runOut, stepOut);
+        Assert.Equal(runExit, stepExit);
+    }
+
+    [Theory]
+    [MemberData(nameof(CallAndPrintSemantics))]
+    public void CallAndPrintSemanticsHoldWhenSteppedOneInstructionAtATime(string source, string stdin, string expected, int expectedExit)
+    {
+        var (program, info) = FrontEndSource("calls.bas", source);
+        Assert.Equal((expected, expectedExit), StepVm(program, info, stdin, budget: 1));
+    }
+
     [Theory]
     [MemberData(nameof(AllExamples))]
     public void EveryExampleCompilesOnBothEngines(string name)
@@ -327,6 +350,28 @@ public class ExampleParityTests
         var sw = new StringWriter { NewLine = "\n" };
         var exit = new BasicVm(compiled, sw, new StringReader(stdin)).Run();
         return (sw.ToString(), exit);
+    }
+
+    /// <summary>Drive the VM the way a browser or game host would: Step until it
+    /// halts, skipping the waits, and queueing a line of <paramref name="stdin"/> only
+    /// when an INPUT asks for one (end of input once it runs out).</summary>
+    private static (string Output, int Exit) StepVm(AstProgram program, SemanticInfo info, string stdin, int budget)
+    {
+        var compiled = BasicCompiler.Compile(program, info);
+        var sw = new StringWriter { NewLine = "\n" };
+        var pending = new StringReader(stdin);
+        var input = new ArcadeBasic.Runtime.LineInputQueue();
+        var vm = new BasicVm(compiled, sw, input);
+        while (true)
+        {
+            var r = vm.Step(budget);
+            if (r.Status == StepStatus.Halted) return (sw.ToString(), r.ExitCode);
+            if (r.Status == StepStatus.NeedsInput)
+            {
+                if (pending.ReadLine() is { } line) input.Provide(line);
+                else input.Complete();
+            }
+        }
     }
 
     private static string ExamplesDir()
