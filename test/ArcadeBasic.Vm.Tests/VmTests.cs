@@ -1585,4 +1585,37 @@ public class VmTests
             """;
         Run(src).Output.Trim().Should().Be("reached");
     }
+
+    // -- Call stack: frames live on the VM's own stack, not the host's ---
+
+    [Fact]
+    public void DeepRecursionDoesNotOverflowTheHostStack()
+    {
+        // Each BASIC call used to be a nested C# call, so somewhere past 10,000
+        // levels the process died of an uncatchable stack overflow.
+        const string src = """
+            FUNCTION DEPTH(N)
+              IF N = 0 THEN LET DEPTH = 0 ELSE LET DEPTH = 1 + DEPTH(N - 1)
+            END FUNCTION
+            PRINT DEPTH(50000)
+            """;
+        Run(src).Should().Be((" 50000 \n", 0));
+    }
+
+    [Fact]
+    public void RunawayRecursionRaisesACatchableStorageException()
+    {
+        const string src = """
+            WHEN EXCEPTION IN
+              CALL FOREVER
+            USE
+              PRINT EXTYPE
+            END WHEN
+            END
+            SUB FOREVER
+              CALL FOREVER
+            END SUB
+            """;
+        Run(src).Should().Be((" 5000 \n", 0));
+    }
 }

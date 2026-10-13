@@ -35,7 +35,7 @@ public sealed class BasicVm
     /// <summary>Source line of the statement currently executing. Updated by LineNote; used as EXLINE when an exception fires.</summary>
     private int _currentLine;
 
-    /// <summary>PC at which CONTINUE should resume — the start of the statement immediately after the one that raised. Set by the exception-dispatch catch from the chunk-local stmtEndPc.</summary>
+    /// <summary>PC at which CONTINUE should resume — the start of the statement immediately after the one that raised. Set by <see cref="Dispatch"/> from the catching frame's StmtEndPc.</summary>
     private int _currentContinuePc;
 
     private readonly record struct HandlerFrame(int UsePc, int StackBaseline);
@@ -57,8 +57,63 @@ public sealed class BasicVm
     private readonly NumericValue _zero;
     private readonly NumericValue _one;
 
-    /// <summary>Each chunk's numeric constant pool, materialised once in the program's representation.</summary>
-    private readonly Dictionary<Chunk, NumericValue[]> _constants = new(ReferenceEqualityComparer.Instance);
+    /// <summary>Each chunk's code and numeric constant pool, materialised once (the
+    /// constants in the program's representation) when the chunk is first entered.</summary>
+    private readonly Dictionary<Chunk, ChunkRuntime> _chunks = new(ReferenceEqualityComparer.Instance);
+
+    private sealed record class ChunkRuntime(byte[] Code, NumericValue[] Constants);
+
+    /// <summary>Calls deeper than this raise exception 5000 (storage exhausted), which
+    /// a WHEN can catch — instead of running the host out of memory.</summary>
+    internal const int MaxCallDepth = 100_000;
+
+    /// <summary>The call stack: the main program at the bottom, then one frame per
+    /// active SUB / FUNCTION / DEF call. Calls push a frame rather than recursing in
+    /// C#, so BASIC recursion depth doesn't depend on the host thread's stack.</summary>
+    private readonly Stack<CallFrame> _frames = new();
+
+    /// <summary>The operand stack, shared by every frame. A frame's own values sit
+    /// above its <see cref="CallFrame.StackBase"/>.</summary>
+    private readonly Stack<Value> _stack = new(256);
+
+    private ActivationRecord _programFrame = null!;
+
+    /// <summary>One executing chunk: where it is, its locals, and what to undo when
+    /// it returns.</summary>
+    private sealed class CallFrame(
+        Chunk chunk, ChunkRuntime runtime, ActivationRecord locals,
+        bool returnsValue, int returnSlot, bool returnsString,
+        int handlerBase, int stackBase)
+    {
+        public readonly Chunk Chunk = chunk;
+        public readonly byte[] Code = runtime.Code;
+        public readonly NumericValue[] Constants = runtime.Constants;
+        public readonly ActivationRecord Locals = locals;
+
+        /// <summary>FUNCTION and DEF frames push their return slot onto the caller's
+        /// operand stack when they leave; SUB and main frames push nothing.</summary>
+        public readonly bool ReturnsValue = returnsValue;
+        public readonly int ReturnSlot = returnSlot;
+        public readonly bool ReturnsString = returnsString;
+
+        /// <summary>Handlers below this depth belong to callers: an exception this
+        /// frame can't handle unwinds it and is dispatched in the caller.</summary>
+        public readonly int HandlerBase = handlerBase;
+
+        /// <summary>Operand-stack depth on entry; leaving the frame discards anything above it.</summary>
+        public readonly int StackBase = stackBase;
+
+        /// <summary>Where this frame resumes. Only kept up to date while another frame
+        /// runs (the dispatch loop works on a local copy).</summary>
+        public int Pc;
+
+        /// <summary>PC of the statement after the one executing (from LineNote) —
+        /// where CONTINUE resumes if this frame's handler catches an exception.</summary>
+        public int StmtEndPc;
+
+        /// <summary>GOSUB return PCs. GOSUB/RETURN never cross chunk boundaries.</summary>
+        public Stack<int>? Gosubs;
+    }
 
     public BasicVm(BcProgram program, TextWriter @out, TextReader @in,
         IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
@@ -81,8 +136,9 @@ public sealed class BasicVm
         {
             _dataCursor = 0;
             _col = 0;
-            var programFrame = new ActivationRecord(_program.Main.FrameSize, parent: null);
-            ExecuteChunk(_program.Main, programFrame, programFrame);
+            _programFrame = new ActivationRecord(_program.Main.FrameSize, parent: null);
+            PushFrame(_program.Main, _programFrame, returnsValue: false, returnSlot: 0, returnsString: false);
+            Execute();
             return 0;
         }
         catch (BasicRuntimeException ex)
@@ -102,38 +158,104 @@ public sealed class BasicVm
         }
     }
 
-    /// <summary>Returns true if the chunk exited via End/Stop (program halts).</summary>
-    private bool ExecuteChunk(Chunk chunk, ActivationRecord frame, ActivationRecord programFrame)
+    /// <summary>Run until the program halts, handing each runtime exception to the
+    /// innermost active WHEN handler. Unhandled ones propagate to <see cref="Run"/>.</summary>
+    private void Execute()
     {
-        var code = chunk.Code;
-        var constants = ConstantsOf(chunk);
-        var stack = new Stack<Value>(64);
-        var pc = 0;
-        var pendingNewline = false;
-        // Handlers pushed below this depth belong to an enclosing chunk — if a
-        // BasicRuntimeException is thrown here and the topmost handler isn't ours,
-        // we rethrow to let the caller's loop dispatch it.
-        var entryHandlerDepth = _handlerStack.Count;
-        // PC of the next statement after the one currently executing. Updated
-        // by LineNote, snapshotted into _currentContinuePc on exception dispatch.
-        // Kept chunk-local so a CALL into a SUB doesn't clobber the outer
-        // chunk's view of where CONTINUE should resume.
-        var stmtEndPc = 0;
-        // GOSUB return-PC stack — local to this chunk. Pushed by GosubFlow,
-        // popped by Return. GOSUB/RETURN never cross chunk boundaries.
-        var gosubStack = new Stack<int>();
-
-        while (pc < code.Count)
+        while (true)
         {
             try
             {
+                RunFrames();
+                return;
+            }
+            catch (BasicRuntimeException ex)
+            {
+                if (!Dispatch(ex)) throw;
+            }
+        }
+    }
+
+    /// <summary>Unwind to the frame owning the innermost handler and point it at the
+    /// handler's USE body. Returns false when no handler is active (frames are gone).</summary>
+    private bool Dispatch(BasicRuntimeException ex)
+    {
+        while (_frames.Count > 0 && _handlerStack.Count <= _frames.Peek().HandlerBase)
+            _frames.Pop();
+        if (_frames.Count == 0) return false;
+
+        var cf = _frames.Peek();
+        var top = _handlerStack.Pop();
+        while (_stack.Count > top.StackBaseline) _stack.Pop();
+        _currentException = new BasicException(ex.TypeCode, _currentLine, ex.Message);
+        // A CONTINUE inside the USE body resumes at the statement after the one
+        // that raised — in the catching frame, so after a CALL that raised.
+        _currentContinuePc = cf.StmtEndPc;
+        cf.Pc = top.UsePc;
+        return true;
+    }
+
+    private void PushFrame(Chunk chunk, ActivationRecord locals, bool returnsValue, int returnSlot, bool returnsString)
+    {
+        if (_frames.Count >= MaxCallDepth)
+            throw new BasicRuntimeException(5000, $"procedure calls nested more than {MaxCallDepth} deep");
+        _frames.Push(new CallFrame(chunk, RuntimeOf(chunk), locals, returnsValue, returnSlot, returnsString,
+            handlerBase: _handlerStack.Count, stackBase: _stack.Count));
+    }
+
+    /// <summary>Return from the current frame (LeaveSub / LeaveFunction, or running
+    /// off the end of its code): drop the handlers and operand values it left, and
+    /// hand a FUNCTION's or DEF's result to the caller. False if it was the main program.</summary>
+    private bool LeaveFrame()
+    {
+        var done = _frames.Pop();
+        while (_handlerStack.Count > done.HandlerBase) _handlerStack.Pop();
+        while (_stack.Count > done.StackBase) _stack.Pop();
+        if (_frames.Count == 0) return false;
+        if (done.ReturnsValue)
+            _stack.Push(done.Locals.GetOrDefault(done.ReturnSlot, done.ReturnsString ? StringValue.Empty : _zero));
+        return true;
+    }
+
+    /// <summary>The dispatch loop. Works on locals copied from the current frame;
+    /// a call or return saves <c>pc</c> into the frame and reloads them.</summary>
+    private void RunFrames()
+    {
+        var stack = _stack;
+        var programFrame = _programFrame;
+        CallFrame cf;
+        Chunk chunk;
+        byte[] code;
+        NumericValue[] constants;
+        ActivationRecord frame;
+        int pc;
+
+    SwitchFrame:
+        cf = _frames.Peek();
+        chunk = cf.Chunk;
+        code = cf.Code;
+        constants = cf.Constants;
+        frame = cf.Locals;
+        pc = cf.Pc;
+
+        while (true)
+        {
+            if (pc >= code.Length)
+            {
+                // Ran off the end of the chunk — the same as LeaveSub/LeaveFunction
+                // (well-formed bytecode ends with one, or with End in main).
+                if (!LeaveFrame()) return;
+                goto SwitchFrame;
+            }
             var op = (Opcode)code[pc++];
             switch (op)
             {
                 case Opcode.Halt:
                 case Opcode.Stop:
                 case Opcode.End:
-                    return Halt(entryHandlerDepth);
+                    _frames.Clear();
+                    _handlerStack.Clear();
+                    return;
                 case Opcode.Nop: break;
                 case Opcode.ForPrep:
                     {
@@ -394,15 +516,15 @@ public sealed class BasicVm
                     {
                         // Operand is the absolute PC of the GOSUB target.
                         var target = (int)ReadU32(code, ref pc);
-                        gosubStack.Push(pc); // resume here after RETURN
+                        (cf.Gosubs ??= new Stack<int>()).Push(pc); // resume here after RETURN
                         pc = target;
                         break;
                     }
                 case Opcode.Return:
                     {
-                        if (gosubStack.Count == 0)
+                        if (cf.Gosubs is not { Count: > 0 })
                             throw new BasicRuntimeException(3001, "RETURN without GOSUB");
-                        pc = gosubStack.Pop();
+                        pc = cf.Gosubs.Pop();
                         break;
                     }
 
@@ -450,52 +572,43 @@ public sealed class BasicVm
                         var sid = (int)ReadU32(code, ref pc);
                         var argc = (int)ReadU32(code, ref pc);
                         var sub = _program.Subs[sid];
-                        var args = new Value[argc];
-                        for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
                         var subFrame = new ActivationRecord(sub.Body.FrameSize, programFrame);
-                        for (var i = 0; i < argc; i++) subFrame.Set(i, args[i]);
-                        // A STOP in the callee ends the whole program, not just the call.
-                        if (ExecuteChunk(sub.Body, subFrame, programFrame)) return Halt(entryHandlerDepth);
-                        break;
+                        for (var i = argc - 1; i >= 0; i--) subFrame.Set(i, stack.Pop());
+                        cf.Pc = pc;
+                        PushFrame(sub.Body, subFrame, returnsValue: false, returnSlot: 0, returnsString: false);
+                        goto SwitchFrame;
                     }
                 case Opcode.CallFunction:
                     {
                         var fid = (int)ReadU32(code, ref pc);
                         var argc = (int)ReadU32(code, ref pc);
                         var fn = _program.Functions[fid];
-                        var args = new Value[argc];
-                        for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
                         var fnFrame = new ActivationRecord(fn.Body.FrameSize, programFrame);
-                        for (var i = 0; i < argc; i++) fnFrame.Set(i, args[i]);
-                        // Run; the function chunk's body ends with LoadLocal(returnSlot) + LeaveFunction
-                        // which means whatever the body left in the return slot bubbles up.
-                        // Capture by re-running the chunk and reading the slot.
-                        if (ExecuteChunk(fn.Body, fnFrame, programFrame)) return Halt(entryHandlerDepth);
-                        stack.Push(fnFrame.GetOrDefault(fn.ReturnSlot,
-                            fn.IsString ? StringValue.Empty : _zero));
-                        break;
+                        for (var i = argc - 1; i >= 0; i--) fnFrame.Set(i, stack.Pop());
+                        // The body assigns its result to the return slot; LeaveFunction
+                        // pushes that slot onto this frame's operand stack.
+                        cf.Pc = pc;
+                        PushFrame(fn.Body, fnFrame, returnsValue: true, fn.ReturnSlot, fn.IsString);
+                        goto SwitchFrame;
                     }
                 case Opcode.CallDef:
                     {
                         var did = (int)ReadU32(code, ref pc);
                         var argc = (int)ReadU32(code, ref pc);
                         var def = _program.Defs[did];
-                        var args = new Value[argc];
-                        for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
                         // DEF body's parent scope is the caller's frame (so the
                         // body can reference the caller's outer names), unlike
                         // SUB/FUNCTION whose parent is programFrame.
                         var defFrame = new ActivationRecord(def.Body.FrameSize, frame);
-                        for (var i = 0; i < argc; i++) defFrame.Set(i, args[i]);
-                        if (ExecuteChunk(def.Body, defFrame, programFrame)) return Halt(entryHandlerDepth);
-                        stack.Push(defFrame.GetOrDefault(def.ReturnSlot,
-                            def.IsString ? StringValue.Empty : _zero));
-                        break;
+                        for (var i = argc - 1; i >= 0; i--) defFrame.Set(i, stack.Pop());
+                        cf.Pc = pc;
+                        PushFrame(def.Body, defFrame, returnsValue: true, def.ReturnSlot, def.IsString);
+                        goto SwitchFrame;
                     }
                 case Opcode.LeaveSub:
                 case Opcode.LeaveFunction:
-                    while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
-                    return false;
+                    if (!LeaveFrame()) return;
+                    goto SwitchFrame;
 
                 case Opcode.PrintNumber:
                     {
@@ -503,7 +616,6 @@ public sealed class BasicVm
                         var text = FormatNumeric(v);
                         _out.Write(text);
                         _col += text.Length;
-                        pendingNewline = true;
                         break;
                     }
                 case Opcode.PrintString:
@@ -511,13 +623,11 @@ public sealed class BasicVm
                         var s = ((StringValue)stack.Pop()).V;
                         _out.Write(s);
                         _col += s.Length;
-                        pendingNewline = true;
                         break;
                     }
                 case Opcode.PrintNewline:
                     _out.WriteLine();
                     _col = 0;
-                    pendingNewline = false;
                     break;
                 case Opcode.PrintZonePad:
                     {
@@ -544,7 +654,7 @@ public sealed class BasicVm
                     {
                         _currentLine = (int)ReadU32(code, ref pc);
                         var endOffset = ReadI32(code, ref pc);
-                        stmtEndPc = pc + endOffset;
+                        cf.StmtEndPc = pc + endOffset;
                         break;
                     }
                 case Opcode.BeginWhen:
@@ -555,7 +665,7 @@ public sealed class BasicVm
                         break;
                     }
                 case Opcode.PopHandler:
-                    if (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
+                    if (_handlerStack.Count > cf.HandlerBase) _handlerStack.Pop();
                     break;
                 case Opcode.Cause:
                     {
@@ -642,7 +752,6 @@ public sealed class BasicVm
                         var desc = new InputTargetDesc(depth, slot, IsString: true, rank);
                         AssignInputTarget(ResolveOuter(frame, programFrame, depth), desc, indices, new StringValue(line));
                         _col = 0;
-                        pendingNewline = false;
                         break;
                     }
                 case Opcode.LineInputFile:
@@ -696,7 +805,6 @@ public sealed class BasicVm
                         var parts = PictureFormat.Parse(format);
                         _out.WriteLine(PictureFormat.Apply(parts, items));
                         _col = 0;
-                        pendingNewline = false;
                         break;
                     }
 
@@ -890,7 +998,6 @@ public sealed class BasicVm
                         else if (arr is StringArrayValue sarr) MatOps.PrintMatrix(_out, sarr.Data, sarr.Bounds, s => s);
                         else throw new BasicRuntimeException(6004, "MAT PRINT requires the target to be DIM-ed first");
                         _col = 0;
-                        pendingNewline = false;
                         break;
                     }
                 case Opcode.MatInput:
@@ -903,7 +1010,6 @@ public sealed class BasicVm
                             throw new BasicRuntimeException(6004, "MAT INPUT requires the target to be DIM-ed first");
                         PerformMatInput(arr, isString);
                         _col = 0;
-                        pendingNewline = false;
                         break;
                     }
 
@@ -932,7 +1038,6 @@ public sealed class BasicVm
                         // resets _col after its own writes since INPUT always
                         // consumes a full line.
                         _col = PerformInput(descs, indices, suppressQuestionMark, frame, programFrame);
-                        pendingNewline = false;
                         break;
                     }
 
@@ -1000,36 +1105,7 @@ public sealed class BasicVm
                 default:
                     throw new BasicRuntimeException(0, $"unimplemented opcode {op}");
             }
-            }
-            catch (BasicRuntimeException ex)
-            {
-                // If no handler in this chunk's scope, propagate up the call chain
-                // to a caller's ExecuteChunk (or out to Run() for unhandled).
-                if (_handlerStack.Count <= entryHandlerDepth) throw;
-                var top = _handlerStack.Pop();
-                while (stack.Count > top.StackBaseline) stack.Pop();
-                _currentException = new BasicException(ex.TypeCode, _currentLine, ex.Message);
-                // Snapshot the chunk-local stmtEndPc so a CONTINUE inside the
-                // USE body resumes at the statement after the one that raised.
-                _currentContinuePc = stmtEndPc;
-                pc = top.UsePc;
-            }
         }
-
-        // Reaching the end of the chunk naturally — clean up any handlers we
-        // opened but didn't formally PopHandler (a defensive measure; well-formed
-        // bytecode shouldn't leave anything dangling).
-        while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
-        _ = pendingNewline;
-        return false;
-    }
-
-    /// <summary>Leave this chunk because the program is ending: drop the handlers it
-    /// opened and report "halted" so every caller's ExecuteChunk returns too.</summary>
-    private bool Halt(int entryHandlerDepth)
-    {
-        while (_handlerStack.Count > entryHandlerDepth) _handlerStack.Pop();
-        return true;
     }
 
     /// <summary>Build a numeric or string constant array matching the
@@ -1444,7 +1520,7 @@ public sealed class BasicVm
         return indices;
     }
 
-    private static uint ReadU32(IReadOnlyList<byte> code, ref int pc)
+    private static uint ReadU32(byte[] code, ref int pc)
     {
         uint v = code[pc++];
         v |= (uint)code[pc++] << 8;
@@ -1453,16 +1529,16 @@ public sealed class BasicVm
         return v;
     }
 
-    private static int ReadI32(IReadOnlyList<byte> code, ref int pc) => (int)ReadU32(code, ref pc);
+    private static int ReadI32(byte[] code, ref int pc) => (int)ReadU32(code, ref pc);
 
-    private NumericValue[] ConstantsOf(Chunk chunk)
+    private ChunkRuntime RuntimeOf(Chunk chunk)
     {
-        if (!_constants.TryGetValue(chunk, out var values))
+        if (!_chunks.TryGetValue(chunk, out var rt))
         {
-            values = chunk.Numbers.Select(n => NumericValue.From(n, _native)).ToArray();
-            _constants[chunk] = values;
+            rt = new ChunkRuntime(chunk.ToArray(), chunk.Numbers.Select(n => NumericValue.From(n, _native)).ToArray());
+            _chunks[chunk] = rt;
         }
-        return values;
+        return rt;
     }
 
     private static void Arithmetic(Stack<Value> stack, Func<NumericValue, NumericValue, NumericValue> op)

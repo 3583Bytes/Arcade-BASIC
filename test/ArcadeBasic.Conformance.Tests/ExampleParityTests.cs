@@ -157,6 +157,16 @@ public class ExampleParityTests
          "", "next\n", 0],
         // unhandled in a FUNCTION, it stops the program instead of returning 0
         ["PRINT G(0)\nPRINT \"after\"\nEND\nFUNCTION G(X)\nLET G = 1 / X\nEND FUNCTION\n", "", "", 1],
+        // raised two calls deep, mid-expression in every frame, and caught in the middle one
+        ["PRINT 100 + OUTERF(0); 100 + OUTERF(2)\nEND\n" +
+         "FUNCTION OUTERF(X)\nWHEN EXCEPTION IN\nLET OUTERF = 10 + INNERF(X)\nUSE\nLET OUTERF = -1\nEND WHEN\nEND FUNCTION\n" +
+         "FUNCTION INNERF(X)\nLET INNERF = 1 / X\nEND FUNCTION\n", "", " 99  110.5 \n", 0],
+        // RETRY in a SUB's handler re-runs a CALL that raised
+        ["CALL S\nEND\nSUB S\nLET N = 0\nWHEN EXCEPTION IN\nLET N = N + 1\nCALL FAILS(N)\nPRINT \"ok after\"; N\n" +
+         "USE\nRETRY\nEND WHEN\nEND SUB\nSUB FAILS(K)\nIF K < 3 THEN CAUSE EXCEPTION 1\nEND SUB\n", "", "ok after 3 \n", 0],
+        // EXIT SUB from inside a WHEN closes that handler: a later exception in the caller is unhandled
+        ["CALL S\nCAUSE EXCEPTION 9\nEND\nSUB S\nWHEN EXCEPTION IN\nEXIT SUB\nUSE\nPRINT \"stale handler\"\nEND WHEN\nEND SUB\n",
+         "", "", 1],
         // the PRINT column carries across statements: comma zones …
         ["PRINT \"AAAAAAAAAAAAAAAAAAAA\";\nPRINT \"B\",\nPRINT \"C\"\n", "", "AAAAAAAAAAAAAAAAAAAAB           C\n", 0],
         // … and TAB

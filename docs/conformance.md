@@ -229,6 +229,8 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 **IMPLEMENTATION-DEFINED:** Exception type codes follow the spec for the ones we implement. Our extensions (e.g. `4003` for INPUT-stream-closed) are documented inline in `BasicRuntimeException` callsites.
 
+**IMPLEMENTATION-DEFINED:** procedure calls may nest 100,000 deep on the VM (`vm`, `build`, standalone binaries); the next call raises exception **5000** (the "storage exhausted" class), which `WHEN`/`USE` can catch. **Known gap:** the tree-walker (`run`, the IDE, Unity) still recurses on the host thread's stack, so very deep recursion — somewhere past 1,000 levels — ends the process instead.
+
 ## Modules
 
 `MODULE name ... END MODULE` is supported with static linkage. The CLI's `run` subcommand accepts the main file followed by any number of module files; sema runs across all of them, and module-level declarations become visible globally via `PUBLIC` / scoped via `PRIVATE`.

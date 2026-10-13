@@ -153,7 +153,7 @@ If you want to read the actual implementation:
 | Trailer format (append / read) | [`src/ArcadeBasic.Bytecode/BytecodeSerializer.cs`](../src/ArcadeBasic.Bytecode/BytecodeSerializer.cs) `EmbeddedPayload` static class |
 | Bytecode format (versioned) | Same file, `BytecodeSerializer.Serialize` / `Deserialize` |
 | AST → bytecode lowering | [`src/ArcadeBasic.Compiler/BasicCompiler.cs`](../src/ArcadeBasic.Compiler/BasicCompiler.cs) |
-| Opcode dispatch | [`src/ArcadeBasic.Vm/BasicVm.cs`](../src/ArcadeBasic.Vm/BasicVm.cs) `ExecuteChunk` switch |
+| Opcode dispatch | [`src/ArcadeBasic.Vm/BasicVm.cs`](../src/ArcadeBasic.Vm/BasicVm.cs) `RunFrames` switch |
 | NativeAOT toggle | [`src/ArcadeBasic.Cli/ArcadeBasic.Cli.csproj`](../src/ArcadeBasic.Cli/ArcadeBasic.Cli.csproj) — `<PublishAot>true</PublishAot>` |
 
 ## Trying it
