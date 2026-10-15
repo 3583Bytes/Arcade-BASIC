@@ -168,6 +168,8 @@ Domain errors raise the §5.4 exceptions: `SQR` of a negative (3005), `ASIN`/`AC
 
 **IMPLEMENTATION-DEFINED:** `RND` takes 0 or 1 arguments. The argument is **ignored**; every call advances the underlying PRNG. ISO permits dialect-specific behaviour; MS-BASIC's `RND(0) = last value` is not implemented.
 
+`RND` follows §5.4.4: without `RANDOMIZE` a program gets the same sequence every run, one sequence for the whole program (all its program units); `RANDOMIZE` starts an unpredictable one from the clock. **EXTENSION:** `RANDOMIZE n` starts the repeatable sequence that belongs to `n`. **IMPLEMENTATION-DEFINED:** the generator is SplitMix64 (`BasicRandom` in `ArcadeBasic.Runtime`), so both engines, Unity and WebAssembly produce identical numbers; values are uniform in [0, 1) with 53 random bits. An embedding host can pass a *randomize seed* (`randomizeSeed:` on `BasicInterpreter` / `BasicVm`) that a plain `RANDOMIZE` uses instead of the clock, which makes a whole run repeatable — the tests use it to replay the real-time games.
+
 **IMPLEMENTATION-DEFINED:** `PI`, `EPS`, `INF`, `MAXNUM` are modelled as constant symbols (no parens). Their values:
 
 | Constant | Value |

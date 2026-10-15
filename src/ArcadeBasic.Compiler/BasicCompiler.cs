@@ -339,7 +339,11 @@ public sealed class BasicCompiler
             case RemStmt: break;
             case OptionBaseStmt: break;
             case OptionArithmeticStmt: break;
-            case RandomizeStmt: break;
+            case RandomizeStmt rnd:
+                if (rnd.Seed is not null) CompileExpr(rnd.Seed);
+                _current.Emit(Opcode.Randomize);
+                _current.EmitU32(rnd.Seed is null ? 0u : 1u);
+                break;
             case SleepStmt slp: CompileExpr(slp.Seconds); _current.Emit(Opcode.Sleep); break;
             case SoundStmt snd:
                 CompileExpr(snd.Frequency);

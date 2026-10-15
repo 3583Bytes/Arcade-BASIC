@@ -569,12 +569,15 @@ END                        ! explicit halt at the end of main
 
 ### `RANDOMIZE`
 
-Reseed the random-number generator used by the `RND` builtin. With no
-argument, uses a time-based seed; with a numeric argument, seeds
-deterministically.
+Reseed the random-number generator used by the `RND` builtin. A program
+that never runs `RANDOMIZE` gets the **same** `RND` sequence every time it
+runs (as the standard requires) — handy while debugging. `RANDOMIZE` with no
+argument starts an unpredictable sequence from the clock; with a numeric
+argument (an extension) it starts a repeatable one, the same for the same
+number on every platform.
 
 ```basic
-RANDOMIZE                  ! time-seeded
+RANDOMIZE                  ! time-seeded: different every run
 RANDOMIZE 42               ! deterministic — useful for reproducibility
 PRINT RND
 ```

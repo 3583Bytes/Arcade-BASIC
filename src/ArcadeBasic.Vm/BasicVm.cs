@@ -51,6 +51,9 @@ public sealed class BasicVm
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
+    /// <summary>RND's sequence for this run; reseeded by RANDOMIZE.</summary>
+    private readonly BasicRandom _random;
+
     /// <summary>What <see cref="_audioState"/> plays through: passes tones to the
     /// device but turns a foreground statement's blocking drain into a pause.</summary>
     private readonly DeferredDrainAudio _audioPort;
@@ -121,7 +124,7 @@ public sealed class BasicVm
 
     public BasicVm(BcProgram program, TextWriter @out, TextReader @in,
         IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
-        IAudioDevice? audio = null)
+        IAudioDevice? audio = null, int? randomizeSeed = null)
     {
         _program = program;
         _out = @out;
@@ -130,6 +133,7 @@ public sealed class BasicVm
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _audio = audio ?? NullAudioDevice.Instance;
         _audioPort = new DeferredDrainAudio(_audio);
+        _random = new BasicRandom(randomizeSeed);
         _lineReader = @in as INonBlockingLineReader;
         _native = program.NativeArithmetic;
         _zero = NumericValue.Zeroed(_native);
@@ -350,6 +354,10 @@ public sealed class BasicVm
                 case Opcode.End:
                     return StepResult.Ended;
                 case Opcode.Nop: break;
+                case Opcode.Randomize:
+                    if (ReadU32(code, ref pc) == 0) _random.Randomize();
+                    else _random.Randomize(((NumericValue)stack.Pop()).D);   // RANDOMIZE n: an extension
+                    break;
                 case Opcode.ForPrep:
                     {
                         var limitSlot = (int)ReadU32(code, ref pc);
@@ -655,6 +663,10 @@ public sealed class BasicVm
                         else if (string.Equals(name, "INKEY", StringComparison.OrdinalIgnoreCase))
                         {
                             stack.Push(new StringValue(_keyboard.ReadKey()));   // non-blocking key poll
+                        }
+                        else if (string.Equals(name, "RND", StringComparison.OrdinalIgnoreCase))
+                        {
+                            stack.Push(_random.Next(_native));   // this run's sequence; any argument is ignored
                         }
                         else if (BuiltinImpls.All.TryGetValue(name, out var fn))
                         {

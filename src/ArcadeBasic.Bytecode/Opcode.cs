@@ -261,4 +261,7 @@ public enum Opcode : byte
     // parks them in two hidden temp slots of the current frame.
     ForPrep,               // operand: u32 limitSlot, u32 stepSlot — stack (top last): limit, step; pops both into the temps (step 0 raises 6002)
     ForTest,               // operand: u32 limitSlot, u32 stepSlot — pops the control variable; pushes -1 if the loop is finished, else 0
+
+    // -- RANDOMIZE (appended so the values above stay stable) --
+    Randomize,             // operand: u32 hasSeed (0/1) — stack: seed if hasSeed; restarts RND's sequence
 }

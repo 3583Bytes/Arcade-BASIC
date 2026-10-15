@@ -77,10 +77,7 @@ public static class BuiltinImpls
         t["CSC"] = (args, native) => Real("CSC", 1.0 / Math.Sin(D(args[0])), native);
         t["COT"] = (args, native) => Real("COT", 1.0 / Math.Tan(D(args[0])), native);
 
-        var rng = new Random();
-        t["RND"] = (_, native) => native
-            ? NumericValue.FromDouble(rng.NextDouble())
-            : Num(Numbers.ToDecimal(rng.NextDouble()));
+        // RND isn't here: each engine draws from its own run's BasicRandom.
 
         t["MAX"] = (args, native) =>
         {

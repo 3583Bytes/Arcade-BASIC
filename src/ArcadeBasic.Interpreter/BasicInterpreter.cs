@@ -36,6 +36,9 @@ public sealed partial class BasicInterpreter
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
+    /// <summary>RND's sequence for this run; reseeded by RANDOMIZE.</summary>
+    private readonly BasicRandom _random;
+
     /// <summary>OPTION ARITHMETIC NATIVE: numbers the program creates (literals,
     /// INPUT/READ data, builtin results) are doubles instead of decimals.</summary>
     private readonly bool _native;
@@ -63,7 +66,7 @@ public sealed partial class BasicInterpreter
 
     public BasicInterpreter(Program program, SemanticInfo info, TextWriter @out, TextReader @in,
         CancellationToken cancel = default, IGraphicsDevice? graphics = null, IKeyboard? keyboard = null,
-        IAudioDevice? audio = null)
+        IAudioDevice? audio = null, int? randomizeSeed = null)
     {
         _program = program;
         _info = info;
@@ -73,6 +76,7 @@ public sealed partial class BasicInterpreter
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _audio = audio ?? NullAudioDevice.Instance;
+        _random = new BasicRandom(randomizeSeed);
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
         _native = info.Arithmetic == ArithmeticMode.Native;
     }

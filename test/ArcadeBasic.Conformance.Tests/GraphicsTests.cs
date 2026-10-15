@@ -15,6 +15,7 @@ namespace ArcadeBasic.Conformance.Tests;
 /// <see cref="RecordingGraphicsDevice"/> (the device-coordinate primitive stream
 /// both engines must produce identically).
 /// </summary>
+[Collection(ScoreFiles.Collection)]
 public class GraphicsTests
 {
     private static (string Interp, string Vm) Both(string source)

@@ -287,8 +287,8 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecRandomize(RandomizeStmt rnd, ActivationRecord frame)
     {
-        // Phase-3 stand-in: nothing reseeds the BuiltinImpls RND yet. Documented gap.
-        if (rnd.Seed is not null) _ = EvalNumeric(rnd.Seed, frame);
+        if (rnd.Seed is null) _random.Randomize();
+        else _random.Randomize(EvalNumber(rnd.Seed, frame).D);   // RANDOMIZE n: an extension
         return FlowControl.Continue;
     }
 
@@ -645,6 +645,9 @@ public sealed partial class BasicInterpreter
                 // Non-blocking keyboard poll — reads from the injected keyboard
                 // source, not the static builtin registry.
                 return new StringValue(_keyboard.ReadKey());
+            case "RND":
+                // This run's sequence (the argument, if any, is ignored).
+                return _random.Next(_native);
         }
 
         if (!BuiltinImpls.All.TryGetValue(b.Name, out var fn))

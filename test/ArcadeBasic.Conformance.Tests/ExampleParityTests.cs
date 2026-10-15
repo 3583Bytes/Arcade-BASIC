@@ -24,6 +24,7 @@ namespace ArcadeBasic.Conformance.Tests;
 ///     "feature works in the interpreter but the VM compiler chokes" gaps even
 ///     for input-driven or RND-seeded programs we can't compare by output.
 /// </summary>
+[Collection(ScoreFiles.Collection)]
 public class ExampleParityTests
 {
     /// <summary>(file, stdin) for examples that terminate deterministically.</summary>
@@ -82,6 +83,93 @@ public class ExampleParityTests
     {
         var (program, info) = FrontEndSource("calls.bas", source);
         Assert.Equal((expected, expectedExit), StepVm(program, info, stdin, budget: 1));
+    }
+
+    /// <summary>(source, expected). RND without RANDOMIZE repeats the same sequence
+    /// every run (ECMA-116 §5.4.4) — pinned here, so changing the generator is a
+    /// deliberate act — and RANDOMIZE n (an extension) repeats per n. Each runs
+    /// under both arithmetic modes on both engines.</summary>
+    public static IEnumerable<object[]> RandomSemantics() =>
+    [
+        ["PRINT RND; RND; RND\n", " 0.86770936  0.12033515  0.22254771 \n"],
+        ["RANDOMIZE 42\nPRINT RND; RND; RND\n", " 0.3664867  0.33911364  0.67551857 \n"],
+        // one sequence for the whole program, not one per program unit
+        ["PRINT RND\nCALL S\nEND\nSUB S\nPRINT RND\nEND SUB\n", " 0.86770936 \n 0.12033515 \n"],
+        // the seed expression is evaluated (the VM used to skip RANDOMIZE entirely)
+        ["RANDOMIZE F(42)\nPRINT RND\nEND\nFUNCTION F(X)\nPRINT \"seed\";\nLET F = X\nEND FUNCTION\n", "seed 0.3664867 \n"],
+    ];
+
+    [Theory]
+    [MemberData(nameof(RandomSemantics))]
+    public void RandomSequencesAgreeOnBothEngines(string source, string expected)
+    {
+        foreach (var src in new[] { source, source + "OPTION ARITHMETIC NATIVE\n" })
+        {
+            var (program, info) = FrontEndSource("rnd.bas", src);
+            Assert.Equal((expected, 0), RunInterpreter(program, info, ""));
+            Assert.Equal((expected, 0), RunVm(program, info, ""));
+        }
+    }
+
+    [Fact]
+    public void RandomizeIsUnpredictableUnlessTheHostSuppliesASeed()
+    {
+        var (program, info) = FrontEndSource("randomize.bas", "RANDOMIZE\nPRINT RND; RND; RND\n");
+
+        // From the clock: a new sequence every run (and never the default one).
+        var runs = new[] { RunInterpreter(program, info, ""), RunInterpreter(program, info, ""), RunVm(program, info, ""), RunVm(program, info, "") }
+            .Select(r => r.Output).ToList();
+        Assert.Equal(runs.Count, runs.Distinct().Count());
+        Assert.DoesNotContain(" 0.86770936  0.12033515  0.22254771 \n", runs);
+
+        // From a host seed: the same run every time, on both engines; another seed, another run.
+        var seeded = RunVm(program, info, "", randomizeSeed: 7);
+        Assert.Equal(seeded, RunVm(program, info, "", randomizeSeed: 7));
+        Assert.Equal(seeded, RunInterpreter(program, info, "", randomizeSeed: 7));
+        Assert.NotEqual(seeded, RunVm(program, info, "", randomizeSeed: 8));
+
+        // A host seed only stands in for the clock: without RANDOMIZE nothing changes.
+        var (plain, plainInfo) = FrontEndSource("plain.bas", "PRINT RND\n");
+        Assert.Equal(" 0.86770936 \n", RunVm(plain, plainInfo, "", randomizeSeed: 7).Output);
+    }
+
+    /// <summary>The real-time games, which loop on INKEY$ and SLEEP.</summary>
+    public static IEnumerable<object[]> RealTimeGames() =>
+    [
+        ["invaders.bas"],
+        ["snake.bas"],
+        ["breakout.bas"],
+        ["tetris.bas"],
+    ];
+
+    /// <summary>With no keyboard each game plays itself to the end, and with a
+    /// randomize seed its RND repeats — so stepping one instruction at a time must
+    /// print and draw exactly what large steps do, frame for frame. Each run starts
+    /// without the game's saved high score, which it would otherwise show as HI.</summary>
+    [Theory]
+    [MemberData(nameof(RealTimeGames))]
+    public void RealTimeGamesPlayTheSameWhenSteppedOneInstructionAtATime(string name)
+    {
+        var (program, info) = FrontEnd(name);
+        var largeGfx = new ArcadeBasic.Runtime.RecordingGraphicsDevice();
+        var smallGfx = new ArcadeBasic.Runtime.RecordingGraphicsDevice();
+
+        (string Output, int Exit) large, small;
+        try
+        {
+            ScoreFiles.Delete(name);
+            large = StepVm(program, info, "", budget: 100_000, randomizeSeed: 1, graphics: largeGfx);
+            ScoreFiles.Delete(name);
+            small = StepVm(program, info, "", budget: 1, randomizeSeed: 1, graphics: smallGfx);
+        }
+        finally
+        {
+            ScoreFiles.Delete(name);
+        }
+
+        Assert.Equal(large, small);
+        Assert.Contains("FLUSH", largeGfx.Transcript);          // it really drew frames
+        Assert.True(largeGfx.Transcript == smallGfx.Transcript, $"{name}: the drawn frames differ");
     }
 
     [Theory]
@@ -337,33 +425,35 @@ public class ExampleParityTests
         return (program, info);
     }
 
-    private static (string Output, int Exit) RunInterpreter(AstProgram program, SemanticInfo info, string stdin)
+    private static (string Output, int Exit) RunInterpreter(AstProgram program, SemanticInfo info, string stdin, int? randomizeSeed = null)
     {
         var sw = new StringWriter { NewLine = "\n" };
-        var exit = new BasicInterpreter(program, info, sw, new StringReader(stdin)).Run();
+        var exit = new BasicInterpreter(program, info, sw, new StringReader(stdin), randomizeSeed: randomizeSeed).Run();
         return (sw.ToString(), exit);
     }
 
-    private static (string Output, int Exit) RunVm(AstProgram program, SemanticInfo info, string stdin)
+    private static (string Output, int Exit) RunVm(AstProgram program, SemanticInfo info, string stdin, int? randomizeSeed = null)
     {
         var compiled = BasicCompiler.Compile(program, info);
         var sw = new StringWriter { NewLine = "\n" };
-        var exit = new BasicVm(compiled, sw, new StringReader(stdin)).Run();
+        var exit = new BasicVm(compiled, sw, new StringReader(stdin), randomizeSeed: randomizeSeed).Run();
         return (sw.ToString(), exit);
     }
 
     /// <summary>Drive the VM the way a browser or game host would: Step until it
     /// halts, skipping the waits, and queueing a line of <paramref name="stdin"/> only
     /// when an INPUT asks for one (end of input once it runs out).</summary>
-    private static (string Output, int Exit) StepVm(AstProgram program, SemanticInfo info, string stdin, int budget)
+    private static (string Output, int Exit) StepVm(AstProgram program, SemanticInfo info, string stdin, int budget,
+        int? randomizeSeed = null, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null)
     {
         var compiled = BasicCompiler.Compile(program, info);
         var sw = new StringWriter { NewLine = "\n" };
         var pending = new StringReader(stdin);
         var input = new ArcadeBasic.Runtime.LineInputQueue();
-        var vm = new BasicVm(compiled, sw, input);
-        while (true)
+        var vm = new BasicVm(compiled, sw, input, graphics, randomizeSeed: randomizeSeed);
+        for (long instructions = 0; ; instructions += budget)
         {
+            Assert.True(instructions < MaxSteppedInstructions, $"still running after {MaxSteppedInstructions:N0} instructions");
             var r = vm.Step(budget);
             if (r.Status == StepStatus.Halted) return (sw.ToString(), r.ExitCode);
             if (r.Status == StepStatus.NeedsInput)
@@ -373,6 +463,8 @@ public class ExampleParityTests
             }
         }
     }
+
+    private const long MaxSteppedInstructions = 200_000_000;
 
     private static string ExamplesDir()
     {
@@ -384,5 +476,18 @@ public class ExampleParityTests
             dir = Path.GetDirectoryName(dir);
         }
         throw new DirectoryNotFoundException("could not locate the examples/ directory above the test binary");
+    }
+}
+
+/// <summary>The games save their high score to <c>&lt;game&gt;.score</c> in the current
+/// directory and show it on screen, so tests that run them share that file: they sit
+/// in one collection (never run concurrently) and delete it around each run.</summary>
+internal static class ScoreFiles
+{
+    public const string Collection = "example score files";
+
+    public static void Delete(string game)
+    {
+        try { File.Delete(Path.ChangeExtension(game, ".score")); } catch (IOException) { /* best effort */ }
     }
 }
