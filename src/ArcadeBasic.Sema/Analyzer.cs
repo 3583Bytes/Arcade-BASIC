@@ -422,6 +422,15 @@ public sealed class Analyzer
             case SleepStmt slp:
                 ExpectType(slp.Seconds, AnalyzeExpr(slp.Seconds, scope), BasicType.Numeric, "SLEEP seconds");
                 break;
+            case LocatePointStmt lp:
+                if (lp.Device is not null) ExpectType(lp.Device, AnalyzeExpr(lp.Device, scope), BasicType.Numeric, "graphic input device");
+                if (lp.AtX is not null) ExpectType(lp.AtX, AnalyzeExpr(lp.AtX, scope), BasicType.Numeric, "AT x");
+                if (lp.AtY is not null) ExpectType(lp.AtY, AnalyzeExpr(lp.AtY, scope), BasicType.Numeric, "AT y");
+                AnalyzeNumericTargets(scope, "LOCATE POINT", lp.X, lp.Y);
+                break;
+            case GetMouseStmt gm:
+                AnalyzeNumericTargets(scope, "GET MOUSE", gm.X, gm.Y, gm.State);
+                break;
             case SoundStmt snd:
                 ExpectType(snd.Frequency, AnalyzeExpr(snd.Frequency, scope), BasicType.Numeric, "SOUND frequency");
                 ExpectType(snd.Duration, AnalyzeExpr(snd.Duration, scope), BasicType.Numeric, "SOUND duration");
@@ -778,6 +787,16 @@ public sealed class Analyzer
         {
             _diags.Error(ErrGraphics, ag.Span,
                 $"ASK {ag.Object} expects {expected} target variable(s), got {ag.Targets.Count}");
+        }
+    }
+
+    private void AnalyzeNumericTargets(Scope scope, string statement, params Expr[] targets)
+    {
+        foreach (var t in targets)
+        {
+            AnalyzeAssignableTarget(t, scope);
+            if (TypeOfTarget(t) != BasicType.Numeric)
+                _diags.Error(ErrTypeMismatch, t.Span, $"{statement} targets must be numeric variables");
         }
     }
 

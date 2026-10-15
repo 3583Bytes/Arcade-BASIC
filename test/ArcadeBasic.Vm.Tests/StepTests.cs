@@ -171,6 +171,60 @@ public class StepTests
     }
 
     [Fact]
+    public void InstructionsAreCountedTheSameHoweverTheyAreSliced()
+    {
+        const string src = "FOR I = 1 TO 50\nLET X = X + I\nNEXT I\nSLEEP 0.1\nPRINT X\n";
+        var whole = Vm(src, Output());
+        while (whole.Step(1_000_000).Status != StepStatus.Halted) { }
+
+        var sliced = Vm(src, Output());
+        var steps = 0;
+        while (sliced.Step(1).Status != StepStatus.Halted) steps++;
+
+        whole.InstructionsExecuted.Should().BeGreaterThan(50);
+        sliced.InstructionsExecuted.Should().Be(whole.InstructionsExecuted);
+        steps.Should().Be((int)whole.InstructionsExecuted - 1);   // the last instruction is the one that halts
+    }
+
+    /// <summary>A surface the test clicks on by hand.</summary>
+    private sealed class Clickable : IGraphicsDevice, IPointer
+    {
+        public readonly Queue<PointerEvent> Events = new();
+        public int Flushes;
+        public bool TryGetPosition(out GfxPoint p) { p = default; return false; }
+        public bool TryReadEvent(out PointerEvent e) => Events.TryDequeue(out e);
+        public void Clear() { }
+        public void SetLineStyle(int style) { }
+        public void SetPointStyle(int style) { }
+        public void SetColor(GfxColorTarget target, int colorIndex) { }
+        public void DrawPoints(IReadOnlyList<GfxPoint> points) { }
+        public void DrawLines(IReadOnlyList<GfxPoint> polyline) { }
+        public void FillArea(IReadOnlyList<GfxPoint> polygon) { }
+        public void DrawText(GfxPoint at, string text) { }
+        public void Flush() => Flushes++;
+        public int MaxColor => 15;
+        public int MaxLineStyle => 3;
+        public int MaxPointStyle => 3;
+        public GfxDeviceSize DeviceSize => new(1, 1, "OTHER");
+    }
+
+    [Fact]
+    public void LocatePointPausesUntilThereIsAClick()
+    {
+        var output = Output();
+        var screen = new Clickable();
+        var vm = Vm("SET WINDOW 0, 10, 0, 10\nLOCATE POINT : X, Y\nPRINT X; Y\n", output, graphics: screen);
+
+        vm.Step(10_000).Status.Should().Be(StepStatus.NeedsPoint);
+        screen.Flushes.Should().BeGreaterThan(0);                  // the picture is up while it waits
+        vm.Step(10_000).Status.Should().Be(StepStatus.NeedsPoint);
+
+        screen.Events.Enqueue(new PointerEvent(true, new GfxPoint(0.3, 0.7)));
+        vm.Step(10_000).Status.Should().Be(StepStatus.Halted);
+        output.ToString().Should().Be(" 3  7 \n");
+    }
+
+    [Fact]
     public void StepNeedsAPositiveBudget()
     {
         var vm = Vm("PRINT 1\n", Output());

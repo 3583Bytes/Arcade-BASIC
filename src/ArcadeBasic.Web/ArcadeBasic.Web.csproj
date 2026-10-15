@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!-- SPIKE: the browser playground — the bytecode VM stepped from the page's
+       animation loop, drawing on a canvas. Not in ArcadeBasic.sln yet, so CI
+       doesn't build it. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The engine formats and parses with the invariant culture throughout, so
+         the ICU data (~140-240 KB brotli) isn't needed. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ArcadeBasic.Vm\ArcadeBasic.Vm.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Compiler\ArcadeBasic.Compiler.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\examples\*.bas" LinkBase="Examples" LogicalName="Examples.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

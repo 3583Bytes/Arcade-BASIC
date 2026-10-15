@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arcade BASIC Playground</title>
+  <style>
+    :root {
+      --bg: #101114; --panel: #181a1f; --text: #e6e6e6; --muted: #9aa0a6;
+      --accent: #55ff55; --border: #2a2d34;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 16px; margin: 0 12px 0 0; letter-spacing: .5px; }
+    header h1 span { color: var(--accent); }
+    select, button { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font: inherit; }
+    button { cursor: pointer; }
+    button.primary { border-color: var(--accent); color: var(--accent); }
+    label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 960px); gap: 16px; padding: 16px; }
+    @media (max-width: 1100px) { main { grid-template-columns: minmax(0, 1fr); } }
+    textarea { width: 100%; height: 100%; min-height: 540px; resize: vertical; background: var(--panel); color: var(--text);
+               border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: 13px/1.45 ui-monospace, Menlo, monospace; tab-size: 2; }
+    #screen { width: 100%; aspect-ratio: 5 / 3; background: #000; border: 1px solid var(--border); border-radius: 8px; display: block; outline: none; touch-action: none; }
+    #screen:focus { border-color: var(--accent); }
+    #output { margin: 10px 0 0; min-height: 4em; max-height: 220px; overflow: auto; background: var(--panel); border: 1px solid var(--border);
+              border-radius: 8px; padding: 8px 10px; font: 13px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+    #inputRow { display: none; margin-top: 6px; gap: 6px; }
+    #inputRow input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 5px 8px; font: 13px ui-monospace, Menlo, monospace; }
+    #stats { color: var(--muted); font: 12px ui-monospace, Menlo, monospace; margin-top: 8px; }
+    #loading { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Arcade <span>BASIC</span> playground</h1>
+    <select id="examples" aria-label="Example program"></select>
+    <button id="run" class="primary" disabled>Run</button>
+    <button id="stop" disabled>Stop</button>
+    <label><input type="checkbox" id="glow" checked> phosphor glow</label>
+    <span id="loading">loading .NET…</span>
+  </header>
+  <main>
+    <textarea id="source" spellcheck="false" aria-label="BASIC source"></textarea>
+    <section>
+      <canvas id="screen" width="960" height="576" tabindex="0" aria-label="Program screen (click to give it the keyboard)"></canvas>
+      <pre id="output" aria-live="polite"></pre>
+      <form id="inputRow"><input id="inputLine" autocomplete="off" aria-label="Program input"><button>Enter</button></form>
+      <div id="stats"></div>
+    </section>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

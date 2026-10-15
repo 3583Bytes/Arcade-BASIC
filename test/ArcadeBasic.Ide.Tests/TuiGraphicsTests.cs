@@ -1,5 +1,6 @@
 using ArcadeBasic.Ide;
 using ArcadeBasic.Interpreter;
+using ArcadeBasic.Runtime;
 
 namespace ArcadeBasic.Ide.Tests;
 
@@ -11,6 +12,12 @@ namespace ArcadeBasic.Ide.Tests;
 /// </summary>
 public class TuiGraphicsTests
 {
+    private sealed class TypedKeys(params string[] keys) : IKeyboard
+    {
+        private readonly Queue<string> _keys = new(keys);
+        public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
+    }
+
     private static BrailleCanvas RunOntoCanvas(string source)
     {
         var canvas = new BrailleCanvas();
@@ -58,12 +65,14 @@ public class TuiGraphicsTests
     public void KanbanBoardPopulatesAndPacksWithoutError()
     {
         // kanban draws full-height filled GRAPH AREA columns + many GRAPH TEXT
-        // labels — the heaviest canvas use. Run one frame (Q quits) and pack the
-        // whole grid to braille (same CellBits path as Redraw, minus the driver).
+        // labels — the heaviest canvas use. Run one frame and pack the whole grid to
+        // braille (same CellBits path as Redraw, minus the driver). The canvas has a
+        // mouse, so the board reads typed keys: Q, Enter quits.
         var src = File.ReadAllText(KanbanPath());
         var canvas = new BrailleCanvas();
         var device = new TuiGraphicsDevice(canvas);
-        var result = BasicEngine.Run(src, new StringWriter(), new StringReader("Q\n"), "kanban", default, device);
+        var keys = new TypedKeys("Q", "\r");
+        var result = BasicEngine.Run(src, new StringWriter(), new StringReader(""), "kanban", default, device, keys);
         Assert.Equal(0, result.ExitCode);
         Assert.False(canvas.IsEmpty);
         var text = canvas.RenderToText();
@@ -112,5 +121,34 @@ public class TuiGraphicsTests
             CLEAR
             """);
         Assert.True(canvas.IsEmpty);
+    }
+
+    [Fact]
+    public void TheCanvasMouseIsTheProgramsPointer()
+    {
+        var canvas = new BrailleCanvas();                          // 80 x 24 cells until laid out
+        IPointer pointer = new TuiGraphicsDevice(canvas);
+        static Terminal.Gui.MouseEvent Mouse(int x, int y, Terminal.Gui.MouseFlags flags) => new() { X = x, Y = y, Flags = flags };
+
+        canvas.MouseEvent(Mouse(0, 23, Terminal.Gui.MouseFlags.ReportMousePosition));
+        Assert.True(pointer.TryGetPosition(out var corner));
+        Assert.True(corner.X < 0.01 && corner.Y < 0.03);           // bottom-left cell ≈ (0, 0)
+        Assert.False(pointer.TryReadEvent(out _));                 // moving isn't a button event
+
+        // A drag: press, moves reported as pressed+position, release.
+        canvas.MouseEvent(Mouse(10, 5, Terminal.Gui.MouseFlags.Button1Pressed));
+        canvas.MouseEvent(Mouse(20, 5, Terminal.Gui.MouseFlags.Button1Pressed | Terminal.Gui.MouseFlags.ReportMousePosition));
+        canvas.MouseEvent(Mouse(30, 5, Terminal.Gui.MouseFlags.Button1Released));
+        canvas.MouseEvent(Mouse(30, 5, Terminal.Gui.MouseFlags.Button1Clicked));   // after a seen press: no extra click
+        Assert.True(pointer.TryReadEvent(out var press) && press.Pressed);
+        Assert.True(pointer.TryReadEvent(out var release) && !release.Pressed);
+        Assert.True(release.At.X > press.At.X);
+        Assert.False(pointer.TryReadEvent(out _));
+
+        // A terminal that reports a quick click only as "clicked".
+        canvas.MouseEvent(Mouse(40, 12, Terminal.Gui.MouseFlags.Button1Clicked));
+        Assert.True(pointer.TryReadEvent(out var p) && p.Pressed);
+        Assert.True(pointer.TryReadEvent(out var r) && !r.Pressed);
+        Assert.InRange(p.At.X, 0.49, 0.52);                        // the middle cell
     }
 }

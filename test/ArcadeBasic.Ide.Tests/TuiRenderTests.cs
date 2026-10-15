@@ -13,6 +13,12 @@ namespace ArcadeBasic.Ide.Tests;
 [Collection("tui")]
 public class TuiRenderTests
 {
+    private sealed class TypedKeys(params string[] keys) : ArcadeBasic.Runtime.IKeyboard
+    {
+        private readonly Queue<string> _keys = new(keys);
+        public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
+    }
+
     [Fact]
     public void RenderingKanbanUnderFakeDriverDoesNotThrow()
     {
@@ -24,9 +30,12 @@ public class TuiRenderTests
             Application.Begin(Application.Top);
             Application.Top.LayoutSubviews();
 
+            // The canvas has a mouse, so the board runs its interactive loop and reads
+            // the keyboard: type Q and Enter to quit, as a user would.
             var device = new TuiGraphicsDevice(pane.Canvas);
+            var keys = new TypedKeys("Q", "\r");
             var src = File.ReadAllText(KanbanPath());
-            var result = BasicEngine.Run(src, new StringWriter(), new StringReader("Q\n"), "k", default, device);
+            var result = BasicEngine.Run(src, new StringWriter(), new StringReader(""), "k", default, device, keys);
             Assert.Equal(0, result.ExitCode);
 
             // The crashing operation in the real app: draw the populated canvas.

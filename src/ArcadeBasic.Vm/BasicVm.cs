@@ -51,6 +51,12 @@ public sealed class BasicVm
 
     /// <summary>INKEY$'s presses and KEYDOWN's held keys, over <see cref="_keyboard"/>.</summary>
     private readonly KeyboardState _keys;
+
+    /// <summary>LOCATE POINT's and GET MOUSE's view of the graphics device's pointer, if it has one.</summary>
+    private readonly PointerState _pointer;
+
+    /// <summary>Which picks LOCATE POINT accepts: points inside the current window.</summary>
+    private readonly Func<GfxPoint, bool> _pickable;
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
@@ -135,6 +141,8 @@ public sealed class BasicVm
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _keys = new KeyboardState(_keyboard);
+        _pointer = new PointerState(_graphics);
+        _pickable = p => _gfx.InWindow(_gfx.ToProblem(p));
         _audio = audio ?? NullAudioDevice.Instance;
         _audioPort = new DeferredDrainAudio(_audio);
         _random = new BasicRandom(randomizeSeed);
@@ -176,7 +184,8 @@ public sealed class BasicVm
                         _audio.Flush();   // real-time devices block until their queue drains
                         break;
                     case StepStatus.NeedsInput:
-                        // A non-blocking reader with nothing queued: poll until a line arrives.
+                    case StepStatus.NeedsPoint:
+                        // Nothing to read yet (a line, or a pick): poll until it arrives.
                         Wait(InputPollInterval, cancel);
                         break;
                 }
@@ -253,7 +262,16 @@ public sealed class BasicVm
             if (!_halted) Finish(StepResult.Failed(1, "the VM stopped on an internal error"));
             throw;
         }
+        finally
+        {
+            // Each instruction run took one off the budget; a spent budget ends at -1.
+            InstructionsExecuted += maxInstructions - Math.Max(_budget, 0);
+        }
     }
+
+    /// <summary>Bytecode instructions run so far, over every <see cref="Step"/> — for a
+    /// host's speed readout or CPU meter.</summary>
+    public long InstructionsExecuted { get; private set; }
 
     private bool _started;
     private bool _halted;
@@ -358,6 +376,60 @@ public sealed class BasicVm
                 case Opcode.End:
                     return StepResult.Ended;
                 case Opcode.Nop: break;
+
+                // -- Graphic input: LOCATE POINT / GET POINT, GET MOUSE --
+                case Opcode.GfxInputDevice:
+                    {
+                        var device = ((NumericValue)stack.Pop()).ToInt32();
+                        if (device != 1)
+                            throw new BasicRuntimeException(11140, $"LOCATE POINT: graphic input device {device} is not present");
+                        break;
+                    }
+                case Opcode.LocatePoint:
+                    {
+                        var opStart = pc - 1;
+                        var descs = ReadTargetDescs(code, ref pc, 2);
+                        if (!_pointer.Present)
+                        {
+                            // No pointing device: the standard has device 1 simulated from
+                            // the keyboard (§13.4.4) — as INPUT x, y.
+                            if (!TryReadInputLine("? ", out var rawLine))
+                            {
+                                cf.Pc = opStart;
+                                return StepResult.NeedsInput;
+                            }
+                            if (rawLine is null) throw new BasicRuntimeException(4003, "INPUT: end of input stream");
+                            var typed = ParseInputReply(rawLine, descs);
+                            if (typed is null)
+                            {
+                                pc = opStart;   // "redo from start" printed: ask again
+                                break;
+                            }
+                            AssignTargets(descs, typed, stack, frame, programFrame);
+                            _col = 0;
+                            break;
+                        }
+                        _graphics.Flush();   // show the picture being pointed at
+                        if (!_pointer.TryLocate(_pickable, out var at))
+                        {
+                            cf.Pc = opStart;   // re-run this instruction once there's a press
+                            return StepResult.NeedsPoint;
+                        }
+                        var point = _gfx.ToProblem(at);
+                        AssignTargets(descs, [GraphicsState.Coordinate(point.X, _native), GraphicsState.Coordinate(point.Y, _native)],
+                            stack, frame, programFrame);
+                        break;
+                    }
+                case Opcode.GetMouse:
+                    {
+                        var descs = ReadTargetDescs(code, ref pc, 3);
+                        var state = _pointer.Sample(out var at);
+                        var point = state == PointerState.NoPointer ? default : _gfx.ToProblem(at);
+                        AssignTargets(descs,
+                            [GraphicsState.Coordinate(point.X, _native), GraphicsState.Coordinate(point.Y, _native), NumericValue.From(state, _native)],
+                            stack, frame, programFrame);
+                        break;
+                    }
                 case Opcode.Randomize:
                     if (ReadU32(code, ref pc) == 0) _random.Randomize();
                     else _random.Randomize(((NumericValue)stack.Pop()).D);   // RANDOMIZE n: an extension
@@ -1542,6 +1614,30 @@ public sealed class BasicVm
     }
 
     private readonly record struct InputTargetDesc(int Depth, int Slot, bool IsString, int Rank);
+
+    private static InputTargetDesc[] ReadTargetDescs(byte[] code, ref int pc, int count)
+    {
+        var descs = new InputTargetDesc[count];
+        for (var i = 0; i < count; i++)
+        {
+            descs[i] = new InputTargetDesc(
+                Depth: (int)ReadU32(code, ref pc),
+                Slot: (int)ReadU32(code, ref pc),
+                IsString: ReadU32(code, ref pc) != 0,
+                Rank: (int)ReadU32(code, ref pc));
+        }
+        return descs;
+    }
+
+    /// <summary>Pop the targets' subscripts (pushed in target order) and assign each its value.</summary>
+    private static void AssignTargets(InputTargetDesc[] descs, Value[] values, Stack<Value> stack,
+        ActivationRecord frame, ActivationRecord programFrame)
+    {
+        var indices = new int[descs.Length][];
+        for (var i = descs.Length - 1; i >= 0; i--) indices[i] = PopIndices(stack, descs[i].Rank);
+        for (var i = 0; i < descs.Length; i++)
+            AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], values[i]);
+    }
 
     /// <summary>Split and convert an INPUT reply, one value per target. A short or
     /// non-numeric reply prints the "redo from start" message and returns null.

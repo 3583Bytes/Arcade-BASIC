@@ -1017,6 +1017,29 @@ To build a curve or any shape with a variable number of vertices, drive `GRAPH`
 from a loop (coordinate expressions may reference variables) — see
 [`examples/graphics.bas`](../examples/graphics.bas).
 
+### Mouse: `LOCATE POINT` / `GET POINT`, `GET MOUSE`
+
+Pointer input comes back in the same problem coordinates you draw with. It works
+where there's a mouse over the drawing — the IDE's Graphics tab and the browser
+playground.
+
+```basic
+LOCATE POINT : X, Y             ! wait for a click; X, Y in window coordinates
+GET POINT : X, Y                ! the same (no picture transforms here)
+
+DO                              ! drag and drop: sample the pointer every frame
+  GET MOUSE X, Y, S             ! S: 0 up, 1 held, 2 just pressed, 3 just released
+  IF S = 2 THEN ...             ! (-1 if there's no mouse at all)
+  SLEEP 0.03
+LOOP
+```
+
+`LOCATE POINT` is ANSI Full BASIC graphic input (§13.4): it waits like `INPUT`,
+ignores clicks outside the window, and with no mouse asks for typed `x, y`
+instead. `GET MOUSE` is an extension in the style of True BASIC's; it never waits.
+See [`examples/kanban.bas`](../examples/kanban.bas) — drag cards between lanes.
+`LOCATE`, `GET` and `MOUSE` aren't reserved words.
+
 ## Notes on coverage
 
 - Every keyword above is **implemented end-to-end** — parser → semantic

@@ -164,9 +164,63 @@ public sealed partial class BasicParser
             TokenKind.KwModule => ParseModule(),
             TokenKind.KwPublic => ParsePublicDecl(),
             TokenKind.KwPrivate => ParsePrivateDecl(),
+            TokenKind.Identifier when StartsGraphicInput() => ParseGraphicInput(),
             TokenKind.Identifier or TokenKind.StringIdentifier => ParseAssignmentOrFunctionCall(),
             _ => UnsupportedStatement(),
         };
+    }
+
+    // -- Graphic input ------------------------------------------------------
+    // LOCATE, GET and MOUSE aren't reserved words: these statements are recognised
+    // by the word after them (POINT is a keyword; MOUSE after GET can't start an
+    // assignment), so programs that use LOCATE or GET as names keep working.
+
+    private bool StartsGraphicInput()
+    {
+        var word = Peek().Text;
+        var next = Peek(1);
+        return (IsWord(word, "LOCATE") || IsWord(word, "GET")) && next.Kind == TokenKind.KwPoint
+            || IsWord(word, "GET") && next.Kind == TokenKind.Identifier && IsWord(next.Text, "MOUSE");
+    }
+
+    private static bool IsWord(string text, string word) => string.Equals(text, word, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary><c>LOCATE|GET POINT [(device)] [, AT x, y] : x, y</c> or <c>GET MOUSE [:] x, y, s</c>.</summary>
+    private Stmt? ParseGraphicInput()
+    {
+        var start = Advance(); // LOCATE / GET
+        if (Check(TokenKind.Identifier))
+        {
+            Advance(); // MOUSE
+            Match(TokenKind.Colon);   // ANSI-style colon optional; True BASIC writes none
+            var mx = ParseAssignmentTarget(); if (mx is null) return null;
+            if (!ExpectKind(TokenKind.Comma, "','")) return null;
+            var my = ParseAssignmentTarget(); if (my is null) return null;
+            if (!ExpectKind(TokenKind.Comma, "','")) return null;
+            var ms = ParseAssignmentTarget(); if (ms is null) return null;
+            return new GetMouseStmt(SpanFrom(start, ms.Span), mx, my, ms);
+        }
+
+        Advance(); // POINT
+        Expr? device = null;
+        if (Match(TokenKind.LParen))
+        {
+            device = ParseExpression(); if (device is null) return null;
+            if (!ExpectKind(TokenKind.RParen, "')'")) return null;
+        }
+        Expr? atX = null, atY = null;
+        if (Match(TokenKind.Comma))
+        {
+            if (!ExpectKind(TokenKind.KwAt, "'AT'")) return null;
+            atX = ParseExpression(); if (atX is null) return null;
+            if (!ExpectKind(TokenKind.Comma, "','")) return null;
+            atY = ParseExpression(); if (atY is null) return null;
+        }
+        if (!ExpectKind(TokenKind.Colon, "':'")) return null;
+        var x = ParseAssignmentTarget(); if (x is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var y = ParseAssignmentTarget(); if (y is null) return null;
+        return new LocatePointStmt(SpanFrom(start, y.Span), device, atX, atY, x, y);
     }
 
     // -- Simple statements ------------------------------------------------

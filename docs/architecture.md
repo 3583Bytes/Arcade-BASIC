@@ -246,6 +246,12 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
   `KeyboardState`, which also answers `KEYDOWN`: exactly, from a keyboard that also
   implements **`IKeyState`** (one that sees key releases — the browser, a game
   engine), or else estimated from presses and auto-repeat (terminals).
+- **`IPointer`** — an optional companion to `IGraphicsDevice` for a surface the
+  user can point at: the pointer's position and primary-button press/release events,
+  in the device unit square. Both engines read it through `PointerState` for
+  `LOCATE POINT` (wait for a press) and `GET MOUSE` (sample), mapping back to problem
+  coordinates with `GraphicsState.ToProblem`. The IDE's Graphics tab and the browser
+  canvas implement it; elsewhere `LOCATE POINT` reads typed coordinates.
 
 Both interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
 value types crossing the boundary), so the same code path serves the CLI,

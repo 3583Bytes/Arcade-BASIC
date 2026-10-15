@@ -85,8 +85,7 @@ public sealed class GraphicsState
     private static Value RectComponent(GfxRect r, int i, bool native) =>
         Num(i switch { 0 => r.Left, 1 => r.Right, 2 => r.Bottom, _ => r.Top }, native);
 
-    private static Value Num(double v, bool native) =>
-        native ? NumericValue.FromDouble(v) : new NumericValue(Numbers.ToDecimal(v));
+    private static Value Num(double v, bool native) => Coordinate(v, native);
 
     // -- SET handling ----------------------------------------------------
     // Invalid bounds (zero/negative size, out of range) leave the current
@@ -188,6 +187,25 @@ public sealed class GraphicsState
     private GfxPoint ToSurface(GfxPoint ndc) => new(
         Remap(ndc.X, DeviceWindow.Left, DeviceWindow.Right, DeviceViewport.Left, DeviceViewport.Right),
         Remap(ndc.Y, DeviceWindow.Bottom, DeviceWindow.Top, DeviceViewport.Bottom, DeviceViewport.Top));
+
+    /// <summary>The output pipeline run backwards: a point on the device surface (unit
+    /// square, origin bottom-left) in problem coordinates — what graphic input reports.</summary>
+    public GfxPoint ToProblem(GfxPoint surface)
+    {
+        var ndc = new GfxPoint(
+            Remap(surface.X, DeviceViewport.Left, DeviceViewport.Right, DeviceWindow.Left, DeviceWindow.Right),
+            Remap(surface.Y, DeviceViewport.Bottom, DeviceViewport.Top, DeviceWindow.Bottom, DeviceWindow.Top));
+        return new GfxPoint(
+            Remap(ndc.X, Viewport.Left, Viewport.Right, Window.Left, Window.Right),
+            Remap(ndc.Y, Viewport.Bottom, Viewport.Top, Window.Bottom, Window.Top));
+    }
+
+    /// <summary>Is a problem-coordinate point inside the current window?</summary>
+    public bool InWindow(GfxPoint problem) => PointInRect(problem, Window);
+
+    /// <summary>A coordinate as a BASIC number in the program's arithmetic mode.</summary>
+    public static NumericValue Coordinate(double v, bool native) =>
+        native ? NumericValue.FromDouble(v) : new NumericValue(Numbers.ToDecimal(v));
 
     private static double Remap(double v, double a0, double a1, double b0, double b1) =>
         a1 == a0 ? b0 : b0 + (v - a0) * (b1 - b0) / (a1 - a0);

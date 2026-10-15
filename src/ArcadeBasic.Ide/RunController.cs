@@ -69,6 +69,7 @@ internal sealed class RunController
         _drainCursor = 0;
         _graphicsShown = false;
         _graphics.Canvas.ClearBuffer();
+        _graphics.Canvas.ResetPointer();
         _keyboard.Clear();
         InstallKeyHook();
         _onStateChanged(RunState.Running);
@@ -156,6 +157,8 @@ internal sealed class RunController
         Key.CursorDown => "\0" + (char)80,
         Key.CursorLeft => "\0" + (char)75,
         Key.CursorRight => "\0" + (char)77,
+        Key.Enter => "\r",
+        Key.Backspace => "\b",
         _ => ke.KeyValue is >= 32 and < 127 ? ((char)ke.KeyValue).ToString() : string.Empty,
     };
 

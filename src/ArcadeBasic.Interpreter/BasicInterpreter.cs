@@ -36,6 +36,9 @@ public sealed partial class BasicInterpreter
 
     /// <summary>INKEY$'s presses and KEYDOWN's held keys, over <see cref="_keyboard"/>.</summary>
     private readonly KeyboardState _keys;
+
+    /// <summary>LOCATE POINT's and GET MOUSE's view of the graphics device's pointer, if it has one.</summary>
+    private readonly PointerState _pointer;
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
@@ -79,6 +82,7 @@ public sealed partial class BasicInterpreter
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
         _keys = new KeyboardState(_keyboard);
+        _pointer = new PointerState(_graphics);
         _audio = audio ?? NullAudioDevice.Instance;
         _random = new BasicRandom(randomizeSeed);
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
@@ -327,6 +331,8 @@ public sealed partial class BasicInterpreter
             case OptionArithmeticStmt: return FlowControl.Continue;
             case RandomizeStmt rnd: return ExecRandomize(rnd, frame);
             case SleepStmt slp: return ExecSleep(slp, frame);
+            case LocatePointStmt lp: return ExecLocatePoint(lp, frame);
+            case GetMouseStmt gm: return ExecGetMouse(gm, frame);
             case SoundStmt snd: return ExecSound(snd, frame);
             case BeepStmt: return ExecBeep();
             case PlayStmt ply: return ExecPlay(ply, frame);

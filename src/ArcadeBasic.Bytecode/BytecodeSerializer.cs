@@ -24,7 +24,7 @@ namespace ArcadeBasic.Bytecode;
 public static class BytecodeSerializer
 {
     private const uint Magic = 0x46424358u; // 'FBCX'
-    private const uint Version = 5;   // 5: Opcode.Randomize
+    private const uint Version = 6;   // 5: Opcode.Randomize; 6: graphic input opcodes
 
     public static byte[] Serialize(Program program)
     {

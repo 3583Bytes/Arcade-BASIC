@@ -1,3 +1,4 @@
+using ArcadeBasic.Runtime;
 using Terminal.Gui;
 using Attribute = Terminal.Gui.Attribute;
 using Rune = System.Rune;
@@ -54,6 +55,7 @@ internal sealed class BrailleCanvas : View
     public BrailleCanvas()
     {
         CanFocus = false;
+        WantMousePositionReports = true;   // GET MOUSE follows the pointer, not just clicks
         ClearBuffer();
         // Re-fit the dot grid to the view's bounds once layout settles, so
         // drawings fill the pane and follow terminal resizes.
@@ -67,6 +69,86 @@ internal sealed class BrailleCanvas : View
         if (cellsW <= 0 || cellsH <= 0) return;   // not laid out yet
         Resize(Math.Clamp(cellsW, MinCellsW, MaxCellsW),
                Math.Clamp(cellsH, MinCellsH, MaxCellsH));
+    }
+
+    // -- Pointer: the UI thread records the mouse here; the program's thread reads it
+    //    through TuiGraphicsDevice (IPointer). Positions are in the device unit square
+    //    (origin bottom-left), at the centre of the cell under the mouse. Guarded by _lock.
+
+    private const int MaxPointerEvents = 256;
+    private readonly Queue<PointerEvent> _pointerEvents = new();
+    private GfxPoint? _pointer;
+    private bool _buttonDown;
+    private bool _pressSeen;
+
+    public override bool MouseEvent(MouseEvent me)
+    {
+        lock (_lock)
+        {
+            var at = CellToUnit(me.X, me.Y);
+            _pointer = at;
+            if (me.Flags.HasFlag(MouseFlags.Button1Pressed)) Press(at);
+            if (me.Flags.HasFlag(MouseFlags.Button1Released)) Release(at);
+            if (me.Flags.HasFlag(MouseFlags.Button1Clicked))
+            {
+                // Some terminals report a quick click only as "clicked".
+                if (!_pressSeen)
+                {
+                    Press(at);
+                    Release(at);
+                }
+                _pressSeen = false;
+            }
+        }
+        return true;
+    }
+
+    internal bool TryGetPointer(out GfxPoint position)
+    {
+        lock (_lock)
+        {
+            position = _pointer ?? default;
+            return _pointer is not null;
+        }
+    }
+
+    internal bool TryReadPointerEvent(out PointerEvent e)
+    {
+        lock (_lock) return _pointerEvents.TryDequeue(out e);
+    }
+
+    /// <summary>A program is starting: forget clicks from before it.</summary>
+    internal void ResetPointer()
+    {
+        lock (_lock)
+        {
+            _pointerEvents.Clear();
+            _buttonDown = _pressSeen = false;
+        }
+    }
+
+    internal GfxPoint CellToUnit(int cx, int cy) => new(
+        (2 * cx + 0.5) / Math.Max(1, _dotsW - 1),
+        1 - (4 * cy + 1.5) / Math.Max(1, _dotsH - 1));
+
+    private void Press(GfxPoint at)
+    {
+        if (_buttonDown) return;   // drags repeat Button1Pressed with each move
+        _buttonDown = _pressSeen = true;
+        AddPointerEvent(new PointerEvent(true, at));
+    }
+
+    private void Release(GfxPoint at)
+    {
+        if (!_buttonDown) return;
+        _buttonDown = false;
+        AddPointerEvent(new PointerEvent(false, at));
+    }
+
+    private void AddPointerEvent(PointerEvent e)
+    {
+        if (_pointerEvents.Count == MaxPointerEvents) _pointerEvents.Dequeue();
+        _pointerEvents.Enqueue(e);
     }
 
     public void ClearBuffer()

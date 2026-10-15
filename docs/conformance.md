@@ -194,6 +194,7 @@ source.
 |---|---|---|
 | `INKEY$` | **Microsoft BASIC** (GW-BASIC / QuickBASIC) | Niladic string function; **non-blocking** keyboard poll. Returns `""` when no key is waiting, a 1-char string for a normal key, or `CHR$(0)` + a key code for special keys (arrows: 72/80/75/77 — Up/Down/Left/Right). ISO/ECMA Full BASIC has no interactive single-key input at all (its only "real-time" facility is the §14 process-control module above — concurrent tasks and hardware I/O, unrelated to keyboards — which ECMA omits anyway), so this is a deliberate arcade extension. Reads from the active keyboard backend (console for `run`/`vm`/standalone; the IDE captures keys globally while a program runs). With no interactive keyboard (piped input, headless) it always returns `""`. |
 | `KEYDOWN(key$)` | **Arcade BASIC** (in the spirit of QB64's `_KEYDOWN`) | Numeric function: **-1 while the key is held**, 0 otherwise. Doesn't consume key presses — `INKEY$` still returns each one — so a game moves with `KEYDOWN` and fires/quits with `INKEY$`. `key$` names the key either the way `INKEY$` returns it (a character, letters ignoring case, meaning the key that types it; `" "`, `CHR$(13)`, `CHR$(9)`, `CHR$(8)`, `CHR$(27)`; or `CHR$(0)` + a GW-BASIC extended code — 72/80/75/77 arrows, 71/79/73/81 Home/End/PageUp/PageDown, 82/83 Insert/Delete, 59–68/133/134 F1–F12) or by a **W3C UI Events `KeyboardEvent.code` name**, ignoring case (`"ArrowLeft"`, `"Space"`, `"Enter"`, `"Escape"`, `"KeyA"`, `"Digit1"`, `"ShiftLeft"`, `"F1"`, `"Numpad0"`, …). A code name is a **physical position**: `"KeyW"` is the W position, Z on an AZERTY keyboard. Any other string raises exception **4000** (the parameter-error class). **IMPLEMENTATION-DEFINED:** a keyboard backend that sees key releases (browser, game engine) answers exactly. A terminal only reports presses and the OS's auto-repeat, so there the state is estimated: a single press reads as held for 0.1 s, and once repeats arrive the key stays held until 0.2 s after the last one — a tap nudges, a hold moves smoothly once the OS starts repeating, and a release takes effect within 0.2 s; modifier keys alone (`"ShiftLeft"`…) never read as held, code names assume a US layout, and with two keys held the OS repeats only the newest, so the other drops out. |
+| `GET MOUSE x, y, s` | **True BASIC** style | Samples the pointer without waiting — what drag-and-drop needs, which the standard's request-mode `LOCATE POINT` can't do. `x, y` get its position in problem coordinates; `s` the button: **0** up, **1** held, **2** pressed and **3** released since the last `GET MOUSE` (at the press/release point — a click that starts and ends between two samples still reports 2, then 3), and **-1** when there's no pointing device at all (an Arcade BASIC addition, so a program can fall back to typed commands, as `kanban.bas` does). An ANSI-style colon after `MOUSE` is accepted. |
 | `SLEEP <seconds>` | **Microsoft BASIC** (QuickBASIC), extended | Pause execution for the given number of seconds; **fractional seconds are allowed** (QuickBASIC only took whole seconds). Pairs with `INKEY$` to pace a real-time loop. Also acts as the frame boundary — the console graphics backend presents the current frame at each `SLEEP`. A cancellation (the IDE's Stop) interrupts a long `SLEEP` promptly. |
 | `SOUND freq, duration` | **Microsoft BASIC** (GW-BASIC / QuickBASIC) | Emit a tone. `freq` in Hz (37–32767); `duration` in clock ticks of 18.2/second (so `duration/18.2` seconds). `duration = 0` stops the current sound. Both arguments are required, as in GW-BASIC. |
 | `BEEP` | **Microsoft BASIC** (GW-BASIC / QuickBASIC) | The standard alert tone — ~800 Hz for ~0.25 s (equivalent to `PRINT CHR$(7)`). |
@@ -282,6 +283,24 @@ The coordinate-systems, attributes, and graphic-output sections are implemented:
 `SET WINDOW/VIEWPORT/DEVICE WINDOW/DEVICE VIEWPORT/CLIP`, `ASK …` (with optional
 `STATUS`), `CLEAR`, `SET {POINT|LINE} STYLE`, `SET {POINT|LINE|TEXT|AREA} COLOR`,
 and `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`.
+
+**Graphic input** (ANSI X3.113 §13.4 — ECMA-116 omits it): `LOCATE POINT [(device)]
+[, AT x, y] : x, y` and `GET POINT …` are implemented. They wait until the user
+presses the primary button over the drawing surface and assign the point in
+problem coordinates (`GraphicsState.ToProblem` runs the output pipeline backwards).
+`GET` differs from `LOCATE` only by picture transforms (§13.5.4.1), which aren't
+implemented, so the two are the same here. The pointer is an optional
+`IPointer` on the graphics device: the IDE's Graphics tab (Terminal.Gui mouse,
+one cell's resolution) and the browser playground's canvas provide one.
+**IMPLEMENTATION-DEFINED:** only device 1 exists (any other raises **11140**); the
+`AT` initial point is evaluated but can't move a mouse pointer; a pick outside the
+current window is ignored and the wait continues (the standard leaves this
+implementation-defined and recommends exception 8106); clicks made before the
+statement runs don't answer it. With no pointing device, device 1 is simulated
+from the keyboard as the standard requires: it reads `x, y` like `INPUT`.
+`LOCATE`/`GET` aren't reserved words — the statements are recognised by the
+`POINT` (or `MOUSE`) after them. **Not yet:** `MAT LOCATE POINT`, `LOCATE CHOICE`,
+`LOCATE VALUE`, `ASK MAX … DEVICE`, `ASK PIXEL …`.
 
 **Architecture:** a device-independent core (`GraphicsState` in
 `ArcadeBasic.Runtime`) performs all coordinate mapping and clipping

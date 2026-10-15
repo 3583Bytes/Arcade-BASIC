@@ -8,9 +8,10 @@ namespace ArcadeBasic.Ide;
 /// (Y-flipped to top-left), rasterizing lines and filled areas via the shared
 /// <see cref="Rasterizer"/>. Colours map to the 16-colour terminal palette;
 /// GRAPH TEXT is drawn as native characters. Plotting happens on the
-/// interpreter's background thread — the canvas serialises access.
+/// interpreter's background thread — the canvas serialises access. The canvas's
+/// mouse is the pointer for LOCATE POINT and GET MOUSE.
 /// </summary>
-internal sealed class TuiGraphicsDevice : IGraphicsDevice
+internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
 {
     private readonly BrailleCanvas _canvas;
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
@@ -64,6 +65,10 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice
     // it atomically. SLEEP calls this each frame; without it the UI would sample
     // half-built frames and flicker.
     public void Flush() => _canvas.Commit();
+
+    public bool TryGetPosition(out GfxPoint position) => _canvas.TryGetPointer(out position);
+
+    public bool TryReadEvent(out PointerEvent e) => _canvas.TryReadPointerEvent(out e);
 
     private (int X, int Y) ToPixel(GfxPoint p) => (
         (int)Math.Round(p.X * (_canvas.PixelWidth - 1)),

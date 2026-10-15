@@ -26,6 +26,11 @@ public enum StepStatus
     /// (<see cref="StepResult.Error"/>), or by cancellation. Further steps return the
     /// same result.</summary>
     Halted,
+
+    /// <summary><c>LOCATE POINT</c> / <c>GET POINT</c> is waiting for the user to pick a point
+    /// on the graphics device's pointer (<see cref="Runtime.IPointer"/>); the frame being
+    /// pointed at has been flushed. Resume once the device has a button press.</summary>
+    NeedsPoint,
 }
 
 /// <summary>The outcome of one <see cref="BasicVm.Step"/>.</summary>
@@ -40,6 +45,7 @@ public readonly record struct StepResult(StepStatus Status, double SleepSeconds 
     internal static readonly StepResult Running = new(StepStatus.Running);
     internal static readonly StepResult NeedsInput = new(StepStatus.NeedsInput);
     internal static readonly StepResult AwaitingAudio = new(StepStatus.AwaitingAudio);
+    internal static readonly StepResult NeedsPoint = new(StepStatus.NeedsPoint);
     internal static readonly StepResult Ended = new(StepStatus.Halted);
 
     internal static StepResult Sleep(double seconds) => new(StepStatus.Sleeping, SleepSeconds: seconds);

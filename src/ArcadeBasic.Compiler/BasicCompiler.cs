@@ -363,6 +363,8 @@ public sealed class BasicCompiler
             case CallStmt c: CompileCall(c); break;
             case DimStmt d: CompileDim(d); break;
             case InputStmt input: CompileInput(input); break;
+            case LocatePointStmt lp: CompileLocatePoint(lp); break;
+            case GetMouseStmt gm: EmitTargetsOp(Opcode.GetMouse, [gm.X, gm.Y, gm.State]); break;
             case LineInputStmt lin: CompileLineInput(lin); break;
             case MatAssignStmt ma: CompileMatAssign(ma); break;
             case MatRedimStmt mr: CompileMatRedim(mr); break;
@@ -955,6 +957,38 @@ public sealed class BasicCompiler
         _current.Emit(Opcode.Input);
         _current.EmitU32(input.Prompt is not null && input.PromptIsSemicolon ? 1u : 0u);
         _current.EmitU32((uint)targets.Length);
+        foreach (var t in targets)
+        {
+            _current.EmitU32((uint)t.Depth);
+            _current.EmitU32((uint)t.Slot);
+            _current.EmitU32(t.IsString ? 1u : 0u);
+            _current.EmitU32((uint)t.Rank);
+        }
+    }
+
+    private void CompileLocatePoint(LocatePointStmt lp)
+    {
+        if (lp.Device is not null)
+        {
+            CompileExpr(lp.Device);
+            _current.Emit(Opcode.GfxInputDevice);
+        }
+        // The initial point can't move a mouse pointer: evaluated, then dropped.
+        if (lp.AtX is not null) { CompileExpr(lp.AtX); _current.Emit(Opcode.Pop); }
+        if (lp.AtY is not null) { CompileExpr(lp.AtY); _current.Emit(Opcode.Pop); }
+        EmitTargetsOp(Opcode.LocatePoint, [lp.X, lp.Y]);
+    }
+
+    /// <summary>Push every target's subscripts, then emit <paramref name="op"/> with one
+    /// operand group per target — the layout <see cref="Opcode.Input"/> uses.</summary>
+    private void EmitTargetsOp(Opcode op, IReadOnlyList<Expr> targetExprs)
+    {
+        var targets = targetExprs.Select(ResolveInputTarget).ToArray();
+        foreach (var t in targets)
+        {
+            foreach (var sub in t.Subs) CompileExpr(sub);
+        }
+        _current.Emit(op);
         foreach (var t in targets)
         {
             _current.EmitU32((uint)t.Depth);

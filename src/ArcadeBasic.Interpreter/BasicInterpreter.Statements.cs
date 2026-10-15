@@ -292,6 +292,46 @@ public sealed partial class BasicInterpreter
         return FlowControl.Continue;
     }
 
+    // -- Graphic input -----------------------------------------------------
+
+    private FlowControl ExecLocatePoint(LocatePointStmt lp, ActivationRecord frame)
+    {
+        if (lp.Device is not null)
+        {
+            var device = EvalInt(lp.Device, frame);
+            if (device != 1)
+                throw new BasicRuntimeException(11140, $"LOCATE POINT: graphic input device {device} is not present");
+        }
+        if (lp.AtX is not null) EvalNumber(lp.AtX, frame);   // the initial point can't move a mouse
+        if (lp.AtY is not null) EvalNumber(lp.AtY, frame);   // pointer; evaluated, then ignored
+
+        // No pointing device: the standard has device 1 simulated from the keyboard (§13.4.4).
+        if (!_pointer.Present)
+            return ExecInput(new InputStmt(lp.Span, null, false, [lp.X, lp.Y]), frame);
+
+        _graphics.Flush();   // show the picture being pointed at
+        GfxPoint at;
+        while (!_pointer.TryLocate(p => _gfx.InWindow(_gfx.ToProblem(p)), out at))
+        {
+            _cancel.WaitHandle.WaitOne(10);
+            _cancel.ThrowIfCancellationRequested();
+        }
+        var point = _gfx.ToProblem(at);
+        WriteAssignableTarget(lp.X, GraphicsState.Coordinate(point.X, _native), frame);
+        WriteAssignableTarget(lp.Y, GraphicsState.Coordinate(point.Y, _native), frame);
+        return FlowControl.Continue;
+    }
+
+    private FlowControl ExecGetMouse(GetMouseStmt gm, ActivationRecord frame)
+    {
+        var state = _pointer.Sample(out var at);
+        var point = state == PointerState.NoPointer ? default : _gfx.ToProblem(at);
+        WriteAssignableTarget(gm.X, GraphicsState.Coordinate(point.X, _native), frame);
+        WriteAssignableTarget(gm.Y, GraphicsState.Coordinate(point.Y, _native), frame);
+        WriteAssignableTarget(gm.State, NumericValue.From(state, _native), frame);
+        return FlowControl.Continue;
+    }
+
     private FlowControl ExecSleep(SleepStmt slp, ActivationRecord frame)
     {
         // SLEEP is the frame boundary in a real-time loop: present the frame

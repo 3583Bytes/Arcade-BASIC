@@ -264,4 +264,10 @@ public enum Opcode : byte
 
     // -- RANDOMIZE (appended so the values above stay stable) --
     Randomize,             // operand: u32 hasSeed (0/1) — stack: seed if hasSeed; restarts RND's sequence
+
+    // -- Graphic input (appended so the values above stay stable) --
+    // Target operand groups are Input's: u32 depth, u32 slot, u32 isString, u32 rank.
+    GfxInputDevice,        // stack: device number; raises 11140 unless it is 1 (the only device)
+    LocatePoint,           // operand: 2 target groups (x, y) — stack: their subscripts; waits for a pick (or reads "x, y" with no pointer)
+    GetMouse,              // operand: 3 target groups (x, y, state) — stack: their subscripts; samples the pointer
 }

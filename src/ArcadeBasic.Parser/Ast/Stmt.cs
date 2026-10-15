@@ -89,6 +89,15 @@ public sealed record class RandomizeStmt(SourceSpan Span, Expr? Seed) : Stmt(Spa
 /// <summary>SLEEP seconds — pause execution (Microsoft BASIC extension; fractional seconds allowed).</summary>
 public sealed record class SleepStmt(SourceSpan Span, Expr Seconds) : Stmt(Span);
 
+/// <summary><c>LOCATE POINT</c> / <c>GET POINT [(device)] [, AT x, y] : x, y</c> — graphic
+/// input (ANSI X3.113 §13.4): wait for the user to pick a point, in problem coordinates.
+/// GET differs only by picture transforms (§13.5.4.1), which aren't implemented.</summary>
+public sealed record class LocatePointStmt(SourceSpan Span, Expr? Device, Expr? AtX, Expr? AtY, Expr X, Expr Y) : Stmt(Span);
+
+/// <summary><c>GET MOUSE x, y, s</c> — sample the pointer without waiting: its position in
+/// problem coordinates and the button's state (True BASIC-style extension).</summary>
+public sealed record class GetMouseStmt(SourceSpan Span, Expr X, Expr Y, Expr State) : Stmt(Span);
+
 /// <summary>SOUND frequency, duration — emit a tone (Microsoft BASIC / GW-BASIC extension).
 /// Frequency in Hz (37..32767); duration in clock ticks (18.2/sec). Both are required, per GW-BASIC.</summary>
 public sealed record class SoundStmt(SourceSpan Span, Expr Frequency, Expr Duration) : Stmt(Span);
