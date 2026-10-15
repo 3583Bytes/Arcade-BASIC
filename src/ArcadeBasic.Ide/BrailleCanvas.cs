@@ -55,8 +55,14 @@ internal sealed class BrailleCanvas : View
         if (cellsW <= 0 || cellsH <= 0) return;   // not laid out yet
         lock (_lock)
         {
-            _back.Resize(Math.Clamp(cellsW, MinCellsW, MaxCellsW), Math.Clamp(cellsH, MinCellsH, MaxCellsH));
-            _back.CopyTo(_front);   // keep the displayed frame sized to the new grid
+            // Resize both buffers where they stand (a no-op at the same size — layout
+            // runs far more often than resizes). The front keeps showing the last
+            // complete frame until the program presents the next; copying the back
+            // buffer here would show whatever frame it's halfway through drawing.
+            var cols = Math.Clamp(cellsW, MinCellsW, MaxCellsW);
+            var rows = Math.Clamp(cellsH, MinCellsH, MaxCellsH);
+            _back.Resize(cols, rows);
+            _front.Resize(cols, rows);
         }
     }
 

@@ -108,6 +108,41 @@ public class TuiRenderTests
     }
 
     [Fact]
+    public void ALayoutMidFrameKeepsShowingTheLastCompleteFrame()
+    {
+        // Terminal.Gui lays views out again whenever it likes, not just on a resize.
+        // A game clears and redraws every frame, so a layout often lands mid-frame —
+        // the screen must keep showing the last committed frame, not the half-drawn one.
+        Application.Init(new FakeDriver());
+        try
+        {
+            var pane = new GraphicsPane { Width = Dim.Fill(), Height = Dim.Fill() };
+            Application.Top.Add(pane);
+            Application.Begin(Application.Top);
+            Application.Top.LayoutSubviews();
+            var canvas = pane.Canvas;
+
+            ArcadeBasic.Runtime.GfxPoint[] square = [new(0, 0), new(1, 0), new(1, 1), new(0, 1)];
+            canvas.FillArea(square, 4);                    // a whole frame ...
+            canvas.Commit();                               // ... presented
+            var shown = canvas.RenderFrontToText();
+
+            canvas.ClearBuffer();                          // the next frame, half drawn
+            canvas.DrawText(new ArcadeBasic.Runtime.GfxPoint(0, 0.5), "half", 1);
+            canvas.Width = Dim.Fill();                     // a layout, at the same size
+            Application.Top.LayoutSubviews();
+            Assert.Equal(shown, canvas.RenderFrontToText());
+
+            canvas.Commit();                               // until it's presented
+            Assert.Contains("half", canvas.RenderFrontToText());
+        }
+        finally
+        {
+            Application.Shutdown();
+        }
+    }
+
+    [Fact]
     public void ACanvasFittedWhileItsTabIsHiddenIsUnchangedWhenTheTabShows()
     {
         // The IDE's case: a run starts, measures the screen and draws while the
