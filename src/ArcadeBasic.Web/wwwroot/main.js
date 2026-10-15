@@ -335,7 +335,7 @@ async function bench() {
     results[name] = { ms: performance.now() - t0, instructions: P.Instructions(), outputChars: P.TakeOutput().length, error: P.Error() };
   }
 
-  for (const game of ['invaders.bas', 'breakout.bas']) results[game] = await playFor(game, 10_000);
+  for (const game of ['invaders.bas', 'breakout.bas', 'maze3d.bas']) results[game] = await playFor(game, 10_000);
 
   await fetch('/results', { method: 'POST', body: JSON.stringify(results, null, 2) });
   document.title = 'bench done';
@@ -355,6 +355,7 @@ function playFor(name, ms) {
       done = true;
       r.instructions = P.Instructions();
       const s = summary(r, 'still running');
+      if (params.has('snapshot')) s.snapshot = canvas.toDataURL('image/png');   // its last frame
       stop();
       resolve(s);
     }, ms);

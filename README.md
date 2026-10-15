@@ -135,7 +135,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-22 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, real-time Space Invaders, Snake, Breakout, and Tetris, and a `PLAY`/`SOUND` music demo. Highlights:
+23 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, real-time Space Invaders, Snake, Breakout, and Tetris, a first-person 3D maze, and a `PLAY`/`SOUND` music demo. Highlights:
 
 | Program | What it shows |
 |---|---|
@@ -152,6 +152,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `KEYDOWN` + `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
 | [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
+| [`maze3d.bas`](examples/maze3d.bas) | first-person 3D maze, Wolfenstein-style — ray casting, one `GRAPH AREA` per screen column, `KEYDOWN` walking and turning |
 | [`music.bas`](examples/music.bas) | audio — `SOUND`, `BEEP`, and `PLAY` (MML); render to WAV with `--wav` |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |

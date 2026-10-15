@@ -31,6 +31,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `snake.bas`      | Snake — real-time `INKEY$` + `SLEEP` + §13 graphics; growing body array, food via `RND`, anti-reverse steering, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `breakout.bas`   | Breakout — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; ball physics (wall/brick/paddle reflection, angle steered by paddle hit point), lives, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `tetris.bas`     | Tetris — real-time `INKEY$` + `SLEEP` + §13 graphics; piece table from `READ`/`DATA`, live 90° rotation via the `(r,c)->(c,-r)` transform, full-row clearing, levels, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
+| `maze3d.bas`     | first-person 3D maze, Wolfenstein-style — a ray cast per screen column (DDA grid stepping) drawn as one `GRAPH AREA` slice each, side and distance shading, a fog-of-war minimap; `KEYDOWN` walking/turning + `INKEY$` + `SLEEP`, `OPTION ARITHMETIC NATIVE`, a time limit, play-again | ✓ | ✓ |
 | `music.bas`      | Audio — `SOUND`, `BEEP`, `PLAY` (Music Macro Language); a Microsoft-BASIC/GW-BASIC dialect extension. Render to a WAV with `--wav out.wav` | ✓ | ✓ |
 
 A ✓ in the **Bytecode VM** column means the example also runs via

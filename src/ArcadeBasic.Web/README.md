@@ -26,7 +26,10 @@ python3 -m http.server -d src/ArcadeBasic.Web/bin/Release/net9.0/publish/wwwroot
 ```
 
 `?bench=1` runs the measurements and POSTs them to `/results` (for a test server
-that accepts them; a plain static server just ignores the request).
+that accepts them; a plain static server just ignores the request): compute
+loops, then ten seconds each of `invaders`, `breakout` and `maze3d` for their
+frame rate and VM time per frame. Add `&snapshot` to include each game's last
+frame as a PNG.
 
 ## Pieces
 
