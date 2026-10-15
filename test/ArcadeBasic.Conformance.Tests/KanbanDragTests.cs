@@ -42,7 +42,7 @@ public class KanbanDragTests
         public int MaxColor => 15;
         public int MaxLineStyle => 3;
         public int MaxPointStyle => 3;
-        public GfxDeviceSize DeviceSize => new(160, 96, "OTHER");
+        public GfxDeviceSize DeviceSize { get; set; } = new(160, 96, "OTHER");
 
         public GfxPoint TextStarting(string prefix) =>
             Frame.Single(t => t.Text.StartsWith(prefix, StringComparison.Ordinal)).At;
@@ -59,8 +59,7 @@ public class KanbanDragTests
         throw new InvalidOperationException("no frame");
     }
 
-    [Fact]
-    public void DraggingACardOntoAnotherLaneMovesIt()
+    private static BasicVm Start(Screen screen)
     {
         var source = File.ReadAllText(Path.Combine(ExamplesDir(), "kanban.bas"));
         var file = new SourceFile("kanban.bas", source);
@@ -68,8 +67,14 @@ public class KanbanDragTests
         var program = new BasicParser(new BasicLexer(file, diags).Lex(), file, diags).ParseProgram();
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors);
+        return new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), new LineInputQueue(), screen, screen);
+    }
+
+    [Fact]
+    public void DraggingACardOntoAnotherLaneMovesIt()
+    {
         var screen = new Screen();
-        var vm = new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), new LineInputQueue(), screen, screen);
+        var vm = Start(screen);
 
         Assert.Equal(StepStatus.Sleeping, NextFrame(vm));
         Assert.Contains(screen.Frame, t => t.Text.Contains("type a command"));   // it found the mouse
@@ -101,6 +106,19 @@ public class KanbanDragTests
         Assert.Contains(screen.Frame, t => t.Text == "> q_");
         screen.Keys.Enqueue("\r");
         Assert.Equal(StepStatus.Halted, NextFrame(vm));
+    }
+
+    [Fact]
+    public void ResizingTheScreenLaysTheBoardOutAgain()
+    {
+        var screen = new Screen();
+        var vm = Start(screen);
+        NextFrame(vm);
+        Assert.Equal(22.0 / 24, screen.TextStarting("TO-DO (").Y, 6);  // 2 rows from the top of 24
+
+        screen.DeviceSize = new GfxDeviceSize(160, 120, "OTHER");      // the window grows to 30 rows
+        NextFrame(vm);
+        Assert.Equal(28.0 / 30, screen.TextStarting("TO-DO (").Y, 6);  // 2 rows from the top of 30
     }
 
     private static string ExamplesDir()

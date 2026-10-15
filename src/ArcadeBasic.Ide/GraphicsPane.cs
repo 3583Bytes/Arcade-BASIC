@@ -47,6 +47,19 @@ internal sealed class GraphicsPane : FrameView, IInputSink
 
     public BrailleCanvas Canvas => _canvas;
 
+    /// <summary>
+    /// Lay the pane out at <paramref name="frame"/> while its tab is hidden. A program
+    /// asks ASK DEVICE SIZE and draws its first frame before the IDE switches to this
+    /// tab, and a hidden tab isn't laid out — so without this the first frame is drawn
+    /// for the wrong size and the canvas is resized under it when the tab appears.
+    /// </summary>
+    public void FitTo(Rect frame)
+    {
+        if (frame.Width <= 0 || frame.Height <= 0) return;
+        Frame = frame;
+        LayoutSubviews();
+    }
+
     public void BeginRead(Action<string?> onComplete)
     {
         _inputCompletion = onComplete;

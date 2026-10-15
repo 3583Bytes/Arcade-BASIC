@@ -52,8 +52,9 @@ public sealed class CellSurface
 
     public Cell this[int col, int row] => _cells[row * Cols + col];
 
-    /// <summary>Change the grid size, keeping the picture (each new cell takes the
-    /// old cell it lands on), so a resized view still shows something until redrawn.</summary>
+    /// <summary>Change the grid size, keeping the picture where it is (cropped, or with
+    /// empty cells added, at the right and bottom) until the program redraws it.
+    /// Scaling it instead would sample the characters and break the boxes apart.</summary>
     public void Resize(int cols, int rows)
     {
         cols = Math.Max(1, cols);
@@ -62,12 +63,8 @@ public sealed class CellSurface
         var old = _cells;
         int oldCols = Cols, oldRows = Rows;
         _cells = new Cell[cols * rows];
-        if (old.Length > 0)
-        {
-            for (var r = 0; r < rows; r++)
-                for (var c = 0; c < cols; c++)
-                    _cells[r * cols + c] = old[(r * oldRows / rows) * oldCols + c * oldCols / cols];
-        }
+        for (var r = 0; r < Math.Min(rows, oldRows); r++)
+            Array.Copy(old, r * oldCols, _cells, r * cols, Math.Min(cols, oldCols));
         Cols = cols;
         Rows = rows;
     }

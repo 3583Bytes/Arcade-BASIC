@@ -107,6 +107,49 @@ public class TuiRenderTests
         }
     }
 
+    [Fact]
+    public void ACanvasFittedWhileItsTabIsHiddenIsUnchangedWhenTheTabShows()
+    {
+        // The IDE's case: a run starts, measures the screen and draws while the
+        // Graphics tab is hidden; the tab is shown after the first frame. Fitted to
+        // the tab area first, the canvas — and the frame on it — stay as drawn.
+        Application.Init(new FakeDriver());
+        try
+        {
+            var pane = new GraphicsPane { Width = Dim.Fill(), Height = Dim.Fill() };
+            var graphicsTab = new TabView.Tab("Graphics", pane);
+            var tabs = new TabView { Width = Dim.Fill(), Height = Dim.Fill() - 1 };
+            tabs.AddTab(new TabView.Tab("Source", new TextView { Width = Dim.Fill(), Height = Dim.Fill() }), true);
+            tabs.AddTab(graphicsTab, false);
+            Application.Top.Add(tabs);
+            Application.Begin(Application.Top);
+            Application.Top.LayoutSubviews();
+
+            pane.FitTo(tabs.SelectedTab.View.Frame);
+            var canvas = pane.Canvas;
+            var size = (canvas.PixelWidth, canvas.PixelHeight);
+            Assert.NotEqual((BrailleCanvas.DefaultDotsW, BrailleCanvas.DefaultDotsH), size);
+
+            // A box one cell in from the edges of whatever size the screen is.
+            var src = "ASK DEVICE SIZE W, H, U$\nLET C = W / 2\nLET R = H / 4\nSET WINDOW 0, C, 0, R\n" +
+                      "GRAPH LINES: 1.5, 1.5; C - 1.5, 1.5; C - 1.5, R - 1.5; 1.5, R - 1.5; 1.5, 1.5\n";
+            BasicEngine.Run(src, new StringWriter(), stdin: null, "box", default, new TuiGraphicsDevice(canvas));
+            canvas.Commit();
+            var drawn = canvas.RenderFrontToText().Split('\n');
+            Assert.Equal('┌', drawn[1][1]);
+            Assert.Equal('┘', drawn[^3][^2]);
+
+            tabs.SelectedTab = graphicsTab;
+            Application.Top.LayoutSubviews();
+            Assert.Equal(size, (canvas.PixelWidth, canvas.PixelHeight));
+            Assert.Equal(drawn, canvas.RenderFrontToText().Split('\n'));
+        }
+        finally
+        {
+            Application.Shutdown();
+        }
+    }
+
     private static string KanbanPath()
     {
         var dir = AppContext.BaseDirectory;

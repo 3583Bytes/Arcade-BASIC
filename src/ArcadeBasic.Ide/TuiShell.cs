@@ -217,6 +217,9 @@ internal sealed class TuiShell
     private void RunProgram()
     {
         if (_runner.IsRunning) return;
+        // Every tab fills the same area, so the one showing gives the Graphics canvas
+        // its size before the program measures it (see GraphicsPane.FitTo).
+        if (_tabs.SelectedTab != _graphicsTab) _graphics.FitTo(_tabs.SelectedTab.View.Frame);
         _output.ClearOutput();
         _tabs.SelectedTab = _outputTab;
         _runner.Run(_source.GetText());

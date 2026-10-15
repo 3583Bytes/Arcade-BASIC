@@ -91,6 +91,22 @@ public class CellSurfaceTests
     }
 
     [Fact]
+    public void ResizingKeepsTheCharactersWhereTheyAre()
+    {
+        var s = Surface();
+        s.Lines([P(1.5, 0.5), P(8.5, 0.5), P(8.5, 4.5), P(1.5, 4.5), P(1.5, 0.5)], 3, 1);
+        var box = Rows(s).Split('\n');
+
+        s.Resize(13, 7);                                           // bigger: padded right and below
+        var rows = Rows(s).Split('\n');
+        Assert.All(Enumerable.Range(0, 5), r => Assert.Equal(box[r] + "   ", rows[r]));
+        Assert.Equal(new string(' ', 13), rows[6]);
+
+        s.Resize(6, 3);                                            // smaller: cropped
+        Assert.Equal(" ┌────\n │    \n │    ", Rows(s));
+    }
+
+    [Fact]
     public void LaterDrawingOfAnotherKindReplacesEarlier()
     {
         var s = Surface();
