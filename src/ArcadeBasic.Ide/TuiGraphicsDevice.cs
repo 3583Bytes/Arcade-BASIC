@@ -3,18 +3,18 @@ using ArcadeBasic.Runtime;
 namespace ArcadeBasic.Ide;
 
 /// <summary>
-/// Terminal graphics backend: maps the core's normalized device coordinates
-/// ([0,1], origin bottom-left) onto a <see cref="BrailleCanvas"/> dot grid
-/// (Y-flipped to top-left), rasterizing lines and filled areas via the shared
-/// <see cref="Rasterizer"/>. Colours map to the 16-colour terminal palette;
-/// GRAPH TEXT is drawn as native characters. Plotting happens on the
-/// interpreter's background thread — the canvas serialises access. The canvas's
+/// Terminal graphics backend: hands the core's primitives (normalized device
+/// coordinates, origin bottom-left) to a <see cref="BrailleCanvas"/>, whose
+/// <see cref="CellSurface"/> draws them as box-drawing lines, block fills, Braille
+/// dots and text. Colours map to the 16-colour terminal palette. Drawing happens on
+/// the interpreter's background thread — the canvas serialises access. The canvas's
 /// mouse is the pointer for LOCATE POINT and GET MOUSE.
 /// </summary>
 internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
 {
     private readonly BrailleCanvas _canvas;
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
+    private int _lineStyle = 1;
 
     public TuiGraphicsDevice(BrailleCanvas canvas) => _canvas = canvas;
 
@@ -25,9 +25,8 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
 
     public void Clear() => _canvas.ClearBuffer();
 
-    // Line/point styles aren't expressible on a 1-bit braille grid; accepted and ignored.
-    public void SetLineStyle(int style) { }
-    public void SetPointStyle(int style) { }
+    public void SetLineStyle(int style) => _lineStyle = style;   // dashed/dotted box-drawing lines
+    public void SetPointStyle(int style) { }                       // a point is one Braille dot
 
     public void SetColor(GfxColorTarget target, int colorIndex)
     {
@@ -40,26 +39,13 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
         }
     }
 
-    public void DrawPoints(IReadOnlyList<GfxPoint> points)
-    {
-        foreach (var p in points)
-        {
-            var (x, y) = ToPixel(p);
-            _canvas.Plot(x, y, _pointColor);
-        }
-    }
+    public void DrawPoints(IReadOnlyList<GfxPoint> points) => _canvas.DrawPoints(points, _pointColor);
 
-    public void DrawLines(IReadOnlyList<GfxPoint> polyline) =>
-        Rasterizer.Polyline(ToPixels(polyline), (x, y) => _canvas.Plot(x, y, _lineColor));
+    public void DrawLines(IReadOnlyList<GfxPoint> polyline) => _canvas.DrawLines(polyline, _lineColor, _lineStyle);
 
-    public void FillArea(IReadOnlyList<GfxPoint> polygon) =>
-        Rasterizer.FillPolygon(ToPixels(polygon), (x, y) => _canvas.Plot(x, y, _areaColor));
+    public void FillArea(IReadOnlyList<GfxPoint> polygon) => _canvas.FillArea(polygon, _areaColor);
 
-    public void DrawText(GfxPoint at, string text)
-    {
-        var (x, y) = ToPixel(at);
-        _canvas.AddLabel(x, y, text, _textColor);
-    }
+    public void DrawText(GfxPoint at, string text) => _canvas.DrawText(at, text, _textColor);
 
     // A frame is complete: promote it to the canvas's front buffer so the UI shows
     // it atomically. SLEEP calls this each frame; without it the UI would sample
@@ -69,15 +55,4 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
     public bool TryGetPosition(out GfxPoint position) => _canvas.TryGetPointer(out position);
 
     public bool TryReadEvent(out PointerEvent e) => _canvas.TryReadPointerEvent(out e);
-
-    private (int X, int Y) ToPixel(GfxPoint p) => (
-        (int)Math.Round(p.X * (_canvas.PixelWidth - 1)),
-        (int)Math.Round((1.0 - p.Y) * (_canvas.PixelHeight - 1)));   // flip Y: BASIC up → screen down
-
-    private List<(int X, int Y)> ToPixels(IReadOnlyList<GfxPoint> pts)
-    {
-        var result = new List<(int X, int Y)>(pts.Count);
-        foreach (var p in pts) result.Add(ToPixel(p));
-        return result;
-    }
 }

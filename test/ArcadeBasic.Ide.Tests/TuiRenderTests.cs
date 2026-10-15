@@ -57,7 +57,7 @@ public class TuiRenderTests
             Application.Top.Add(pane);
             Application.Begin(Application.Top);
             Application.Top.LayoutSubviews();
-            pane.Canvas.Plot(5, 5, 1);
+            pane.Canvas.DrawPoints([new ArcadeBasic.Runtime.GfxPoint(0.1, 0.9)], 1);   // something on the canvas
 
             string? got = "sentinel";
             pane.BeginRead(t => got = t);   // SetFocus + cursor visibility through the driver

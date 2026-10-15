@@ -231,8 +231,10 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
 - **`IGraphicsDevice`** — the core (`GraphicsState`) does all coordinate mapping
   and clipping, then hands the backend already-clipped vector primitives in the
   normalized `[0,1]` device square. Backends: `NullGraphicsDevice` (default),
-  `SvgGraphicsDevice` (`--svg`), `AnsiGraphicsDevice` (Braille + ANSI terminal —
-  CLI/standalone), the IDE's `TuiGraphicsDevice` (Terminal.Gui canvas), and
+  `SvgGraphicsDevice` (`--svg`), `AnsiGraphicsDevice` (ANSI terminal —
+  CLI/standalone), the IDE's `TuiGraphicsDevice` (Terminal.Gui canvas) — those two
+  compose onto a shared `CellSurface` (box-drawing lines, block fills, Braille for
+  the rest, text in cells) — and
   `RasterGraphicsDevice` (ARGB pixel buffer — the Unity `Texture2D` backend's
   engine-agnostic, unit-tested core; `unity/Runtime/UnityGraphics` blits it to a
   texture). `RecordingGraphicsDevice` captures the primitive stream so the

@@ -95,9 +95,38 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-function drawFrame(cmds, texts) {
+// The canvas is drawn at the screen's real pixel density (fitCanvas), and straight
+// lines are snapped to the pixel grid, so every line is crisp and the same weight.
+let lastFrame = null;   // [cmds, texts] — redrawn when the canvas is resized or glow toggled
+
+/** Size the canvas's backing store to its on-screen size in device pixels. */
+function fitCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  if (canvas.width === w && canvas.height === h) return;
+  canvas.width = w;
+  canvas.height = h;
+  if (lastFrame) drawFrame(...lastFrame);
+}
+new ResizeObserver(fitCanvas).observe(canvas);
+
+/** Canvas geometry for the current backing store: the unit square, inset by half a
+ *  line width so lines on its edges aren't clipped. */
+function geometry() {
+  const dpr = window.devicePixelRatio || 1;
   const W = canvas.width, H = canvas.height;
-  const X = x => x * W, Y = y => (1 - y) * H;     // unit square, origin bottom-left
+  const lineWidth = Math.max(1, Math.round(1.5 * dpr));
+  const inset = Math.ceil(lineWidth / 2);
+  return { W, H, dpr, lineWidth, inset, w: W - 2 * inset, h: H - 2 * inset };
+}
+
+function drawFrame(cmds, texts) {
+  lastFrame = [cmds, texts];
+  const { W, H, dpr, lineWidth, inset, w, h } = geometry();
+  const X = x => inset + x * w, Y = y => inset + (1 - y) * h;   // unit square, origin bottom-left
+  // Snap to the pixel grid: an odd-width line's centre on a pixel centre, an even one's on an edge.
+  const half = lineWidth % 2 ? 0.5 : 0;
+  const snap = v => Math.round(v - half) + half;
   const glow = $('glow').checked;
   const colors = [1, 1, 1, 1];                      // point, line, text, area
   let lineStyle = 1, pointStyle = 3;                // GraphicsState's defaults
@@ -105,16 +134,17 @@ function drawFrame(cmds, texts) {
   ctx.shadowBlur = 0;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  ctx.lineWidth = 2;
-  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'miter';
+  ctx.lineCap = 'square';
   // An 80 x 24-cell screen, like the terminal's: a monospace glyph is ~0.6 em wide,
-  // so size the font to fit 80 columns (20 px on a 960 px canvas, in 24 px rows).
-  ctx.font = `${Math.round(W / 80 / 0.6)}px ui-monospace, Menlo, monospace`;
+  // so size the font to fit 80 columns.
+  ctx.font = `${Math.round(w / 80 / 0.6)}px ui-monospace, Menlo, monospace`;
   ctx.textBaseline = 'alphabetic';
   const paint = index => {
     const c = PALETTE[index] ?? PALETTE[1];
     ctx.strokeStyle = ctx.fillStyle = c;
-    if (glow) { ctx.shadowColor = c; ctx.shadowBlur = 8; }
+    if (glow) { ctx.shadowColor = c; ctx.shadowBlur = 6 * dpr; }
   };
   for (let i = 0; i < cmds.length;) {
     const op = cmds[i++];
@@ -130,11 +160,13 @@ function drawFrame(cmds, texts) {
     }
     const n = cmds[i++];
     paint(colors[op === POINTS ? 0 : op === LINES ? 1 : 3]);
-    ctx.setLineDash(op === LINES ? DASHES[lineStyle] ?? [] : []);
+    ctx.setLineDash(op === LINES ? (DASHES[lineStyle] ?? []).map(d => d * dpr) : []);
     ctx.beginPath();
     for (let k = 0; k < n; k++, i += 2) {
-      const x = X(cmds[i]), y = Y(cmds[i + 1]);
-      if (op === POINTS) marker(x, y, pointStyle);
+      let x = X(cmds[i]), y = Y(cmds[i + 1]);
+      if (op === LINES) { x = snap(x); y = snap(y); }
+      else if (op === AREA) { x = Math.round(x); y = Math.round(y); }
+      if (op === POINTS) marker(x, y, pointStyle, dpr);
       else if (k === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -144,9 +176,9 @@ function drawFrame(cmds, texts) {
 }
 
 // SET POINT STYLE 1 dot, 2 plus, 3 asterisk (adds to the current path).
-function marker(x, y, style) {
-  const r = 4;
-  if (style === 1) { ctx.moveTo(x + 2.5, y); ctx.arc(x, y, 2.5, 0, 2 * Math.PI); return; }
+function marker(x, y, style, dpr) {
+  const r = 4 * dpr;
+  if (style === 1) { const d = 2.5 * dpr; ctx.moveTo(x + d, y); ctx.arc(x, y, d, 0, 2 * Math.PI); return; }
   ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
   ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
   if (style === 3) {
@@ -202,8 +234,10 @@ canvas.addEventListener('blur', () => P.ReleaseKeys());
 // LOCATE POINT. Capturing it keeps a drag's moves and release coming even if the
 // pointer leaves the canvas.
 const unitPoint = e => {
-  const r = canvas.getBoundingClientRect();
-  return [(e.clientX - r.left) / r.width, 1 - (e.clientY - r.top) / r.height];
+  const r = canvas.getBoundingClientRect(), { inset, w, h } = geometry();
+  const px = (e.clientX - r.left - canvas.clientLeft) * canvas.width / canvas.clientWidth;
+  const py = (e.clientY - r.top - canvas.clientTop) * canvas.height / canvas.clientHeight;
+  return [(px - inset) / w, 1 - (py - inset) / h];
 };
 canvas.addEventListener('pointermove', e => P.PointerMove(...unitPoint(e)));
 canvas.addEventListener('pointerdown', e => {
@@ -219,6 +253,9 @@ canvas.addEventListener('pointercancel', () => P.PointerCancel());
 canvas.addEventListener('lostpointercapture', () => P.PointerCancel());
 
 // Example picker
+$('glow').addEventListener('change', () => { if (lastFrame) drawFrame(...lastFrame); });
+fitCanvas();
+
 const examples = $('examples');
 for (const name of P.Examples()) examples.add(new Option(name, name));
 examples.value = 'invaders.bas';
@@ -240,9 +277,12 @@ async function kanbanSelftest() {
   const pause = () => new Promise(r => setTimeout(r, 300));
   const at = t => t && [t.x + 0.02, t.y + 0.01];
   const pointer = (type, [x, y]) => {
-    const r = canvas.getBoundingClientRect();
-    canvas.dispatchEvent(new PointerEvent(type, { clientX: r.left + x * r.width, clientY: r.top + (1 - y) * r.height,
-                                                  button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, bubbles: true }));
+    const r = canvas.getBoundingClientRect(), { inset, w, h } = geometry();
+    const toClient = (px, size, offset, client) => offset + client + px * size;
+    canvas.dispatchEvent(new PointerEvent(type, {
+      clientX: toClient(inset + x * w, canvas.clientWidth / canvas.width, r.left, canvas.clientLeft),
+      clientY: toClient(inset + (1 - y) * h, canvas.clientHeight / canvas.height, r.top, canvas.clientTop),
+      button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, bubbles: true }));
   };
   const key = (k, code) => {
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: k, code, bubbles: true }));

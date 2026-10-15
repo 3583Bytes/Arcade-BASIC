@@ -309,10 +309,20 @@ from the keyboard as the standard requires: it reads `x, y` like `INPUT`.
 The interpreter and VM share that core, so graphics output is byte-identical
 between engines (asserted in `ArcadeBasic.Conformance.Tests`). Shipped backends:
 **SVG** (`arcade-basic run|vm file.bas --svg out.svg`); the **terminal IDE**
-(a Braille-cell canvas on a Graphics tab in `arcade-basic-ide`); and a **console
-Braille + ANSI** backend (`AnsiGraphicsDevice` in Runtime) used by `arcade-basic
-run`/`vm` and standalone binaries on an interactive terminal — so graphics
-programs run anywhere, not just the IDE. There is also a **`RasterGraphicsDevice`**
+(a Graphics tab in `arcade-basic-ide`); and a **console ANSI** backend
+(`AnsiGraphicsDevice` in Runtime) used by `arcade-basic run`/`vm` and standalone
+binaries on an interactive terminal — so graphics programs run anywhere, not just
+the IDE. Both terminal backends compose onto the same `CellSurface`, which draws
+each primitive with the characters that suit it: horizontal/vertical lines as
+box-drawing characters (`─ │ ┌ ┼ …`, with `┄ ┆` dashed and `┈ ┊` dotted styles),
+filled areas as block elements at 2 × 2 per cell, other lines and points as Braille
+dots (2 × 4 per cell), text as characters. **IMPLEMENTATION-DEFINED:** text goes in
+the cell that holds the middle of its letters (the point is the baseline, as for
+the default LEFT, BASE alignment); a cell shows one kind of drawing, so later
+drawing of another kind replaces earlier, and filling with colour 0 erases. With
+a window as wide and tall as the grid in cells (`ASK DEVICE SIZE` reports dots:
+2 per column, 4 per row), each unit is one cell — draw text on whole rows and
+lines through row middles (row + 0.3) and they never collide. There is also a **`RasterGraphicsDevice`**
 in Runtime that renders into an ARGB pixel buffer (with a shared 5×7 `BitmapFont`
 for `GRAPH TEXT`) — the engine-agnostic core of the **Unity `Texture2D`** backend
 (`unity/Runtime/UnityGraphics/BasicScreen.cs`); the raster core is implemented and

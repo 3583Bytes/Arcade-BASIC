@@ -35,8 +35,8 @@ public class TuiGraphicsTests
             GRAPH LINES: 0, 0; 10, 10
             """);
         Assert.False(canvas.IsEmpty);
-        // At least one braille cell has dots set (char above the blank U+2800).
-        Assert.Contains(canvas.RenderToText(), c => c > '⠀');
+        // At least one cell is drawn.
+        Assert.Contains(canvas.RenderToText(), c => !char.IsWhiteSpace(c));
     }
 
     [Fact]
@@ -47,7 +47,7 @@ public class TuiGraphicsTests
             SET AREA COLOR 2
             GRAPH AREA: 1, 1; 9, 1; 5, 9
             """);
-        var dotCells = canvas.RenderToText().Count(c => c > '⠀');
+        var dotCells = canvas.RenderToText().Count(c => !char.IsWhiteSpace(c));
         Assert.True(dotCells > 20, $"expected a filled triangle to set many cells, got {dotCells}");
     }
 
@@ -76,7 +76,7 @@ public class TuiGraphicsTests
         Assert.Equal(0, result.ExitCode);
         Assert.False(canvas.IsEmpty);
         var text = canvas.RenderToText();
-        Assert.Contains(text, c => c > '⠀');
+        Assert.Contains(text, c => !char.IsWhiteSpace(c));
     }
 
     private static string KanbanPath()
@@ -105,11 +105,11 @@ public class TuiGraphicsTests
             """, new StringWriter(), stdin: null, filename: "t", default, graphics: device);
 
         // Back buffer has the drawing; front buffer is still empty (no flush/commit).
-        Assert.Contains(canvas.RenderToText(), c => c > '⠀');
-        Assert.DoesNotContain(canvas.RenderFrontToText(), c => c > '⠀');
+        Assert.Contains(canvas.RenderToText(), c => !char.IsWhiteSpace(c));
+        Assert.DoesNotContain(canvas.RenderFrontToText(), c => !char.IsWhiteSpace(c));
 
         canvas.Commit();
-        Assert.Contains(canvas.RenderFrontToText(), c => c > '⠀');   // now presented
+        Assert.Contains(canvas.RenderFrontToText(), c => !char.IsWhiteSpace(c));   // now presented
     }
 
     [Fact]

@@ -301,15 +301,17 @@ IF DEVH >= 4 THEN LET ROWS = INT(DEVH / 4)
 IF ROWS > 40 THEN LET ROWS = 40    ! cap so one line stays about one row
 IF ROWS < 12 THEN LET ROWS = 12    ! floor (degenerate guard)
 SET WINDOW 0, 80, 0, ROWS
-! Vertical geometry. The bottom rows are reserved for the footer:
-!   y=1 quick help   y=0 status   (y=2 is a blank gap; the live input
-!   field just below the canvas is the actual prompt line)
-LET BBOT = 3                       ! lane box bottom border
-LET CBOT = 5                       ! lowest card line (above the gauge)
-LET BTOP = ROWS - 1                ! lane box top border
+! Vertical geometry, one text row per window unit. Text sits on its row's baseline
+! (the whole number); a line runs through the middle of its own row (+0.3), so in
+! a terminal a line and text never share a character cell. Top to bottom:
+!   ROWS-1 lane border   ROWS-2 title   ROWS-3 divider   ROWS-4 .. 5 cards
+!   4 "+N more"   3 gauge   2 lane border   1 quick help   0 status
+LET BTOP = ROWS - 0.7              ! lane box top border
 LET BTITLE = ROWS - 2              ! lane title
-LET BDIV = ROWS - 3                ! dashed header divider
-LET CTOP = ROWS - 4                ! top card line
+LET BDIV = ROWS - 2.7              ! divider under the header
+LET CTOP = ROWS - 4                ! the first card's top border row
+LET CBOT = 5                       ! the lowest row a card's bottom border may use
+LET BBOT = 2.3                     ! lane box bottom border
 FOR I = 1 TO NT
   LET CTOPY(I) = -1                ! not drawn (yet)
 NEXT I
@@ -320,10 +322,8 @@ FOR LN = 1 TO 3
   SET LINE STYLE 1
   SET LINE COLOR LCOL(LN)
   GRAPH LINES: X0, BBOT; X1, BBOT; X1, BTOP; X0, BTOP; X0, BBOT
-  ! dashed divider under the header
-  SET LINE STYLE 2
+  ! divider under the header
   GRAPH LINES: X0, BDIV; X1, BDIV
-  SET LINE STYLE 1
   ! header title with the lane's card count
   LET CNT = 0
   FOR I = 1 TO NT
@@ -333,9 +333,10 @@ FOR LN = 1 TO 3
   GRAPH TEXT, AT X0 + 2, BTITLE: LNAME$(LN) & " (" & LTRIM$(STR$(CNT)) & ")"
   ! right-aligned lane number, so the user knows the lane arg for "M n lane"
   LET LANELBL$ = "lane " & LTRIM$(STR$(LN))
-  GRAPH TEXT, AT X1 - LEN(LANELBL$), BTITLE: LANELBL$
-  ! cards: word-wrapped boxes, top-down, a row apart; stop when the lane fills up
-  LET ROW = CTOP
+  GRAPH TEXT, AT X1 - LEN(LANELBL$) - 1, BTITLE: LANELBL$
+  ! cards: word-wrapped boxes, top-down; stop when the lane fills up.
+  ! A card is its top border row, its text rows and its bottom border row.
+  LET ROW = CTOP - 1                 ! the next card's first text line
   LET USED = 0
   LET HIDDEN = 0
   LET FULL = 0
@@ -347,7 +348,7 @@ FOR LN = 1 TO 3
         LET WRAPSRC$ = "#" & LTRIM$(STR$(I)) & " " & TASK$(I)
         LET WRAPW = CARDW
         GOSUB 9200                   ! wrap WRAPSRC$ into WRAP$(1..WRAPN)
-        IF ROW - WRAPN + 1 < CBOT THEN
+        IF ROW - WRAPN < CBOT THEN
           LET FULL = 1
           LET HIDDEN = HIDDEN + 1
         ELSE
@@ -367,8 +368,8 @@ FOR LN = 1 TO 3
             LET CARDTEXT = 1
           END IF
           GOSUB 9300                 ! draw the card box
-          LET ROW = ROW - WRAPN - 1
-          LET USED = USED + WRAPN + 1
+          LET ROW = ROW - WRAPN - 2
+          LET USED = USED + WRAPN + 2
         END IF
       END IF
     END IF
@@ -376,16 +377,16 @@ FOR LN = 1 TO 3
   ! "+K more" when cards didn't fit (just above the gauge)
   IF HIDDEN > 0 THEN
     SET TEXT COLOR 8
-    GRAPH TEXT, AT X0 + 2, CBOT - 1: "+" & LTRIM$(STR$(HIDDEN)) & " more"
+    GRAPH TEXT, AT X0 + 2.4, CBOT - 1: "+" & LTRIM$(STR$(HIDDEN)) & " more"
     SET TEXT COLOR 1
   END IF
   ! fill gauge: thin filled bar, width proportional to rows used, sitting just
   ! inside the bottom border
   IF USED > 0 THEN
-    LET GW = (COLW - 1) * USED / (CTOP - CBOT + 1)
-    IF GW > COLW - 1 THEN LET GW = COLW - 1
+    LET GW = (COLW - 2) * USED / (CTOP - CBOT + 1)
+    IF GW > COLW - 2 THEN LET GW = COLW - 2
     SET AREA COLOR LCOL(LN)
-    GRAPH AREA: X0 + 0.5, BBOT + 0.2; X0 + 0.5 + GW, BBOT + 0.2; X0 + 0.5 + GW, BBOT + 0.7; X0 + 0.5, BBOT + 0.7
+    GRAPH AREA: X0 + 1, 3.05; X0 + 1 + GW, 3.05; X0 + 1 + GW, 3.55; X0 + 1, 3.55
   END IF
 NEXT LN
 ! --- dragging: outline the lane under the pointer, mark where the card will
@@ -393,16 +394,14 @@ NEXT LN
 IF DRAG > 0 THEN
   SET LINE COLOR 1
   IF HOVERLN > 0 AND HOVERLN <> LANE(DRAG) THEN
-    LET X0 = LX(HOVERLN) + 0.4
-    LET X1 = LX(HOVERLN) + COLW - 0.4
-    GRAPH LINES: X0, BBOT + 0.4; X1, BBOT + 0.4; X1, BTOP - 0.4; X0, BTOP - 0.4; X0, BBOT + 0.4
-    LET MARKY = CTOP + 0.85          ! above the lane's first card ...
+    LET X0 = LX(HOVERLN)               ! the target lane's border turns white
+    LET X1 = X0 + COLW
+    GRAPH LINES: X0, BBOT; X1, BBOT; X1, BTOP; X0, BTOP; X0, BBOT
+    LET MARKY = CTOP + 0.3             ! on the first card's top border ...
     FOR I = 1 TO DRAG - 1
-      IF LANE(I) = HOVERLN AND CTOPY(I) >= 0 THEN LET MARKY = CBOTY(I) - 0.75   ! ... or below the last one before it
+      IF LANE(I) = HOVERLN AND CTOPY(I) >= 0 THEN LET MARKY = CBOTY(I) - 0.7   ! ... or the bottom border of the last card before it
     NEXT I
-    SET LINE STYLE 2
-    GRAPH LINES: X0 + 0.6, MARKY; X1 - 0.6, MARKY
-    SET LINE STYLE 1
+    GRAPH LINES: X0 + 1, MARKY; X1 - 1, MARKY
   END IF
   LET WRAPSRC$ = "#" & LTRIM$(STR$(DRAG)) & " " & TASK$(DRAG)
   LET WRAPW = CARDW
@@ -452,7 +451,7 @@ IF HROWS < 10 THEN LET HROWS = 10  ! (never exceed the real rows: no overlap)
 SET WINDOW 0, 80, 0, HROWS
 SET LINE STYLE 1
 SET LINE COLOR 6
-GRAPH LINES: 1, 1; 78, 1; 78, HROWS - 1; 1, HROWS - 1; 1, 1
+GRAPH LINES: 1, 1.3; 78, 1.3; 78, HROWS - 0.7; 1, HROWS - 0.7; 1, 1.3
 LET Y = HROWS - 2
 SET TEXT COLOR 7
 GRAPH TEXT, AT 4, Y: "KANBAN BOARD  —  HELP"
@@ -680,23 +679,24 @@ RETURN
 
 ! ----------------------------------------------------------------------
 ! 9300  CARD — draw one card: a box around WRAP$(1..WRAPN) with a colour stripe
-!        down its left side. X0 = the lane's left edge, Y0 = the first line's
-!        baseline; colours in CARDLINE / CARDSTRIPE / CARDTEXT; CARDFILL = 1
-!        blacks out what's underneath first.
+!        down its left side; it takes WRAPN + 2 rows (borders above and below).
+!        X0 = the lane's left edge, Y0 = the first line's baseline; colours in
+!        CARDLINE / CARDSTRIPE / CARDTEXT; CARDFILL = 1 blacks out what's underneath first.
 ! ----------------------------------------------------------------------
 9300 REM ---- card box ----
 LET BX0 = X0 + 1
 LET BX1 = X0 + COLW - 1
-LET BYT = Y0 + 0.85                ! text sits on its baseline, so the box
-LET BYB = Y0 - WRAPN + 0.65        ! reaches just above the first line and below the last
+LET BYT = Y0 + 1.3                 ! through the middle of the row above the first line
+LET BYB = Y0 - WRAPN + 0.3         ! and of the row below the last
 IF CARDFILL = 1 THEN
   SET AREA COLOR 0
   GRAPH AREA: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT
 END IF
 SET LINE COLOR CARDLINE
 GRAPH LINES: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT; BX0, BYB
-SET AREA COLOR CARDSTRIPE
-GRAPH AREA: BX0, BYB; BX0 + 0.6, BYB; BX0 + 0.6, BYT; BX0, BYT
+SET AREA COLOR CARDSTRIPE            ! the stripe runs beside the text rows only,
+LET SYB = Y0 - WRAPN + 1.05          ! (down to the last baseline), leaving the box's corners alone
+GRAPH AREA: BX0, SYB; BX0 + 0.6, SYB; BX0 + 0.6, Y0 + 0.7; BX0, Y0 + 0.7
 SET TEXT COLOR CARDTEXT
 FOR WJ = 1 TO WRAPN
   GRAPH TEXT, AT X0 + 2.4, Y0 - WJ + 1: WRAP$(WJ)
@@ -711,7 +711,7 @@ LET HIT = 0
 FOR I = 1 TO NT
   IF CTOPY(I) >= 0 THEN
     LET X0 = LX(LANE(I))
-    IF MX >= X0 AND MX <= X0 + COLW AND MY >= CBOTY(I) - 0.2 AND MY <= CTOPY(I) + 0.9 THEN LET HIT = I
+    IF MX >= X0 AND MX <= X0 + COLW AND MY >= CBOTY(I) - 1.2 AND MY <= CTOPY(I) + 1.8 THEN LET HIT = I
   END IF
 NEXT I
 RETURN

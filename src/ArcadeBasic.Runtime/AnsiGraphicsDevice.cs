@@ -27,14 +27,13 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
     private readonly Func<(int Cols, int Rows)> _size;
 
     private int _cols, _rows;          // terminal size snapshot (rows counts the input row)
-    private bool[,] _dots = new bool[0, 0];
-    private int[,] _cellColor = new int[0, 0];
-    private readonly List<(int Cx, int Cy, string Text, int Color)> _labels = new();
+    private readonly CellSurface _surface = new(1, 1);   // the drawing, cell by cell (shared with the IDE)
     private bool _sized;
     private bool _dirty;               // something has been drawn
     private bool _begun;               // alternate screen entered
 
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
+    private int _lineStyle = 1;
 
     /// <param name="output">Where ANSI output goes (the console, or a writer in tests).</param>
     /// <param name="size">Current terminal size in character cells; re-read each frame.</param>
@@ -62,15 +61,13 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
     public void Clear()
     {
         Snapshot();                    // new frame: pick up any terminal resize
-        Array.Clear(_dots, 0, _dots.Length);
-        ResetCellColors();
-        _labels.Clear();
+        _surface.Clear();
         // CLEAR by itself isn't "drawing": leave _dirty as-is so a program that
         // only clears never switches the terminal to the alternate screen.
     }
 
-    public void SetLineStyle(int style) { }   // not expressible on a 1-bit braille grid
-    public void SetPointStyle(int style) { }
+    public void SetLineStyle(int style) => _lineStyle = style;   // dashed/dotted box-drawing lines
+    public void SetPointStyle(int style) { }                       // a point is one Braille dot
 
     public void SetColor(GfxColorTarget target, int colorIndex)
     {
@@ -83,23 +80,19 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
         }
     }
 
-    public void DrawPoints(IReadOnlyList<GfxPoint> points)
+    public void DrawPoints(IReadOnlyList<GfxPoint> points) => Draw(() => _surface.Points(points, _pointColor));
+
+    public void DrawLines(IReadOnlyList<GfxPoint> polyline) => Draw(() => _surface.Lines(polyline, _lineColor, _lineStyle));
+
+    public void FillArea(IReadOnlyList<GfxPoint> polygon) => Draw(() => _surface.Area(polygon, _areaColor));
+
+    public void DrawText(GfxPoint at, string text) => Draw(() => _surface.Text(at, text, _textColor));
+
+    private void Draw(Action draw)
     {
-        foreach (var p in points) { var (x, y) = ToPixel(p); Plot(x, y, _pointColor); }
-    }
-
-    public void DrawLines(IReadOnlyList<GfxPoint> polyline) =>
-        Rasterizer.Polyline(ToPixels(polyline), (x, y) => Plot(x, y, _lineColor));
-
-    public void FillArea(IReadOnlyList<GfxPoint> polygon) =>
-        Rasterizer.FillPolygon(ToPixels(polygon), (x, y) => Plot(x, y, _areaColor));
-
-    public void DrawText(GfxPoint at, string text)
-    {
-        if (string.IsNullOrEmpty(text)) return;
-        var (x, y) = ToPixel(at);
-        _labels.Add((x / 2, y / 4, text, _textColor));
-        _dirty = true;
+        EnsureSized();
+        draw();
+        _dirty |= !_surface.IsEmpty;
     }
 
     public void Flush() => Present();
@@ -123,23 +116,12 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
             var cur = -1;
             for (var cx = 0; cx < _cols; cx++)
             {
-                var bits = CellBits(cx, cy);
-                var color = bits == 0 ? 1 : _cellColor[cx, cy];
+                var cell = _surface[cx, cy];
+                var color = cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color;
                 if (color != cur) { sb.Append(Sgr(color)); cur = color; }
-                sb.Append(CellGlyph.ForBits(bits));
+                sb.Append(_surface.Glyph(cx, cy));
             }
             sb.Append(Esc).Append('K');                                    // clear to end of line
-        }
-
-        foreach (var (lcx, lcy, text, color) in _labels)                   // text labels on top
-        {
-            if (lcy < 0 || lcy >= CanvasRows) continue;
-            sb.Append(Esc).Append(lcy + 1).Append(';').Append(lcx + 1).Append('H').Append(Sgr(color));
-            for (var i = 0; i < text.Length; i++)
-            {
-                var col = lcx + i;
-                if (col >= 0 && col < _cols) sb.Append(text[i]);
-            }
         }
 
         sb.Append(Esc).Append(_rows).Append(";1H").Append(Esc).Append('K'); // clear the input row
@@ -168,56 +150,10 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
         cols = Math.Max(1, cols);
         rows = Math.Max(2, rows);
         _sized = true;
-        if (cols == _cols && rows == _rows && _dots.Length != 0) return;
+        if (cols == _cols && rows == _rows) return;
         _cols = cols;
         _rows = rows;
-        _dots = new bool[DotsW, DotsH];
-        _cellColor = new int[_cols, CanvasRows];
-        ResetCellColors();
-    }
-
-    private void ResetCellColors()
-    {
-        for (var i = 0; i < _cols; i++)
-            for (var j = 0; j < CanvasRows; j++)
-                _cellColor[i, j] = 1;
-    }
-
-    private void Plot(int x, int y, int color)
-    {
-        if (x < 0 || x >= DotsW || y < 0 || y >= DotsH) return;
-        _dots[x, y] = true;
-        _cellColor[x / 2, y / 4] = color;
-        _dirty = true;
-    }
-
-    private (int X, int Y) ToPixel(GfxPoint p)
-    {
-        EnsureSized();
-        return ((int)Math.Round(p.X * (DotsW - 1)),
-                (int)Math.Round((1.0 - p.Y) * (DotsH - 1)));   // flip Y: BASIC up → screen down
-    }
-
-    private List<(int X, int Y)> ToPixels(IReadOnlyList<GfxPoint> pts)
-    {
-        var r = new List<(int X, int Y)>(pts.Count);
-        foreach (var p in pts) r.Add(ToPixel(p));
-        return r;
-    }
-
-    private int CellBits(int cx, int cy)
-    {
-        // 2×4 dot cell → Unicode braille bit pattern (matches the IDE canvas).
-        int bx = cx * 2, by = cy * 4, bits = 0;
-        if (_dots[bx, by]) bits |= 0x01;
-        if (_dots[bx, by + 1]) bits |= 0x02;
-        if (_dots[bx, by + 2]) bits |= 0x04;
-        if (_dots[bx + 1, by]) bits |= 0x08;
-        if (_dots[bx + 1, by + 1]) bits |= 0x10;
-        if (_dots[bx + 1, by + 2]) bits |= 0x20;
-        if (_dots[bx, by + 3]) bits |= 0x40;
-        if (_dots[bx + 1, by + 3]) bits |= 0x80;
-        return bits;
+        _surface.Resize(_cols, CanvasRows);
     }
 
     private static string Sgr(int color) => Esc + AnsiColor(color) + "m";

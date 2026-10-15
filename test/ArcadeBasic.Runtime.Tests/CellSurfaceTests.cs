@@ -1,0 +1,103 @@
+using ArcadeBasic.Runtime;
+
+namespace ArcadeBasic.Runtime.Tests;
+
+/// <summary>
+/// <see cref="CellSurface"/>: straight lines become box-drawing characters, fills
+/// become blocks, slanted lines Braille, text sits in the cell over its baseline, and
+/// later drawing of another kind replaces earlier drawing.
+/// </summary>
+public class CellSurfaceTests
+{
+    /// <summary>A 10 × 5-cell surface addressed in cell units: x 0–10 across, y 0–5 up,
+    /// so (c + 0.5, r) is the middle of column c at height r.</summary>
+    private static CellSurface Surface() => new(10, 5);
+
+    private static GfxPoint P(double x, double y) => new(x / 10, y / 5);
+
+    private static string Rows(CellSurface s) => s.ToText().TrimEnd('\n');
+
+    [Fact]
+    public void ARectangleDrawsAsABoxWithEvenLines()
+    {
+        var s = Surface();
+        s.Lines([P(1.5, 0.5), P(8.5, 0.5), P(8.5, 4.5), P(1.5, 4.5), P(1.5, 0.5)], 3, 1);
+        Assert.Equal(
+            " ┌──────┐ \n" +
+            " │      │ \n" +
+            " │      │ \n" +
+            " │      │ \n" +
+            " └──────┘ ", Rows(s));
+        Assert.Equal(3, s[1, 0].Color);
+    }
+
+    [Fact]
+    public void CrossingLinesJoin()
+    {
+        var s = Surface();
+        s.Lines([P(0.5, 2.5), P(9.5, 2.5)], 1, 1);
+        s.Lines([P(4.5, 0.5), P(4.5, 4.5)], 1, 1);
+        Assert.Equal("────┼─────", Rows(s).Split('\n')[2]);
+        Assert.Equal('┼', s.Glyph(4, 2));                          // a 4-way join where they cross
+    }
+
+    [Fact]
+    public void LineStylesUseDashedBoxCharacters()
+    {
+        var s = Surface();
+        s.Lines([P(0.5, 4.5), P(4.5, 4.5)], 1, 2);
+        s.Lines([P(0.5, 2.5), P(4.5, 2.5)], 1, 3);
+        var rows = Rows(s).Split('\n');
+        Assert.Equal("┄┄┄┄┄", rows[0][..5]);
+        Assert.Equal("┈┈┈┈┈", rows[2][..5]);
+    }
+
+    [Fact]
+    public void FillsAreSolidBlocksAndColourZeroErases()
+    {
+        var s = Surface();
+        s.Area([P(0, 0), P(10, 0), P(10, 5), P(0, 5)], 2);
+        Assert.All(Rows(s).Replace("\n", ""), c => Assert.Equal('█', c));
+
+        s.Area([P(2, 1), P(8, 1), P(8, 4), P(2, 4)], 0);          // a black card over it
+        Assert.Equal(' ', s.Glyph(5, 2));
+        Assert.Equal('█', s.Glyph(0, 2));
+    }
+
+    [Fact]
+    public void ANarrowFillUsesHalfBlocks()
+    {
+        var s = Surface();
+        s.Area([P(3, 0), P(3.4, 0), P(3.4, 5), P(3, 5)], 4);       // the left dot column of cell 3
+        Assert.All(Enumerable.Range(0, 5), r => Assert.Equal('▌', s.Glyph(3, r)));
+    }
+
+    [Fact]
+    public void SlantedLinesAreBraille()
+    {
+        var s = Surface();
+        s.Lines([P(0, 0), P(10, 5)], 1, 1);
+        Assert.Contains(s.ToText(), c => c is > '⠀' and <= '⣿');
+        Assert.DoesNotContain(s.ToText(), c => c is '─' or '│');
+    }
+
+    [Fact]
+    public void TextSitsInTheCellAboveItsBaseline()
+    {
+        var s = Surface();
+        s.Text(P(1, 3), "hi", 7);                                  // baseline at the bottom of row 1 (y = 3)
+        Assert.Equal(" hi       ", Rows(s).Split('\n')[1]);
+        Assert.Equal(7, s[1, 1].Color);
+    }
+
+    [Fact]
+    public void LaterDrawingOfAnotherKindReplacesEarlier()
+    {
+        var s = Surface();
+        s.Text(P(0, 3), "xxxxxxxxxx", 1);
+        s.Lines([P(0.5, 3.5), P(9.5, 3.5)], 1, 1);                 // a line through the text's row
+        Assert.Equal("──────────", Rows(s).Split('\n')[1]);
+        s.Text(P(2, 3), "ok", 1);                                  // and text back over the line
+        Assert.Equal("──ok──────", Rows(s).Split('\n')[1]);
+    }
+}

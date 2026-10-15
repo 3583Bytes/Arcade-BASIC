@@ -51,7 +51,9 @@ tag.)
 ## Graphics & interactive input
 
 A program that uses the §13 graphics statements (`SET WINDOW`/`GRAPH …`) draws
-onto a **Graphics tab** — a Braille-cell canvas (2×4 dots per character cell).
+onto a **Graphics tab** — a character-cell canvas (`CellSurface`, shared with the
+CLI): straight lines are box-drawing characters, fills are blocks, anything else
+is Braille dots (2×4 per character cell).
 The tab appears automatically the moment a program draws.
 
 The canvas **sizes itself to the pane** (and re-fits when the terminal is
@@ -118,7 +120,7 @@ Gatekeeper bypass: right-click → Open, or `xattr -d com.apple.quarantine`).
 | `TuiShell.cs`           | Menus, status bar, layout, file ops.                              |
 | `SourcePane.cs`         | TextView + line-number gutter + highlight scheduling.             |
 | `OutputPane.cs`         | Read-only scrollback (size-capped) + the bottom input line for INPUT. |
-| `BrailleCanvas.cs`      | Graphics tab canvas: a Braille-cell (2×4 dots/cell) bitmap for §13 output. |
+| `BrailleCanvas.cs`      | Graphics tab canvas: shows a `CellSurface` (box-drawing / block / Braille cells) for §13 output. |
 | `GraphicsPane.cs`       | Wraps the canvas + its own INPUT field (so graphics programs read here). |
 | `TuiGraphicsDevice.cs`  | Maps §13 graphics onto the canvas via the shared `Rasterizer`.    |
 | `TuiKeyboard.cs`        | `IKeyboard` for `INKEY$`: a global key hook (active during a run) feeds keys to the program. |

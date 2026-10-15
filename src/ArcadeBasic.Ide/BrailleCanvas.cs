@@ -6,59 +6,45 @@ using Rune = System.Rune;
 namespace ArcadeBasic.Ide;
 
 /// <summary>
-/// A Terminal.Gui view that renders a sub-cell bitmap using Unicode Braille
-/// patterns: each character cell packs a 2×4 dot matrix (U+2800..U+28FF), so a
-/// region of C×R cells addresses a (2C)×(4R) "pixel" grid. Graphic-output
-/// statements plot into the dot grid (from the interpreter's background thread,
-/// so access is locked); the main loop redraws. GRAPH TEXT labels are drawn
-/// natively on top of the braille cells.
+/// The IDE's Graphics tab: a Terminal.Gui view that shows a <see cref="CellSurface"/>
+/// — the same character-grid renderer the CLI uses, so straight lines are box-drawing
+/// characters, fills are blocks and everything else is Braille (2 × 4 dots per cell).
+/// Programs draw from the interpreter's background thread, so access is locked; the
+/// main loop redraws.
 ///
-/// The dot grid sizes itself to the view's bounds (so a drawing fills whatever
-/// space the Graphics pane is given, and adapts when the terminal is resized);
-/// <see cref="PixelWidth"/>/<see cref="PixelHeight"/> report the current grid so
-/// the graphics device can map into it and <c>ASK DEVICE SIZE</c> reflects it.
-/// Until the view is laid out (e.g. in headless tests) it stays at the default
-/// 160×96 / 80×24 size.
+/// The grid sizes itself to the view's bounds (so a drawing fills whatever space the
+/// Graphics pane is given, and adapts when the terminal is resized);
+/// <see cref="PixelWidth"/>/<see cref="PixelHeight"/> report it in dots so the graphics
+/// device can map into it and <c>ASK DEVICE SIZE</c> reflects it. Until the view is
+/// laid out (e.g. in headless tests) it stays at the default 80 × 24 cells.
 /// </summary>
 internal sealed class BrailleCanvas : View
 {
     public const int DefaultDotsW = 160;
     public const int DefaultDotsH = 96;
-    // Clamp the dot grid to a sane range so a stray (or huge) layout can't make a
-    // degenerate or wildly large buffer. Limits are in cells; dots are ×2 / ×4.
+    // Clamp the grid to a sane range so a stray (or huge) layout can't make a
+    // degenerate or wildly large buffer. Limits are in cells.
     private const int MinCellsW = 8, MinCellsH = 3;
     private const int MaxCellsW = 400, MaxCellsH = 150;
 
-    private int _dotsW = DefaultDotsW;
-    private int _dotsH = DefaultDotsH;
-    // Back buffer: the frame currently being drawn (Plot/CLEAR/AddLabel write here;
-    // RenderToText/IsEmpty report it).
-    private bool[,] _dots = new bool[DefaultDotsW, DefaultDotsH];
-    private int[,] _cellColor = new int[DefaultDotsW / 2, DefaultDotsH / 4];
-    private readonly List<(int Cx, int Cy, string Text, int Color)> _labels = new();
-    // Front buffer: the last *committed* (complete) frame. Redraw paints only this,
-    // so the UI never samples a half-built frame — that mid-frame sampling (the pump
-    // catching the buffer right after CLEAR) was the on-screen flicker. CLEAR touches
-    // only the back buffer, so the displayed frame holds steady until the next Commit.
-    private bool[,] _frontDots = new bool[DefaultDotsW, DefaultDotsH];
-    private int[,] _frontCellColor = new int[DefaultDotsW / 2, DefaultDotsH / 4];
-    private List<(int Cx, int Cy, string Text, int Color)> _frontLabels = new();
+    // Back buffer: the frame currently being drawn (the Draw* calls and CLEAR write
+    // here; RenderToText/IsEmpty report it). Front buffer: the last *committed*
+    // (complete) frame — Redraw paints only this, so the UI never samples a half-built
+    // frame (mid-frame sampling right after CLEAR was the on-screen flicker).
+    private readonly CellSurface _back = new(DefaultDotsW / 2, DefaultDotsH / 4);
+    private readonly CellSurface _front = new(DefaultDotsW / 2, DefaultDotsH / 4);
     private readonly object _lock = new();
-    private bool _empty = true;
 
-    public int PixelWidth => _dotsW;
-    public int PixelHeight => _dotsH;
-    private int CellsW => _dotsW / 2;
-    private int CellsH => _dotsH / 4;
-    public bool IsEmpty { get { lock (_lock) return _empty; } }
+    public int PixelWidth { get { lock (_lock) return _back.DotsW; } }
+    public int PixelHeight { get { lock (_lock) return _back.DotsH; } }
+    public bool IsEmpty { get { lock (_lock) return _back.IsEmpty; } }
 
     public BrailleCanvas()
     {
         CanFocus = false;
         WantMousePositionReports = true;   // GET MOUSE follows the pointer, not just clicks
-        ClearBuffer();
-        // Re-fit the dot grid to the view's bounds once layout settles, so
-        // drawings fill the pane and follow terminal resizes.
+        // Re-fit the grid to the view's bounds once layout settles, so drawings fill
+        // the pane and follow terminal resizes.
         LayoutComplete += _ => RefitToBounds();
     }
 
@@ -67,8 +53,11 @@ internal sealed class BrailleCanvas : View
         var cellsW = Bounds.Width;
         var cellsH = Bounds.Height;
         if (cellsW <= 0 || cellsH <= 0) return;   // not laid out yet
-        Resize(Math.Clamp(cellsW, MinCellsW, MaxCellsW),
-               Math.Clamp(cellsH, MinCellsH, MaxCellsH));
+        lock (_lock)
+        {
+            _back.Resize(Math.Clamp(cellsW, MinCellsW, MaxCellsW), Math.Clamp(cellsH, MinCellsH, MaxCellsH));
+            _back.CopyTo(_front);   // keep the displayed frame sized to the new grid
+        }
     }
 
     // -- Pointer: the UI thread records the mouse here; the program's thread reads it
@@ -128,8 +117,8 @@ internal sealed class BrailleCanvas : View
     }
 
     internal GfxPoint CellToUnit(int cx, int cy) => new(
-        (2 * cx + 0.5) / Math.Max(1, _dotsW - 1),
-        1 - (4 * cy + 1.5) / Math.Max(1, _dotsH - 1));
+        (cx + 0.5) / _back.Cols,
+        1 - (cy + 0.5) / _back.Rows);   // the middle of the cell (CellSurface's mapping, inverted)
 
     private void Press(GfxPoint at)
     {
@@ -153,13 +142,7 @@ internal sealed class BrailleCanvas : View
 
     public void ClearBuffer()
     {
-        lock (_lock)
-        {
-            Array.Clear(_dots, 0, _dots.Length);
-            ResetColors();
-            _labels.Clear();
-            _empty = true;
-        }
+        lock (_lock) _back.Clear();
     }
 
     /// <summary>Promote the working (back) frame to the front buffer that Redraw
@@ -167,76 +150,43 @@ internal sealed class BrailleCanvas : View
     /// read, and at program end), so the UI only ever shows complete frames.</summary>
     public void Commit()
     {
-        lock (_lock) CopyBackToFront();
+        lock (_lock) _back.CopyTo(_front);
     }
 
-    // Clone the back buffer into the front buffer in one shot. Caller holds _lock.
-    private void CopyBackToFront()
+    // Drawing, in the device unit square — see CellSurface for how each kind renders.
+
+    public void DrawPoints(IReadOnlyList<GfxPoint> points, int color)
     {
-        if (_frontDots.GetLength(0) != _dotsW || _frontDots.GetLength(1) != _dotsH)
-        {
-            _frontDots = new bool[_dotsW, _dotsH];
-            _frontCellColor = new int[CellsW, CellsH];
-        }
-        Array.Copy(_dots, _frontDots, _dots.Length);
-        Array.Copy(_cellColor, _frontCellColor, _cellColor.Length);
-        _frontLabels = new List<(int Cx, int Cy, string Text, int Color)>(_labels);
+        lock (_lock) _back.Points(points, color);
     }
 
-    public void Plot(int x, int y, int colorIndex)
+    public void DrawLines(IReadOnlyList<GfxPoint> polyline, int color, int style)
     {
-        lock (_lock)
-        {
-            if (x < 0 || x >= _dotsW || y < 0 || y >= _dotsH) return;
-            _dots[x, y] = true;
-            _cellColor[x / 2, y / 4] = colorIndex;
-            _empty = false;
-        }
+        lock (_lock) _back.Lines(polyline, color, style);
     }
 
-    public void AddLabel(int dotX, int dotY, string text, int colorIndex)
+    public void FillArea(IReadOnlyList<GfxPoint> polygon, int color)
     {
-        if (string.IsNullOrEmpty(text)) return;
-        lock (_lock)
-        {
-            _labels.Add((dotX / 2, dotY / 4, text, colorIndex));
-            _empty = false;
-        }
+        lock (_lock) _back.Area(polygon, color);
     }
 
-    /// <summary>Render the braille layer to a plain string (one line per cell
-    /// row), no console driver required. For headless tests and debugging.</summary>
+    public void DrawText(GfxPoint at, string text, int color)
+    {
+        lock (_lock) _back.Text(at, text, color);
+    }
+
+    /// <summary>The frame being drawn, as text (one line per cell row) — for headless
+    /// tests and debugging.</summary>
     internal string RenderToText()
     {
-        lock (_lock)
-        {
-            var sb = new System.Text.StringBuilder();
-            for (var cy = 0; cy < CellsH; cy++)
-            {
-                for (var cx = 0; cx < CellsW; cx++)
-                    sb.Append((char)(0x2800 + CellBits(_dots, cx, cy)));
-                sb.Append('\n');
-            }
-            return sb.ToString();
-        }
+        lock (_lock) return _back.ToText();
     }
 
-    /// <summary>Render the committed <em>front</em> buffer (what Redraw paints) to
-    /// text — the counterpart to <see cref="RenderToText"/>, which renders the
-    /// still-being-drawn back buffer. For headless double-buffering tests.</summary>
+    /// <summary>The committed <em>front</em> buffer (what Redraw paints) as text — the
+    /// counterpart to <see cref="RenderToText"/>, for double-buffering tests.</summary>
     internal string RenderFrontToText()
     {
-        lock (_lock)
-        {
-            var sb = new System.Text.StringBuilder();
-            for (var cy = 0; cy < CellsH; cy++)
-            {
-                for (var cx = 0; cx < CellsW; cx++)
-                    sb.Append((char)(0x2800 + CellBits(_frontDots, cx, cy)));
-                sb.Append('\n');
-            }
-            return sb.ToString();
-        }
+        lock (_lock) return _front.ToText();
     }
 
     public override void Redraw(Rect bounds)
@@ -246,103 +196,18 @@ internal sealed class BrailleCanvas : View
 
         lock (_lock)
         {
-            var rows = Math.Min(CellsH, Bounds.Height);
-            var cols = Math.Min(CellsW, Bounds.Width);
+            var rows = Math.Min(_front.Rows, Bounds.Height);
+            var cols = Math.Min(_front.Cols, Bounds.Width);
             for (var cy = 0; cy < rows; cy++)
             {
                 for (var cx = 0; cx < cols; cx++)
                 {
-                    var bits = CellBits(_frontDots, cx, cy);
-                    driver.SetAttribute(Attr(driver, bits == 0 ? 1 : _frontCellColor[cx, cy]));
-                    AddRune(cx, cy, new Rune(ArcadeBasic.Runtime.CellGlyph.ForBits(bits)));
-                }
-            }
-
-            // Native text labels on top of the braille layer.
-            foreach (var (lcx, lcy, text, color) in _frontLabels)
-            {
-                if (lcy < 0 || lcy >= rows) continue;
-                driver.SetAttribute(Attr(driver, color));
-                for (var i = 0; i < text.Length; i++)
-                {
-                    var col = lcx + i;
-                    if (col < 0 || col >= cols) continue;
-                    AddRune(col, lcy, new Rune(text[i]));
+                    var cell = _front[cx, cy];
+                    driver.SetAttribute(Attr(driver, cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color));
+                    AddRune(cx, cy, new Rune(_front.Glyph(cx, cy)));
                 }
             }
         }
-    }
-
-    /// <summary>Reallocate the dot grid to <paramref name="cellsW"/>×<paramref name="cellsH"/>
-    /// cells, rescaling any existing drawing (nearest-neighbour) so a resize keeps
-    /// the picture visible until the program redraws. Leaves <see cref="IsEmpty"/>
-    /// unchanged so input routing stays stable across a resize.</summary>
-    private void Resize(int cellsW, int cellsH)
-    {
-        lock (_lock)
-        {
-            if (cellsW == CellsW && cellsH == CellsH) return;
-
-            int newDotsW = cellsW * 2, newDotsH = cellsH * 4;
-            var newDots = new bool[newDotsW, newDotsH];
-            var newColor = new int[cellsW, cellsH];
-            for (var i = 0; i < cellsW; i++)
-                for (var j = 0; j < cellsH; j++)
-                    newColor[i, j] = 1;
-
-            if (!_empty)
-            {
-                int oldDotsW = _dotsW, oldDotsH = _dotsH, oldCellsW = CellsW, oldCellsH = CellsH;
-                for (var nx = 0; nx < newDotsW; nx++)
-                {
-                    int ox = Math.Min((int)((long)nx * oldDotsW / newDotsW), oldDotsW - 1);
-                    for (var ny = 0; ny < newDotsH; ny++)
-                    {
-                        int oy = Math.Min((int)((long)ny * oldDotsH / newDotsH), oldDotsH - 1);
-                        newDots[nx, ny] = _dots[ox, oy];
-                    }
-                }
-                for (var i = 0; i < cellsW; i++)
-                {
-                    int oi = Math.Min(i * oldCellsW / cellsW, oldCellsW - 1);
-                    for (var j = 0; j < cellsH; j++)
-                        newColor[i, j] = _cellColor[oi, Math.Min(j * oldCellsH / cellsH, oldCellsH - 1)];
-                }
-                for (var k = 0; k < _labels.Count; k++)
-                {
-                    var (cx, cy, txt, col) = _labels[k];
-                    _labels[k] = (cx * cellsW / oldCellsW, cy * cellsH / oldCellsH, txt, col);
-                }
-            }
-
-            _dots = newDots;
-            _cellColor = newColor;
-            _dotsW = newDotsW;
-            _dotsH = newDotsH;
-            CopyBackToFront();   // keep the displayed frame sized to the new grid
-        }
-    }
-
-    private void ResetColors()
-    {
-        for (var i = 0; i < CellsW; i++)
-            for (var j = 0; j < CellsH; j++)
-                _cellColor[i, j] = 1;
-    }
-
-    private static int CellBits(bool[,] dots, int cx, int cy)
-    {
-        int bx = cx * 2, by = cy * 4;
-        var bits = 0;
-        if (dots[bx, by]) bits |= 0x01;
-        if (dots[bx, by + 1]) bits |= 0x02;
-        if (dots[bx, by + 2]) bits |= 0x04;
-        if (dots[bx + 1, by]) bits |= 0x08;
-        if (dots[bx + 1, by + 1]) bits |= 0x10;
-        if (dots[bx + 1, by + 2]) bits |= 0x20;
-        if (dots[bx, by + 3]) bits |= 0x40;
-        if (dots[bx + 1, by + 3]) bits |= 0x80;
-        return bits;
     }
 
     private static readonly Color[] Palette =
