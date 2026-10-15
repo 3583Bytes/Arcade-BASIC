@@ -242,7 +242,10 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
 - **`IKeyboard`** — a non-blocking `ReadKey()` behind `INKEY$`; `ConsoleKeyboard`
   (CLI/standalone, via `Console.ReadKey`) and `TuiKeyboard` (the IDE captures keys
   with a global hook while a program runs) supply real keys, `NullKeyboard`
-  yields `""` when there's no interactive keyboard.
+  yields `""` when there's no interactive keyboard. Both engines read it through
+  `KeyboardState`, which also answers `KEYDOWN`: exactly, from a keyboard that also
+  implements **`IKeyState`** (one that sees key releases — the browser, a game
+  engine), or else estimated from presses and auto-repeat (terminals).
 
 Both interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
 value types crossing the boundary), so the same code path serves the CLI,

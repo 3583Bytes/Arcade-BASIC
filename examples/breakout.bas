@@ -1,18 +1,19 @@
 ! breakout.bas — a small Breakout, the third real-time arcade game alongside    @category Games
 ! invaders.bas and snake.bas. The new trick here is ball physics: the ball
 ! reflects off the walls and bricks, and the paddle steers it — where it strikes
-! the paddle sets the rebound angle. INKEY$ (non-blocking keyboard) + SLEEP
-! (frame delay) drive the loop; graphics use the ECMA-116 §13 module, so it draws
-! on the Braille console: in the IDE, via `arcade-basic run examples/breakout.bas`,
-! and as a standalone binary. INKEY$/SLEEP are Microsoft BASIC extensions, not
-! ISO/ECMA Full BASIC — see docs/conformance.md.
+! the paddle sets the rebound angle. KEYDOWN (held keys) moves the paddle,
+! INKEY$ (non-blocking keyboard) reads the other keys, and SLEEP (frame delay)
+! paces the loop; graphics use the ECMA-116 §13 module, so it draws on the
+! Braille console: in the IDE, via `arcade-basic run examples/breakout.bas`, and
+! as a standalone binary. INKEY$/SLEEP are Microsoft BASIC extensions and KEYDOWN
+! an Arcade BASIC one, not ISO/ECMA Full BASIC — see docs/conformance.md.
 !
-! Controls:   A / LEFT  move left     D / RIGHT  move right     Q  quit
+! Controls:   hold A / LEFT  move left     hold D / RIGHT  move right     Q  quit
 ! After a game ends:  R  play again    Q  quit
 !
 ! The high score is saved to breakout.score (RECTYPE INTERNAL) and shown as HI.
-! With no live keyboard (piped/headless) the paddle stays put — INKEY$ returns ""
-! — the ball eventually slips past it, lives run out, and the program exits
+! With no live keyboard (piped/headless) the paddle stays put — no key is ever
+! down — the ball eventually slips past it, lives run out, and the program exits
 ! without prompting, so it still terminates (a frame cap backstops a stray orbit).
 
 OPTION BASE 1
@@ -35,7 +36,7 @@ LET BRICKBOT = BRICKTOP - NROW * BH   ! y below the lowest brick row (20.5)
 LET PHW = 5                ! paddle half-width
 LET PADY = 2               ! paddle centre row
 LET PADTOP = PADY + 0.5    ! paddle top surface (the ball rebounds here)
-LET PADSPEED = 3           ! columns moved per key press
+LET PADSPEED = 2           ! columns moved per frame while a move key is held
 LET SHMIN = PHW            ! paddle-centre travel limits
 LET SHMAX = FW - PHW
 
@@ -140,22 +141,20 @@ GRAPH TEXT, AT 1, 0: MSG$
 RETURN
 
 ! ======================================================================
-! 2000  INPUT — drain every pending key this frame (non-blocking).
+! 2000  INPUT — drain this frame's key presses (non-blocking), then move
+!        while a move key is held.
 ! ======================================================================
 2000 REM ---- input ----
 LET QUIT = 0
-DO
+DO                                 ! key presses: quit
   LET K$ = INKEY$
   IF K$ = "" THEN EXIT DO
   LET ANYKEY = 1                   ! a real key arrived — a keyboard is present
-  IF K$ = "q" OR K$ = "Q" THEN
-    LET QUIT = 1
-  ELSEIF K$ = "a" OR K$ = "A" OR K$ = CHR$(0) & CHR$(75) THEN
-    LET PX = PX - PADSPEED
-  ELSEIF K$ = "d" OR K$ = "D" OR K$ = CHR$(0) & CHR$(77) THEN
-    LET PX = PX + PADSPEED
-  END IF
+  IF K$ = "q" OR K$ = "Q" THEN LET QUIT = 1
 LOOP
+! held keys: the paddle moves every frame a move key is down
+IF KEYDOWN("ArrowLeft") OR KEYDOWN("a") THEN LET PX = PX - PADSPEED
+IF KEYDOWN("ArrowRight") OR KEYDOWN("d") THEN LET PX = PX + PADSPEED
 IF PX < SHMIN THEN LET PX = SHMIN
 IF PX > SHMAX THEN LET PX = SHMAX
 RETURN

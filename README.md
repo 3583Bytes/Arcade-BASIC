@@ -60,7 +60,7 @@ Console.WriteLine(output);   //  42
 ## What you can do with it
 
 - **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
-- **Write real-time games.** `INKEY$` (non-blocking keyboard) and `SLEEP` (frame delay) drive a game loop, and `OPTION ARITHMETIC NATIVE` swaps exact decimal arithmetic for hardware doubles — 2–8× faster on math-heavy code; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) on the Braille console — in the IDE, the CLI, or a standalone binary. (Both are Microsoft-BASIC extensions, flagged as such in the docs.)
+- **Write real-time games.** `INKEY$` (non-blocking keyboard), `KEYDOWN` (held keys) and `SLEEP` (frame delay) drive a game loop, and `OPTION ARITHMETIC NATIVE` swaps exact decimal arithmetic for hardware doubles — 2–8× faster on math-heavy code; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) on the Braille console — in the IDE, the CLI, or a standalone binary. (These are Microsoft-BASIC and Arcade BASIC extensions, flagged as such in the docs.)
 - **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping. Render to SVG (`arcade-basic run examples/graphics.bas --svg out.svg`), live in **any terminal** (the CLI and standalone binaries draw with a Braille + ANSI backend), or on the **Graphics tab** in the IDE; a Unity backend is in progress.
 - **Make sound.** `SOUND`, `BEEP`, and `PLAY` (Music Macro Language) — the GW-BASIC/QuickBASIC audio verbs, flagged as Microsoft-dialect extensions in the docs. Plays in **real time** on an interactive terminal (Windows/macOS/Linux) and in Unity (the in-game IDE sample), and renders to a WAV file with `arcade-basic run examples/music.bas --wav out.wav`. Foreground (`MF`) and background (`MB`) music both work. See [docs/audio-extension.md](docs/audio-extension.md).
 - **Edit and run BASIC in a TUI IDE.** `arcade-basic-ide` opens a full-screen Terminal.Gui editor with line numbers, syntax classification, a problems pane, and one-key Run/Stop. See [Try the IDE](#try-the-ide).
@@ -148,9 +148,9 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`formatted.bas`](examples/formatted.bas) | `PRINT USING` with picture strings |
 | [`graphics.bas`](examples/graphics.bas) | §13 graphics — `SET WINDOW`, `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` (render with `--svg`) |
 | [`kanban.bas`](examples/kanban.bas) | interactive graphics board — colored `GRAPH LINES` lanes + `GRAPH TEXT` cards |
-| [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `INKEY$` (keyboard) + `SLEEP` (frame delay) + §13 graphics |
+| [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `KEYDOWN` (held keys) + `INKEY$` (key presses) + `SLEEP` (frame delay) + §13 graphics |
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
-| [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
+| [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `KEYDOWN` + `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
 | [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
 | [`music.bas`](examples/music.bas) | audio — `SOUND`, `BEEP`, and `PLAY` (MML); render to WAV with `--wav` |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |

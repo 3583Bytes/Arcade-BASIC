@@ -83,6 +83,12 @@ internal static class Builtins
         yield return new BuiltinSymbol("INKEY", IsString: true,
             new BuiltinSignature(0, 0, []));
 
+        // KEYDOWN(key$) — is a key held? (-1/0). An Arcade BASIC extension in the
+        // spirit of QB64's _KEYDOWN; key$ is INKEY$ text or a W3C KeyboardEvent.code
+        // name. Also evaluated by the engines against their keyboard source.
+        yield return new BuiltinSymbol("KEYDOWN", IsString: false,
+            new BuiltinSignature(1, 1, [BuiltinArgType.String]));
+
         // Bound queries (used with array names)
         yield return new BuiltinSymbol("LBOUND", IsString: false,
             new BuiltinSignature(1, 2, [BuiltinArgType.Any, BuiltinArgType.Numeric]));

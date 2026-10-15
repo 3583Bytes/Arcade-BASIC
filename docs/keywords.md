@@ -595,7 +595,8 @@ RUN                        ! starts over (clears X, etc.)
 ### `SLEEP`
 
 Pause execution for a number of seconds (fractional allowed). Paces real-time
-loops — pair it with the `INKEY$` function (non-blocking keyboard) for games.
+loops — pair it with the `INKEY$` function (non-blocking keyboard: one result per
+key press) and `KEYDOWN(key$)` (-1 while a key is held) for games.
 **Extension:** Microsoft BASIC (QuickBASIC), not ISO/ECMA Full BASIC — see the
 [Extensions table](conformance.md#extensions-beyond-isoecma-full-basic).
 
@@ -603,6 +604,8 @@ loops — pair it with the `INKEY$` function (non-blocking keyboard) for games.
 DO
   LET K$ = INKEY$          ! "" if no key is waiting
   IF K$ = "q" THEN EXIT DO
+  IF KEYDOWN("ArrowLeft") THEN LET X = X - 1   ! moves every frame it's held
+  IF KEYDOWN("ArrowRight") THEN LET X = X + 1
   ! ... update + redraw ...
   SLEEP 0.05               ! ~20 frames/second
 LOOP

@@ -33,6 +33,9 @@ public sealed partial class BasicInterpreter
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
     private readonly IKeyboard _keyboard;
+
+    /// <summary>INKEY$'s presses and KEYDOWN's held keys, over <see cref="_keyboard"/>.</summary>
+    private readonly KeyboardState _keys;
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
@@ -75,6 +78,7 @@ public sealed partial class BasicInterpreter
         _cancel = cancel;
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
+        _keys = new KeyboardState(_keyboard);
         _audio = audio ?? NullAudioDevice.Instance;
         _random = new BasicRandom(randomizeSeed);
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);

@@ -150,11 +150,27 @@ public class GraphicsTests
         Assert.Contains("TEXT", ir.Transcript);    // the HUD
     }
 
-    private sealed class ScriptKeyboard : IKeyboard
+    /// <summary>Scripted input, one entry per INKEY$ read ("" ends a frame's drain).
+    /// A scripted key also counts as <i>held</i> for the frame it arrives in — the game
+    /// drains INKEY$ (the key, then the "" that ends the frame) before it asks KEYDOWN —
+    /// so held-key movement is as deterministic as the presses.</summary>
+    private sealed class ScriptKeyboard : IKeyboard, IKeyState
     {
         private readonly Queue<string> _keys;
+        private string _last = "", _beforeLast = "";
         public ScriptKeyboard(IEnumerable<string> keys) => _keys = new Queue<string>(keys);
-        public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
+
+        public string ReadKey()
+        {
+            var key = _keys.Count > 0 ? _keys.Dequeue() : "";
+            (_beforeLast, _last) = (_last, key);
+            return key;
+        }
+
+        public bool IsKeyDown(string key) => Is(_last, key) || Is(_beforeLast, key);
+
+        private static bool Is(string pressed, string key) =>
+            KeyNames.Canonical(pressed) is { } p && (p == key || p == KeyNames.AsTyped(key));
     }
 
     [Fact]

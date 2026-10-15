@@ -27,9 +27,9 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 | `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |
-| `invaders.bas`   | Space Invaders — real-time `INKEY$` + `SLEEP` + §13 graphics; play-again on game over; persists a high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
+| `invaders.bas`   | Space Invaders — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; play-again on game over; persists a high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `snake.bas`      | Snake — real-time `INKEY$` + `SLEEP` + §13 graphics; growing body array, food via `RND`, anti-reverse steering, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
-| `breakout.bas`   | Breakout — real-time `INKEY$` + `SLEEP` + §13 graphics; ball physics (wall/brick/paddle reflection, angle steered by paddle hit point), lives, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
+| `breakout.bas`   | Breakout — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; ball physics (wall/brick/paddle reflection, angle steered by paddle hit point), lives, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `tetris.bas`     | Tetris — real-time `INKEY$` + `SLEEP` + §13 graphics; piece table from `READ`/`DATA`, live 90° rotation via the `(r,c)->(c,-r)` transform, full-row clearing, levels, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
 | `music.bas`      | Audio — `SOUND`, `BEEP`, `PLAY` (Music Macro Language); a Microsoft-BASIC/GW-BASIC dialect extension. Render to a WAV with `--wav out.wav` | ✓ | ✓ |
 

@@ -48,6 +48,9 @@ public sealed class BasicVm
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
     private readonly IKeyboard _keyboard;
+
+    /// <summary>INKEY$'s presses and KEYDOWN's held keys, over <see cref="_keyboard"/>.</summary>
+    private readonly KeyboardState _keys;
     private readonly IAudioDevice _audio;
     private readonly AudioState _audioState = new();
 
@@ -131,6 +134,7 @@ public sealed class BasicVm
         _in = @in;
         _graphics = graphics ?? NullGraphicsDevice.Instance;
         _keyboard = keyboard ?? NullKeyboard.Instance;
+        _keys = new KeyboardState(_keyboard);
         _audio = audio ?? NullAudioDevice.Instance;
         _audioPort = new DeferredDrainAudio(_audio);
         _random = new BasicRandom(randomizeSeed);
@@ -662,7 +666,11 @@ public sealed class BasicVm
                         }
                         else if (string.Equals(name, "INKEY", StringComparison.OrdinalIgnoreCase))
                         {
-                            stack.Push(new StringValue(_keyboard.ReadKey()));   // non-blocking key poll
+                            stack.Push(new StringValue(_keys.ReadKey()));   // non-blocking key poll
+                        }
+                        else if (string.Equals(name, "KEYDOWN", StringComparison.OrdinalIgnoreCase))
+                        {
+                            stack.Push(NumericValue.Bool(_keys.IsDown(((StringValue)args[0]).V), _native));
                         }
                         else if (string.Equals(name, "RND", StringComparison.OrdinalIgnoreCase))
                         {

@@ -1,16 +1,17 @@
-! invaders.bas — a small Space Invaders, the showcase for INKEY$ (non-blocking  @category Graphics
-! keyboard) and SLEEP (frame delay). Both are Microsoft BASIC extensions, not
-! ISO/ECMA Full BASIC — see docs/conformance.md. Graphics use the ECMA-116 §13
+! invaders.bas — a small Space Invaders, the showcase for KEYDOWN (held keys),  @category Graphics
+! INKEY$ (non-blocking keyboard) and SLEEP (frame delay). INKEY$ and SLEEP are
+! Microsoft BASIC extensions and KEYDOWN an Arcade BASIC one, not ISO/ECMA Full
+! BASIC — see docs/conformance.md. Graphics use the ECMA-116 §13
 ! module, so it draws on the Braille console: it runs in the IDE, via
 ! `arcade-basic run examples/invaders.bas`, and as a standalone binary.
 !
-! Controls:   A / LEFT  move left     D / RIGHT  move right
+! Controls:   hold A / LEFT  move left     hold D / RIGHT  move right
 !             SPACE  fire             Q  quit
 ! After a game ends:  R  play again    Q  quit
 !
 ! The high score is saved to invaders.score (RECTYPE INTERNAL) and shown as HI.
-! With no live keyboard (piped/headless) it plays itself to a loss — INKEY$ just
-! returns "" — and exits without prompting, so it still terminates.
+! With no live keyboard (piped/headless) it plays itself to a loss — no key is
+! ever pressed or held — and exits without prompting, so it still terminates.
 
 OPTION BASE 1
 
@@ -33,6 +34,7 @@ LET PX = FW / 2            ! ship centre x
 LET PY = 2                 ! ship row
 LET SHMIN = 3
 LET SHMAX = FW - 3
+LET SHIPSPEED = 2          ! columns moved per frame while a move key is held
 LET BLIVE = 0              ! bullet in flight?
 LET BX = 0
 LET BLY = 0
@@ -128,7 +130,8 @@ GRAPH TEXT, AT 1, 0: MSG$
 RETURN
 
 ! ======================================================================
-! 2000  INPUT — drain every pending key this frame (non-blocking).
+! 2000  INPUT — drain this frame's key presses (non-blocking), then move
+!        while a move key is held.
 ! ======================================================================
 2000 REM ---- input ----
 LET QUIT = 0
@@ -138,10 +141,6 @@ DO
   LET ANYKEY = 1                   ! a real key arrived — a keyboard is present
   IF K$ = "q" OR K$ = "Q" THEN
     LET QUIT = 1
-  ELSEIF K$ = "a" OR K$ = "A" OR K$ = CHR$(0) & CHR$(75) THEN
-    LET PX = PX - 2
-  ELSEIF K$ = "d" OR K$ = "D" OR K$ = CHR$(0) & CHR$(77) THEN
-    LET PX = PX + 2
   ELSEIF K$ = " " THEN
     IF BLIVE = 0 THEN
       LET BLIVE = 1
@@ -150,6 +149,9 @@ DO
     END IF
   END IF
 LOOP
+! held keys: the ship moves every frame a move key is down
+IF KEYDOWN("ArrowLeft") OR KEYDOWN("a") THEN LET PX = PX - SHIPSPEED
+IF KEYDOWN("ArrowRight") OR KEYDOWN("d") THEN LET PX = PX + SHIPSPEED
 IF PX < SHMIN THEN LET PX = SHMIN
 IF PX > SHMAX THEN LET PX = SHMAX
 RETURN

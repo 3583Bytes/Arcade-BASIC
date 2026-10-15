@@ -644,7 +644,9 @@ public sealed partial class BasicInterpreter
             case "INKEY":
                 // Non-blocking keyboard poll — reads from the injected keyboard
                 // source, not the static builtin registry.
-                return new StringValue(_keyboard.ReadKey());
+                return new StringValue(_keys.ReadKey());
+            case "KEYDOWN":
+                return NumericValue.Bool(_keys.IsDown(((StringValue)args[0]).V), _native);
             case "RND":
                 // This run's sequence (the argument, if any, is ignored).
                 return _random.Next(_native);
