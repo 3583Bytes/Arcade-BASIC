@@ -406,6 +406,27 @@ public sealed class Analyzer
             case AskGfxStmt ag:
                 AnalyzeAskGfx(ag, scope);
                 break;
+            case MatGraphCellsStmt mg:
+                ExpectType(mg.X1, AnalyzeExpr(mg.X1, scope), BasicType.Numeric, "graphics X coordinate");
+                ExpectType(mg.Y1, AnalyzeExpr(mg.Y1, scope), BasicType.Numeric, "graphics Y coordinate");
+                ExpectType(mg.X2, AnalyzeExpr(mg.X2, scope), BasicType.Numeric, "graphics X coordinate");
+                ExpectType(mg.Y2, AnalyzeExpr(mg.Y2, scope), BasicType.Numeric, "graphics Y coordinate");
+                CheckMatTarget(mg.ArrayName, false, mg.Span, scope);
+                if (scope.Lookup(Scope.Key(mg.ArrayName, false)) is ArraySymbol cellArray && cellArray.Spec.Bounds.Count != 2)
+                    _diags.Error(ErrGraphics, mg.Span, "MAT GRAPH CELLS needs a two-dimensional array",
+                        "the first subscript runs across, the second up or down");
+                break;
+            case SetColorMixStmt sm:
+                ExpectType(sm.Index, AnalyzeExpr(sm.Index, scope), BasicType.Numeric, "color index");
+                ExpectType(sm.Red, AnalyzeExpr(sm.Red, scope), BasicType.Numeric, "red intensity");
+                ExpectType(sm.Green, AnalyzeExpr(sm.Green, scope), BasicType.Numeric, "green intensity");
+                ExpectType(sm.Blue, AnalyzeExpr(sm.Blue, scope), BasicType.Numeric, "blue intensity");
+                break;
+            case AskColorMixStmt am:
+                ExpectType(am.Index, AnalyzeExpr(am.Index, scope), BasicType.Numeric, "color index");
+                AnalyzeNumericTargets(scope, "ASK COLOR MIX", am.Red, am.Green, am.Blue);
+                if (am.Status is not null) AnalyzeNumericTargets(scope, "ASK COLOR MIX STATUS", am.Status);
+                break;
 
             case ReturnStmt: case StopStmt: case EndStmt: case EndBlockStmt: case RunStmt:
             case RemStmt: case OptionBaseStmt: case OptionArithmeticStmt:

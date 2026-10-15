@@ -5,11 +5,12 @@ using ArcadeBasic.Parser.Ast;
 namespace ArcadeBasic.Parser;
 
 /// <summary>
-/// MAT-statement parsing. Five forms after the MAT keyword:
+/// MAT-statement parsing. Six forms after the MAT keyword:
 ///   MAT REDIM name(bounds, ...)
 ///   MAT INPUT name
 ///   MAT PRINT name
 ///   MAT READ name
+///   MAT GRAPH CELLS, IN x1, y1; x2, y2: name
 ///   MAT name = rhs       (where rhs is a small dedicated grammar)
 ///
 /// The rhs grammar accepts a name, IDN/ZER/CON/NUL$ constants, INV(name)
@@ -26,6 +27,7 @@ public sealed partial class BasicParser
         if (Match(TokenKind.KwInput)) return ParseMatInput(start);
         if (Match(TokenKind.KwPrint)) return ParseMatPrint(start);
         if (Match(TokenKind.KwRead)) return ParseMatRead(start);
+        if (Match(TokenKind.KwGraph)) return ParseMatGraph(start);
 
         // MAT name = rhs
         var nameTok = Peek();
@@ -101,6 +103,38 @@ public sealed partial class BasicParser
         var (name, isString) = ParseMatTargetName();
         if (name is null) return null;
         return new MatReadStmt(SpanFrom(start, Previous().Span), name, isString);
+    }
+
+    /// <summary>MAT GRAPH CELLS, IN x1, y1; x2, y2: name (ANSI X3.113 §13.3.4.4). CELLS
+    /// isn't a reserved word: like MAX in ASK MAX COLOR, it's known by where it stands.</summary>
+    private Stmt? ParseMatGraph(Token start)
+    {
+        var cells = Peek();
+        if (cells.Kind != TokenKind.Identifier || !string.Equals(cells.Text, "CELLS", StringComparison.OrdinalIgnoreCase))
+        {
+            ErrorAt(cells, ErrExpectedToken, "expected CELLS after MAT GRAPH",
+                "MAT GRAPH POINTS, LINES and AREA aren't supported yet; use GRAPH POINTS, LINES or AREA");
+            return null;
+        }
+        Advance();
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        if (!ExpectKind(TokenKind.KwIn, "'IN'")) return null;
+        var x1 = ParseExpression(); if (x1 is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var y1 = ParseExpression(); if (y1 is null) return null;
+        if (!ExpectKind(TokenKind.Semicolon, "';' between the two corners")) return null;
+        var x2 = ParseExpression(); if (x2 is null) return null;
+        if (!ExpectKind(TokenKind.Comma, "','")) return null;
+        var y2 = ParseExpression(); if (y2 is null) return null;
+        if (!ExpectKind(TokenKind.Colon, "':'")) return null;
+        var nameTok = Peek();
+        if (nameTok.Kind != TokenKind.Identifier)
+        {
+            ErrorAt(nameTok, ErrExpectedToken, "expected a numeric array name in MAT GRAPH CELLS");
+            return null;
+        }
+        Advance();
+        return new MatGraphCellsStmt(SpanFrom(start, Previous().Span), x1, y1, x2, y2, nameTok.Text);
     }
 
     private (string? Name, bool IsString) ParseMatTargetName()

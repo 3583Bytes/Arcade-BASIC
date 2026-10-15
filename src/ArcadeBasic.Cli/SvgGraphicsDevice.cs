@@ -11,19 +11,22 @@ namespace ArcadeBasic.Cli;
 /// Y-flipped to SVG's top-left origin. This is the Phase-1 backend: vector
 /// output, deterministic, no UI.
 /// </summary>
-public sealed class SvgGraphicsDevice : IGraphicsDevice
+public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
 {
     private const int Size = 1000;
     private readonly StringBuilder _body = new();
+    private readonly GfxPalette _palette = new();
 
     private int _lineStyle = 1, _pointStyle = 3;
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
 
-    public int MaxColor => Palette.Length - 1;
+    public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
     public int MaxPointStyle => 3;
     public GfxDeviceSize DeviceSize => new(Size, Size, "OTHER");
 
+    // Paper is white here, so the 16 standard colours are re-mapped for print (0 white,
+    // 1 black); colours 16–255, and any SET COLOR MIX has changed, are their own.
     private static readonly string[] Palette =
     [
         "white", "black", "red", "green", "blue", "magenta", "cyan", "yellow",
@@ -78,6 +81,36 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice
 
     public void Flush() { }
 
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+    {
+        // One rectangle per run of same-coloured cells in a row, cut to the visible part.
+        var cw = (rect.Right - rect.Left) / columns;
+        var ch = (rect.Top - rect.Bottom) / rows;
+        for (var r = 0; r < rows; r++)
+        {
+            var top = Math.Min(rect.Top - r * ch, visible.Top);
+            var bottom = Math.Max(rect.Top - (r + 1) * ch, visible.Bottom);
+            if (bottom >= top) continue;
+            for (var c = 0; c < columns;)
+            {
+                var color = colors[r * columns + c];
+                var end = c + 1;
+                while (end < columns && colors[r * columns + end] == color) end++;
+                var left = Math.Max(rect.Left + c * cw, visible.Left);
+                var right = Math.Min(rect.Left + end * cw, visible.Right);
+                if (left < right)
+                {
+                    var (x, y) = Map(new GfxPoint(left, top));
+                    _body.Append(FormattableString.Invariant(
+                        $"  <rect x=\"{x:F2}\" y=\"{y:F2}\" width=\"{(right - left) * Size:F2}\" height=\"{(top - bottom) * Size:F2}\" fill=\"{Color(color)}\" />\n"));
+                }
+                c = end;
+            }
+        }
+    }
+
+    public void SetColorMix(int index, double red, double green, double blue) => _palette.Set(index, red, green, blue);
+
     public string ToSvg()
     {
         var sb = new StringBuilder();
@@ -104,8 +137,10 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice
         return sb.ToString();
     }
 
-    private static string Color(int index) =>
-        Palette[index < 0 || index >= Palette.Length ? 1 : index];
+    private string Color(int index) =>
+        (uint)index >= GfxPalette.Count ? Palette[1]   // out of range: the default colour
+        : _palette.IsStandard(index) ? Palette[index]
+        : "#" + (_palette.Argb(index) & 0xFFFFFF).ToString("x6", CultureInfo.InvariantCulture);
 
     private static string Dash(int style) => style switch
     {

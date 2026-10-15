@@ -9,16 +9,17 @@ namespace ArcadeBasic.Runtime;
 /// into a texture.
 ///
 /// Coordinates arrive in the normalized device square [0,1] (origin bottom-left);
-/// they map to the buffer with Y flipped (row 0 = top). Colours are a fixed
-/// 16-entry palette shared in spirit with the other backends. Text is drawn with
-/// the shared <see cref="BitmapFont"/>.
+/// they map to the buffer with Y flipped (row 0 = top). Colours come from the
+/// shared 256-entry <see cref="GfxPalette"/>, which SET COLOR MIX changes. Text is
+/// drawn with the shared <see cref="BitmapFont"/>.
 /// </summary>
-public sealed class RasterGraphicsDevice : IGraphicsDevice
+public sealed class RasterGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
 {
     private int _w;
     private int _h;
     private int[] _pixels = [];
     private readonly BitmapFont _font = BitmapFont.Default;
+    private readonly GfxPalette _palette = new();
 
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
 
@@ -42,12 +43,12 @@ public sealed class RasterGraphicsDevice : IGraphicsDevice
         Clear();
     }
 
-    public int MaxColor => Palette.Length - 1;
+    public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
     public int MaxPointStyle => 3;
     public GfxDeviceSize DeviceSize => new(_w, _h, "OTHER");
 
-    public void Clear() => Array.Fill(_pixels, OpaqueBlack);
+    public void Clear() => Array.Fill(_pixels, Color(0));   // colour 0 is the background (opaque black unless remixed)
 
     // Styles aren't expressed on this solid raster backend (same as the braille canvas).
     public void SetLineStyle(int style) { }
@@ -98,6 +99,28 @@ public sealed class RasterGraphicsDevice : IGraphicsDevice
 
     public void Flush() { }   // the Unity wrapper reads Pixels and uploads to its texture
 
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+    {
+        // Every pixel whose centre is inside the visible part takes the cell under it.
+        visible = new GfxRect(Math.Max(visible.Left, rect.Left), Math.Min(visible.Right, rect.Right),
+            Math.Max(visible.Bottom, rect.Bottom), Math.Min(visible.Top, rect.Top));
+        int px0 = (int)Math.Ceiling(visible.Left * (_w - 1)), px1 = (int)Math.Floor(visible.Right * (_w - 1));
+        int py0 = (int)Math.Ceiling((1 - visible.Top) * (_h - 1)), py1 = (int)Math.Floor((1 - visible.Bottom) * (_h - 1));
+        double width = rect.Right - rect.Left, height = rect.Top - rect.Bottom;
+        for (var py = Math.Max(0, py0); py <= Math.Min(_h - 1, py1); py++)
+        {
+            var y = 1 - (double)py / (_h - 1);
+            var cy = Math.Clamp((int)((rect.Top - y) / height * rows), 0, rows - 1);
+            for (var px = Math.Max(0, px0); px <= Math.Min(_w - 1, px1); px++)
+            {
+                var cx = Math.Clamp((int)(((double)px / (_w - 1) - rect.Left) / width * columns), 0, columns - 1);
+                _pixels[py * _w + px] = Color(colors[cy * columns + cx]);
+            }
+        }
+    }
+
+    public void SetColorMix(int index, double red, double green, double blue) => _palette.Set(index, red, green, blue);
+
     // -- internals --------------------------------------------------------
 
     private void Plot(int x, int y, int argb)
@@ -117,29 +140,6 @@ public sealed class RasterGraphicsDevice : IGraphicsDevice
         return r;
     }
 
-    private static int Color(int index) => Palette[index < 0 || index >= Palette.Length ? 1 : index];
+    private int Color(int index) => _palette.Argb(index);
 
-    // Explicit opaque black so the cleared screen reads as an arcade display.
-    private static readonly int OpaqueBlack = unchecked((int)0xFF000000);
-
-    // 16-colour ARGB palette (0xAARRGGBB), matching the other backends' intent.
-    private static readonly int[] Palette =
-    [
-        OpaqueBlack,                       // 0  used as the clear/background colour
-        unchecked((int)0xFFFFFFFF),        // 1  white (default)
-        unchecked((int)0xFFFF5555),        // 2  bright red
-        unchecked((int)0xFF55FF55),        // 3  bright green
-        unchecked((int)0xFF5555FF),        // 4  bright blue
-        unchecked((int)0xFFFF55FF),        // 5  bright magenta
-        unchecked((int)0xFF55FFFF),        // 6  bright cyan
-        unchecked((int)0xFFFFFF55),        // 7  bright yellow
-        unchecked((int)0xFFAAAAAA),        // 8  gray
-        unchecked((int)0xFFAA0000),        // 9  red
-        unchecked((int)0xFF00AA00),        // 10 green
-        unchecked((int)0xFF0000AA),        // 11 blue
-        unchecked((int)0xFFAA00AA),        // 12 magenta
-        unchecked((int)0xFF00AAAA),        // 13 cyan
-        unchecked((int)0xFFAA5500),        // 14 brown
-        unchecked((int)0xFFFFFFFF),        // 15 white
-    ];
 }

@@ -22,6 +22,32 @@ public class AnalyzerTests
     private static IReadOnlyList<Diagnostic> ErrorsFor(DiagnosticBag bag, string code) =>
         bag.All.Where(d => d.Code == code).ToList();
 
+    // -- Graphics: cell arrays ---------------------------------------------
+
+    [Fact]
+    public void MatGraphCellsNeedsATwoDimensionalArray()
+    {
+        var (_, diags) = Analyze("DIM A(5)\nMAT GRAPH CELLS, IN 0, 0; 1, 1: A");
+        ErrorsFor(diags, Analyzer.ErrGraphics).Should().ContainSingle()
+            .Which.Message.Should().Contain("two-dimensional");
+        Analyze("DIM A(5, 5)\nMAT GRAPH CELLS, IN 0, 0; 1, 1: A").Diagnostics.HasErrors.Should().BeFalse();
+    }
+
+    [Fact]
+    public void MatGraphCellsNeedsADeclaredArray()
+    {
+        Analyze("MAT GRAPH CELLS, IN 0, 0; 1, 1: A").Diagnostics.HasErrors.Should().BeTrue();
+        Analyze("LET A = 1\nMAT GRAPH CELLS, IN 0, 0; 1, 1: A").Diagnostics.HasErrors.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ColorMixTakesNumbers()
+    {
+        Analyze("SET COLOR MIX (1) \"red\", 0, 0").Diagnostics.HasErrors.Should().BeTrue();
+        Analyze("ASK COLOR MIX (1) R$, G, B").Diagnostics.HasErrors.Should().BeTrue();
+        Analyze("ASK COLOR MIX (1) R, G, B STATUS S").Diagnostics.HasErrors.Should().BeFalse();
+    }
+
     // -- Variable introduction ------------------------------------------
 
     [Fact]

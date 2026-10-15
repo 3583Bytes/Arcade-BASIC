@@ -23,6 +23,37 @@ public class RasterGraphicsDeviceTests
     }
 
     [Fact]
+    public void CellsFillEachPixelWithTheCellUnderIt()
+    {
+        var d = new RasterGraphicsDevice(4, 4);
+        var all = new GfxRect(0, 1, 0, 1);
+        d.DrawCells(all, 2, 2, [4, 3, 1, 0], all);           // row-major from the top-left
+        Assert.Equal(BrightBlue, At(d, 0, 0));
+        Assert.Equal(BrightGreen, At(d, 3, 0));
+        Assert.Equal(White, At(d, 0, 3));
+        Assert.Equal(Black, At(d, 3, 3));
+
+        d.DrawCells(all, 1, 1, [3], new GfxRect(0, 0.4, 0, 1));   // only the left part shows
+        Assert.Equal(BrightGreen, At(d, 1, 3));
+        Assert.Equal(Black, At(d, 3, 3));
+    }
+
+    [Fact]
+    public void ColorMixChangesWhatAnIndexDraws()
+    {
+        var d = new RasterGraphicsDevice(4, 4);
+        Assert.Equal(255, d.MaxColor);
+        d.SetColorMix(40, 1, 0.5, 0);
+        d.SetColor(GfxColorTarget.Area, 40);
+        d.FillArea(new GfxPoint[] { new(0, 0), new(1, 0), new(1, 1), new(0, 1) });
+        Assert.Equal(unchecked((int)0xFFFF8000), At(d, 2, 2));
+
+        d.SetColorMix(0, 0, 0, 0.5);                           // colour 0 is the background
+        d.Clear();
+        Assert.Equal(unchecked((int)0xFF000080), At(d, 2, 2));
+    }
+
+    [Fact]
     public void FullWindowLineHitsBothCornersWithYFlip()
     {
         var d = new RasterGraphicsDevice(10, 10);

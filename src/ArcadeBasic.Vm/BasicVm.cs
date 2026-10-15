@@ -585,6 +585,35 @@ public sealed class BasicVm
                         stack.Push(_gfx.Query(q, index, _graphics, _native));
                         break;
                     }
+                case Opcode.GfxCells:
+                    {
+                        var depth = (int)ReadU32(code, ref pc);
+                        var slot = (int)ReadU32(code, ref pc);
+                        var y2 = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var x2 = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var y1 = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var x1 = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        if (ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero) is not NumericArrayValue cells)
+                            throw new BasicRuntimeException(6004, "MAT GRAPH CELLS requires the array to be DIM-ed first");
+                        _gfx.EmitCells(new GfxPoint(x1, y1), new GfxPoint(x2, y2), cells, _graphics);
+                        break;
+                    }
+                case Opcode.GfxSetColorMix:
+                    {
+                        var blue = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var green = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var red = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var index = GraphicsState.ToIndex((NumericValue)stack.Pop());
+                        _gfx.SetColorMix(index, red, green, blue, _graphics);
+                        break;
+                    }
+                case Opcode.GfxAskColorMix:
+                    {
+                        var component = (int)ReadU32(code, ref pc);
+                        var index = GraphicsState.ToIndex((NumericValue)stack.Pop());
+                        stack.Push(_gfx.QueryColorMix(index, component, _graphics, _native));
+                        break;
+                    }
 
                 case Opcode.Pop: stack.Pop(); break;
                 case Opcode.Dup: stack.Push(stack.Peek()); break;

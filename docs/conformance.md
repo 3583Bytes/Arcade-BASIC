@@ -207,7 +207,7 @@ source.
 
 ## Arrays + MAT
 
-- **OPTION BASE 0 | 1** controlled. Defaults to 0 per ISO; most example programs use `OPTION BASE 1` for 1-based indexing.
+- **OPTION BASE 0 | 1** controlled. With no OPTION BASE, arrays start at subscript 1 (ANSI X3.113 §7.1.1: "if no such declaration occurs, the lower bound shall be one").
 - **MAT operations:** `=`, `+`, `-`, `*` (matrix multiply), `TRN`, `INV`, `IDN`, `ZER`, `CON`, `PRINT`, `READ`, `INPUT`, `REDIM`.
 - **MAT INV** uses LU decomposition with partial pivoting.
 - **MAT REDIM preserves elements** within the new bounds; element-wise per the spec.
@@ -282,7 +282,28 @@ picture containing `^` treats it as literal text.
 The coordinate-systems, attributes, and graphic-output sections are implemented:
 `SET WINDOW/VIEWPORT/DEVICE WINDOW/DEVICE VIEWPORT/CLIP`, `ASK …` (with optional
 `STATUS`), `CLEAR`, `SET {POINT|LINE} STYLE`, `SET {POINT|LINE|TEXT|AREA} COLOR`,
-and `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`.
+`SET`/`ASK COLOR MIX`, `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`, and the cell array
+`MAT GRAPH CELLS, IN x1, y1; x2, y2: A` (ANSI X3.113 §13.3.4.4). **Not yet:**
+`MAT GRAPH POINTS|LINES|AREA`, the text attributes (`TEXT HEIGHT/JUSTIFY/ANGLE`).
+
+**Colours and cell arrays.** `MAT GRAPH CELLS` takes a two-dimensional numeric array
+(the analyzer rejects any other declared rank; a run-time rank change raises
+**6401**): the first subscript runs horizontally, the lowest subscripts sit at the
+first point, and each element's rounded value is its cell's colour.
+**IMPLEMENTATION-DEFINED:** there are 256 colours (`ASK MAX COLOR` is 255 on every
+backend): 0 is the background (black) and 1 white, 2–15 the bright and dark
+primaries, 16–255 the xterm 256-colour palette — the starting values `ASK COLOR MIX`
+reports. `SET COLOR MIX` changes what an index draws from then on (terminals also
+recolour what's already on screen; colour 0 can't change a terminal's background).
+The 16-colour IDE shows every colour as the nearest of its 16, the console the
+nearest of its 256; the SVG backend keeps its print palette (paper white) for
+colours 0–15 until they're mixed. A cell colour outside 0–255 (exception 11085,
+nonfatal) is drawn as colour 1; `SET COLOR MIX` with an index outside the device's
+colours (11085, nonfatal) is ignored, and an intensity outside 0–1 (11088, nonfatal)
+is taken to the nearer end. `ASK COLOR MIX … STATUS s` reports 11086 for an index
+out of range (and zeros); every index has a colour from the start, so 11087 never
+occurs. A zero-width or zero-height cell rectangle draws nothing (the standard
+recommends a line of cells).
 
 **Graphic input** (ANSI X3.113 §13.4 — ECMA-116 omits it): `LOCATE POINT [(device)]
 [, AT x, y] : x, y` and `GET POINT …` are implemented. They wait until the user
@@ -315,7 +336,7 @@ binaries on an interactive terminal — so graphics programs run anywhere, not j
 the IDE. Both terminal backends compose onto the same `CellSurface`, which draws
 each primitive with the characters that suit it: horizontal/vertical lines as
 box-drawing characters (`─ │ ┌ ┼ …`, with `┄ ┆` dashed and `┈ ┊` dotted styles),
-filled areas as block elements at 2 × 2 per cell, other lines and points as Braille
+filled areas and cell arrays as block elements at 2 × 2 per cell, other lines and points as Braille
 dots (2 × 4 per cell), text as characters. **IMPLEMENTATION-DEFINED:** text goes in
 the cell that holds the middle of its letters (the point is the baseline, as for
 the default LEFT, BASE alignment); a cell shows one kind of drawing, so later
@@ -333,7 +354,7 @@ share the `Rasterizer` in Runtime.
 VIEWPORT) is a plain linear remap within the unit square; physical aspect-ratio
 preservation is delegated to the backend, which knows its real pixel geometry.
 `ASK DEVICE SIZE` / `MAX COLOR` / `MAX … STYLE` report the active backend's
-capabilities (the null backend used by a plain `run` reports a 16-colour, 3-style
+capabilities (the null backend used by a plain `run` reports a 256-colour, 3-style
 device).
 
 **DEVIATION:** invalid `SET` bounds (zero/negative size, or out of `[0,1]` where

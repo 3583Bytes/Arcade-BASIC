@@ -410,6 +410,18 @@ public class ExampleParityTests
 
     // -- helpers ---------------------------------------------------------
 
+    /// <summary>With no OPTION BASE, arrays start at subscript 1 on both engines (ANSI
+    /// X3.113 §7.1.1) — the tree-walker used to start them at 0.</summary>
+    [Theory]
+    [InlineData("DIM A(3)\nMAT PRINT A\nMAT REDIM A(2, 2)\nMAT PRINT A\n", " 0  0  0 \n 0  0 \n 0  0 \n\n")]
+    [InlineData("OPTION BASE 0\nDIM A(3)\nMAT PRINT A\n", " 0  0  0  0 \n")]
+    public void ArraysStartAtOneUnlessOptionBaseSaysZero(string source, string expected)
+    {
+        var (program, info) = FrontEndSource("base.bas", source);
+        Assert.Equal((expected, 0), RunInterpreter(program, info, ""));
+        Assert.Equal((expected, 0), RunVm(program, info, ""));
+    }
+
     private static (AstProgram Program, SemanticInfo Info) FrontEnd(string name) =>
         FrontEndSource(name, File.ReadAllText(Path.Combine(ExamplesDir(), name)));
 

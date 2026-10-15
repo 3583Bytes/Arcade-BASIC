@@ -15,7 +15,7 @@ namespace ArcadeBasic.Web;
 /// It's also the pointer for LOCATE POINT and GET MOUSE: the page reports pointer
 /// positions and primary-button presses/releases in the same unit square.
 /// </summary>
-internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
+internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArrayDevice, IColorMixDevice
 {
     // Command encoding (main.js `drawFrame` must match):
     //   Color  target index
@@ -25,7 +25,16 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
     //   Text   x y textIndex        (textIndex into FrameText)
     //   LineStyle style              (1 solid, 2 dashed, 3 dotted)
     //   PointStyle style             (1 dot, 2 plus, 3 asterisk)
-    internal const double Color = 2, Lines = 3, Area = 4, Points = 5, Text = 6, LineStyle = 7, PointStyle = 8;
+    //   Cells  left bottom right top columns rows  visibleLeft visibleBottom visibleRight visibleTop
+    //          atlasX atlasY         (the cells' colours, row-major from the top-left, are a
+    //                                 columns x rows block of FrameCells' atlas at that spot)
+    //   Palette argb0 … argb255     (first in a frame, when the colours have changed)
+    internal const double Color = 2, Lines = 3, Area = 4, Points = 5, Text = 6, LineStyle = 7, PointStyle = 8,
+        Cells = 9, Palette = 10;
+
+    // Each frame's cell arrays are packed into one atlas — the page uploads it as a
+    // single image and draws every array from it — in shelves up to this wide.
+    private const int AtlasWidth = 2048;
 
     private readonly List<double> _commands = [];
     private readonly List<string> _texts = [];
@@ -36,12 +45,18 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
     private bool _everFlushed;
     private bool _changed;
 
+    private readonly GfxPalette _palette = new();
+    private bool _paletteChanged = true;            // the page hasn't been sent these colours yet
+    private readonly List<(int X, int Y, int Columns, int Rows, int[] Colors)> _cellBlocks = [];
+    private int _shelfX, _shelfY, _shelfHeight, _atlasW;
+    private double[] _presentedCells = [];
+
     private const int MaxPointerEvents = 256;
     private readonly Queue<PointerEvent> _pointerEvents = new();
     private GfxPoint? _pointer;
     private bool _buttonDown;
 
-    public int MaxColor => 15;
+    public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
     public int MaxPointStyle => 3;
     /// <summary>The same 80 x 24-cell screen the terminal backends give (2 x 4 Braille dots
@@ -53,6 +68,10 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
     /// <summary>The strings the last frame from <see cref="TakeFrame"/> refers to.</summary>
     public string[] FrameText { get; private set; } = [];
 
+    /// <summary>The last frame's cell-array atlas: its width and height, then the colour
+    /// index of each of its cells, row by row (empty when the frame has no cells).</summary>
+    public double[] FrameCells { get; private set; } = [];
+
     /// <summary>Forget everything (a new program is starting).</summary>
     public void Reset()
     {
@@ -63,6 +82,10 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
         _pointStyle = 3;
         _presented = null;
         _presentedTexts = [];
+        _presentedCells = [];
+        ClearCells();
+        _palette.Reset();
+        _paletteChanged = true;
         _everFlushed = false;
         _changed = true;
         _pointerEvents.Clear();
@@ -118,22 +141,37 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
         {
             var frame = _presented;
             FrameText = _presentedTexts;
+            FrameCells = _presentedCells;
             _presented = null;
-            return frame;
+            return WithPalette(frame);
         }
         if (!_everFlushed && _changed)
         {
             _changed = false;
             FrameText = [.. _texts];
-            return [.. _commands];
+            FrameCells = Atlas();
+            return WithPalette([.. _commands]);
         }
         return [];
+    }
+
+    /// <summary>The frame, led by the palette if the page hasn't got these colours yet.</summary>
+    private double[] WithPalette(double[] frame)
+    {
+        if (!_paletteChanged) return frame;
+        _paletteChanged = false;
+        var withPalette = new double[1 + GfxPalette.Count + frame.Length];
+        withPalette[0] = Palette;
+        for (var i = 0; i < GfxPalette.Count; i++) withPalette[1 + i] = _palette.Argb(i);
+        frame.CopyTo(withPalette, 1 + GfxPalette.Count);
+        return withPalette;
     }
 
     public void Clear()
     {
         _commands.Clear();
         _texts.Clear();
+        ClearCells();
         // Colours and styles outlive CLEAR, so the new frame starts by restating them.
         for (var t = 0; t < _colors.Length; t++) _commands.AddRange([Color, t, _colors[t]]);
         _commands.AddRange([LineStyle, _lineStyle, PointStyle, _pointStyle]);
@@ -144,7 +182,55 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer
     {
         _presented = [.. _commands];
         _presentedTexts = [.. _texts];
+        _presentedCells = Atlas();
         _everFlushed = true;
+    }
+
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+    {
+        if (_shelfX + columns > AtlasWidth && _shelfX > 0)
+        {
+            _shelfY += _shelfHeight;
+            _shelfX = _shelfHeight = 0;
+        }
+        var (x, y) = (_shelfX, _shelfY);
+        _cellBlocks.Add((x, y, columns, rows, colors));
+        _shelfX += columns;
+        _shelfHeight = Math.Max(_shelfHeight, rows);
+        _atlasW = Math.Max(_atlasW, _shelfX);
+        _commands.AddRange([Cells, rect.Left, rect.Bottom, rect.Right, rect.Top, columns, rows,
+            visible.Left, visible.Bottom, visible.Right, visible.Top, x, y]);
+        _changed = true;
+    }
+
+    public void SetColorMix(int index, double red, double green, double blue)
+    {
+        _palette.Set(index, red, green, blue);
+        _paletteChanged = true;
+        _changed = true;
+    }
+
+    private void ClearCells()
+    {
+        _cellBlocks.Clear();
+        _shelfX = _shelfY = _shelfHeight = _atlasW = 0;
+    }
+
+    /// <summary>The frame's cell arrays as one atlas (see <see cref="FrameCells"/>).</summary>
+    private double[] Atlas()
+    {
+        if (_cellBlocks.Count == 0) return [];
+        int w = _atlasW, h = _shelfY + _shelfHeight;
+        var atlas = new double[2 + w * h];
+        atlas[0] = w;
+        atlas[1] = h;
+        foreach (var (x, y, columns, rows, colors) in _cellBlocks)
+        {
+            for (var r = 0; r < rows; r++)
+                for (var c = 0; c < columns; c++)
+                    atlas[2 + (y + r) * w + x + c] = colors[r * columns + c];
+        }
+        return atlas;
     }
 
     public void SetColor(GfxColorTarget target, int colorIndex)

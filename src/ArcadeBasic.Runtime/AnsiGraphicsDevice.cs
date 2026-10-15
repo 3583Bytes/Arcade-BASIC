@@ -19,7 +19,7 @@ namespace ArcadeBasic.Runtime;
 /// leaves the terminal completely alone. The first <see cref="Present"/> switches
 /// to the alternate screen; <see cref="EndSession"/> restores it.
 /// </summary>
-public sealed class AnsiGraphicsDevice : IGraphicsDevice
+public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
 {
     private const string Esc = "\x1b[";
 
@@ -28,6 +28,7 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
 
     private int _cols, _rows;          // terminal size snapshot (rows counts the input row)
     private readonly CellSurface _surface = new(1, 1);   // the drawing, cell by cell (shared with the IDE)
+    private readonly GfxPalette _palette = new();
     private bool _sized;
     private bool _dirty;               // something has been drawn
     private bool _begun;               // alternate screen entered
@@ -46,7 +47,7 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
     /// <summary>True once the program has drawn at least one primitive.</summary>
     public bool Active => _dirty;
 
-    public int MaxColor => 15;
+    public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
     public int MaxPointStyle => 3;
 
@@ -87,6 +88,11 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
     public void FillArea(IReadOnlyList<GfxPoint> polygon) => Draw(() => _surface.Area(polygon, _areaColor));
 
     public void DrawText(GfxPoint at, string text) => Draw(() => _surface.Text(at, text, _textColor));
+
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible) =>
+        Draw(() => _surface.Cells(rect, columns, rows, colors, visible));
+
+    public void SetColorMix(int index, double red, double green, double blue) => _palette.Set(index, red, green, blue);
 
     private void Draw(Action draw)
     {
@@ -156,7 +162,11 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice
         _surface.Resize(_cols, CanvasRows);
     }
 
-    private static string Sgr(int color) => Esc + AnsiColor(color) + "m";
+    /// <summary>The 16 standard colours are the terminal's own; any other colour (16–255,
+    /// or one SET COLOR MIX has changed) is the nearest of the 256-colour palette.</summary>
+    private string Sgr(int color) => _palette.IsStandard(color)
+        ? Esc + AnsiColor(color) + "m"
+        : Esc + "38;5;" + _palette.NearestXterm(color) + "m";
 
     // Palette index → ANSI SGR foreground code, approximating the IDE's 16-colour
     // terminal palette.

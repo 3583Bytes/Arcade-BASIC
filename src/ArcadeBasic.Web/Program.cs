@@ -121,6 +121,10 @@ internal static partial class Playground
     internal static string[] FrameText() => Screen.FrameText;
 
     [JSExport]
+    [return: JSMarshalAs<JSType.Array<JSType.Number>>]
+    internal static double[] FrameCells() => Screen.FrameCells;
+
+    [JSExport]
     internal static void KeyDown(string code, string key, bool repeat) => Keyboard.Down(code, key, repeat);
 
     [JSExport]

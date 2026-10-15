@@ -10,7 +10,7 @@ namespace ArcadeBasic.Runtime;
 /// VM must yield identical transcripts. Coordinates are formatted at fixed
 /// precision so the text is stable across platforms.
 /// </summary>
-public sealed class RecordingGraphicsDevice : IGraphicsDevice
+public sealed class RecordingGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
 {
     private readonly StringBuilder _log = new();
 
@@ -46,6 +46,19 @@ public sealed class RecordingGraphicsDevice : IGraphicsDevice
 
     public void Flush() => _log.Append("FLUSH\n");
 
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+    {
+        _log.Append("CELLS ").Append(Fmt(new GfxPoint(rect.Left, rect.Bottom))).Append(' ').Append(Fmt(new GfxPoint(rect.Right, rect.Top)))
+            .Append(' ').Append(columns).Append('x').Append(rows)
+            .Append(" VISIBLE ").Append(Fmt(new GfxPoint(visible.Left, visible.Bottom))).Append(' ').Append(Fmt(new GfxPoint(visible.Right, visible.Top)))
+            .Append(':');
+        foreach (var c in colors) _log.Append(' ').Append(c);
+        _log.Append('\n');
+    }
+
+    public void SetColorMix(int index, double red, double green, double blue) =>
+        _log.Append("COLOR MIX ").Append(index).Append(' ').Append(F(red)).Append(' ').Append(F(green)).Append(' ').Append(F(blue)).Append('\n');
+
     private void Emit(string verb, IReadOnlyList<GfxPoint> pts)
     {
         _log.Append(verb);
@@ -53,7 +66,7 @@ public sealed class RecordingGraphicsDevice : IGraphicsDevice
         _log.Append('\n');
     }
 
-    private static string Fmt(GfxPoint p) =>
-        p.X.ToString("F4", CultureInfo.InvariantCulture) + "," +
-        p.Y.ToString("F4", CultureInfo.InvariantCulture);
+    private static string Fmt(GfxPoint p) => F(p.X) + "," + F(p.Y);
+
+    private static string F(double v) => v.ToString("F4", CultureInfo.InvariantCulture);
 }

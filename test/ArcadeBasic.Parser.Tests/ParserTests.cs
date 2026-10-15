@@ -219,6 +219,34 @@ public class ParserTests
     }
 
     [Fact]
+    public void MatGraphCellsParses()
+    {
+        // CELLS isn't reserved: it's recognised after MAT GRAPH.
+        var stmt = SingleStmt<MatGraphCellsStmt>("MAT GRAPH CELLS, IN 1, 2; 3 + X, 4: TEX");
+        stmt.ArrayName.Should().Be("TEX");
+        stmt.X2.Should().BeOfType<BinaryExpr>();
+    }
+
+    [Fact]
+    public void MatGraphNeedsCells()
+    {
+        var (_, diags) = Parse("MAT GRAPH POINTS: XY");
+        diags.HasErrors.Should().BeTrue();
+        diags.All.Should().Contain(d => d.Message.Contains("expected CELLS after MAT GRAPH"));
+    }
+
+    [Fact]
+    public void SetAndAskColorMixParse()
+    {
+        var set = SingleStmt<SetColorMixStmt>("SET COLOR MIX (4) .5, R * .5, .3");   // the standard's example
+        set.Green.Should().BeOfType<BinaryExpr>();
+        var ask = SingleStmt<AskColorMixStmt>("ASK COLOR MIX (N + 1) R, G, B STATUS S");
+        ask.Index.Should().BeOfType<BinaryExpr>();
+        ask.Status.Should().NotBeNull();
+        SingleStmt<AskColorMixStmt>("ASK COLOR MIX (2) R, G, B").Status.Should().BeNull();
+    }
+
+    [Fact]
     public void Dim()
     {
         var stmt = SingleStmt<DimStmt>("DIM A(10), B(2 TO 5, 1 TO 10), S$(20)");

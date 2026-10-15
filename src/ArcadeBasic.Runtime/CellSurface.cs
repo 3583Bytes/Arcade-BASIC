@@ -7,7 +7,8 @@ namespace ArcadeBasic.Runtime;
 /// <list type="bullet">
 /// <item>horizontal and vertical lines → box-drawing characters (─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼;
 /// ┄ ┆ dashed, ┈ ┊ dotted), one cell's resolution: even weight both ways, no gaps;</item>
-/// <item>filled areas → block elements, 2 × 2 per cell (▘ ▝ ▀ ▖ ▌ ▞ ▛ ▗ ▚ ▐ ▜ ▄ ▙ ▟ █);</item>
+/// <item>filled areas → block elements, 2 × 2 per cell (▘ ▝ ▀ ▖ ▌ ▞ ▛ ▗ ▚ ▐ ▜ ▄ ▙ ▟ █);
+/// cell arrays (MAT GRAPH CELLS) too, each quadrant the colour under its middle;</item>
 /// <item>anything else (slanted lines, points) → Braille dots, 2 × 4 per cell;</item>
 /// <item>text → its characters, in the cell that holds the middle of the letters (the
 /// point is the text's baseline, as in ECMA-116's default LEFT, BASE alignment).</item>
@@ -168,6 +169,65 @@ public sealed class CellSurface
         }
     }
 
+    /// <summary>MAT GRAPH CELLS: a grid of coloured cells filling <paramref name="rect"/>
+    /// (colours row-major from the top-left), drawn only inside <paramref name="visible"/>.
+    /// It's an image, so it covers what was there: each block quadrant it reaches takes
+    /// the cell under the quadrant's middle — colour 0, the background, leaves it dark —
+    /// and as a character shows one colour, it's the one most of those quadrants have.</summary>
+    public void Cells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+    {
+        visible = Intersect(visible, rect);
+        int x0 = Math.Max(0, (int)Math.Floor(visible.Left * DotsW)), x1 = Math.Min(DotsW, (int)Math.Ceiling(visible.Right * DotsW));
+        int y0 = Math.Max(0, (int)Math.Floor((1 - visible.Top) * DotsH)), y1 = Math.Min(DotsH, (int)Math.Ceiling((1 - visible.Bottom) * DotsH));
+        if (x0 >= x1 || y0 >= y1) return;
+        double width = rect.Right - rect.Left, height = rect.Top - rect.Bottom;
+        Span<int> quadrant = stackalloc int[4];
+        for (var row = y0 / 4; row <= (y1 - 1) / 4; row++)
+        {
+            for (var col = x0 / 2; col <= (x1 - 1) / 2; col++)
+            {
+                var reached = false;
+                for (var q = 0; q < 4; q++)   // 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right
+                {
+                    var x = (col * 2 + (q & 1) + 0.5) / DotsW;            // the quadrant's middle
+                    var y = 1 - (row * 4 + (q >> 1) * 2 + 1.0) / DotsH;
+                    if (x < visible.Left || x > visible.Right || y < visible.Bottom || y > visible.Top)
+                    {
+                        quadrant[q] = -1;
+                        continue;
+                    }
+                    var cx = Math.Clamp((int)((x - rect.Left) / width * columns), 0, columns - 1);
+                    var cy = Math.Clamp((int)((rect.Top - y) / height * rows), 0, rows - 1);
+                    quadrant[q] = colors[cy * columns + cx];
+                    reached = true;
+                }
+                if (!reached) continue;
+
+                ref var cell = ref _cells[row * Cols + col];
+                var bits = cell.Kind == CellKind.Block ? cell.Bits : 0;
+                var color = cell.Kind == CellKind.Block ? cell.Color : 0;
+                int best = -1, bestCount = 0;
+                for (var q = 0; q < 4; q++)
+                {
+                    var c = quadrant[q];
+                    if (c < 0) continue;
+                    if (c == 0)
+                    {
+                        bits &= ~(1 << q);
+                        continue;
+                    }
+                    bits |= 1 << q;
+                    var count = 0;
+                    for (var k = 0; k < 4; k++) if (quadrant[k] == c) count++;
+                    if (count > bestCount) { best = c; bestCount = count; }
+                }
+                if (best > 0) color = best;
+                cell = bits == 0 ? default : new Cell { Kind = CellKind.Block, Bits = bits, Color = color };
+                if (bits != 0) IsEmpty = false;
+            }
+        }
+    }
+
     public void Text(GfxPoint at, string text, int color)
     {
         if (string.IsNullOrEmpty(text)) return;
@@ -214,6 +274,9 @@ public sealed class CellSurface
         }
         return sb.ToString();
     }
+
+    private static GfxRect Intersect(GfxRect a, GfxRect b) => new(
+        Math.Max(a.Left, b.Left), Math.Min(a.Right, b.Right), Math.Max(a.Bottom, b.Bottom), Math.Min(a.Top, b.Top));
 
     private static readonly char[] BlockGlyphs = [' ', '▘', '▝', '▀', '▖', '▌', '▞', '▛', '▗', '▚', '▐', '▜', '▄', '▙', '▟', '█'];
 

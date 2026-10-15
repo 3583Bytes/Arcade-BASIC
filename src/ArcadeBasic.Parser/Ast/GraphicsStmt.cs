@@ -32,6 +32,18 @@ public sealed record class GraphStmt(SourceSpan Span, GfxGeometry Kind, IReadOnl
 public sealed record class GraphTextStmt(
     SourceSpan Span, Expr AtX, Expr AtY, Expr? Image, IReadOnlyList<Expr> Items) : Stmt(Span);
 
+/// <summary>MAT GRAPH CELLS, IN x1, y1; x2, y2: array — fill the rectangle with one
+/// coloured cell per element of a two-dimensional numeric array.</summary>
+public sealed record class MatGraphCellsStmt(
+    SourceSpan Span, Expr X1, Expr Y1, Expr X2, Expr Y2, string ArrayName) : Stmt(Span);
+
+/// <summary>SET COLOR MIX (index) red, green, blue.</summary>
+public sealed record class SetColorMixStmt(SourceSpan Span, Expr Index, Expr Red, Expr Green, Expr Blue) : Stmt(Span);
+
+/// <summary>ASK COLOR MIX (index) red, green, blue [STATUS var].</summary>
+public sealed record class AskColorMixStmt(
+    SourceSpan Span, Expr Index, Expr Red, Expr Green, Expr Blue, Expr? Status) : Stmt(Span);
+
 /// <summary>A coordinate pair in a GRAPH point-list.</summary>
 public sealed record class GfxCoord(Expr X, Expr Y);
 

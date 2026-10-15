@@ -28,7 +28,7 @@ public sealed partial class BasicInterpreter
 
     private ActivationRecord _programFrame;
     private int _dataCursor;
-    private int _optionBase;
+    private int _optionBase = 1;   // "if no such declaration occurs, the lower bound shall be one" (ANSI X3.113 §7.1.1)
     private readonly ChannelTable _channels = new();
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
@@ -320,6 +320,9 @@ public sealed partial class BasicInterpreter
             case GraphStmt g: return ExecGraph(g, frame);
             case GraphTextStmt gt: return ExecGraphText(gt, frame);
             case AskGfxStmt ag: return ExecAskGfx(ag, frame);
+            case MatGraphCellsStmt mg: return ExecMatGraphCells(mg, frame);
+            case SetColorMixStmt sm: return ExecSetColorMix(sm, frame);
+            case AskColorMixStmt am: return ExecAskColorMix(am, frame);
 
             case ReturnStmt: return new FlowControl.Return();
             case StopStmt: return FlowControl.Stopped;

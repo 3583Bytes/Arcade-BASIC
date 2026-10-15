@@ -90,6 +90,44 @@ public class CellSurfaceTests
         Assert.Equal(7, s[1, 1].Color);
     }
 
+    /// <summary>A rectangle in the surface's cell units (x 0–10, y 0–5).</summary>
+    private static GfxRect R(double left, double right, double bottom, double top) => new(left / 10, right / 10, bottom / 5, top / 5);
+
+    [Fact]
+    public void CellsLightEachQuadrantWithTheColourUnderIt()
+    {
+        var s = Surface();
+        // A 2 x 2 array over character (0, 0): top-left 3, top-right 0, bottom-left 3,
+        // bottom-right 5. Colour 0 leaves its quadrant dark; the character shows the
+        // colour most of its lit quadrants have.
+        s.Cells(R(0, 1, 4, 5), 2, 2, [3, 0, 3, 5], R(0, 10, 0, 5));
+        Assert.Equal('▙', s.Glyph(0, 0));
+        Assert.Equal(3, s[0, 0].Color);
+        Assert.Equal(' ', s.Glyph(1, 0));
+    }
+
+    [Fact]
+    public void CellsCoverWhatWasThere()
+    {
+        var s = Surface();
+        s.Text(P(0, 3), "xxxxxxxxxx", 1);
+        s.Area([P(0, 0), P(10, 0), P(10, 2), P(0, 2)], 2);
+        // One array across the middle of the screen, white on the left, black (0) on the right.
+        s.Cells(R(0, 10, 1, 4), 2, 1, [1, 0], R(0, 10, 0, 5));
+        Assert.Equal("█████     ", Rows(s).Split('\n')[1]);   // the text row, covered
+        Assert.Equal("█████     ", Rows(s).Split('\n')[3]);   // the filled area, covered
+        Assert.Equal("██████████", Rows(s).Split('\n')[4]);   // below the array: untouched
+    }
+
+    [Fact]
+    public void CellsAreCutToWhatsVisible()
+    {
+        var s = Surface();
+        s.Cells(R(0, 10, 0, 5), 1, 1, [4], R(0, 3, 0, 5));
+        Assert.All(Rows(s).Split('\n'), row => Assert.Equal("███       ", row));
+        Assert.Equal(4, s[2, 2].Color);
+    }
+
     [Fact]
     public void ResizingKeepsTheCharactersWhereTheyAre()
     {

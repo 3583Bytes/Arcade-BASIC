@@ -63,3 +63,26 @@ public interface IGraphicsDevice
     int MaxPointStyle { get; }
     GfxDeviceSize DeviceSize { get; }
 }
+
+/// <summary>
+/// Optional: a device that draws <c>MAT GRAPH CELLS</c> itself (as an image). Without it,
+/// <see cref="GraphicsState"/> fills each run of same-coloured cells with
+/// <see cref="IGraphicsDevice.FillArea"/>. New capabilities are separate interfaces so
+/// existing <see cref="IGraphicsDevice"/> implementations keep compiling.
+/// </summary>
+public interface ICellArrayDevice
+{
+    /// <summary>Fill <paramref name="rect"/> (unit square, origin bottom-left) with
+    /// <paramref name="columns"/> × <paramref name="rows"/> equal cells. Colours are
+    /// row-major starting from the top-left cell; draw only the part inside
+    /// <paramref name="visible"/>, which lies within <paramref name="rect"/>.</summary>
+    void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible);
+}
+
+/// <summary>Optional: a device whose colours <c>SET COLOR MIX</c> can change.</summary>
+public interface IColorMixDevice
+{
+    /// <summary>Colour <paramref name="index"/> (0 to MaxColor) is now red, green and
+    /// blue at these intensities, each 0–1.</summary>
+    void SetColorMix(int index, double red, double green, double blue);
+}

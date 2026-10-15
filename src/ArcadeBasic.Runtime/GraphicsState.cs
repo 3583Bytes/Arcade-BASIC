@@ -178,6 +178,128 @@ public sealed class GraphicsState
     public void EmitText(GfxPoint problemAt, string text, IGraphicsDevice dev) =>
         dev.DrawText(ToSurface(ToNdc(problemAt)), text);
 
+    /// <summary>
+    /// MAT GRAPH CELLS (ANSI X3.113 §13.3.4.4): fill the rectangle with corners
+    /// <paramref name="p1"/> and <paramref name="p2"/> (problem coordinates) with one
+    /// equal cell per element of the two-dimensional <paramref name="cells"/>, coloured
+    /// by the element's rounded value. The first subscript runs horizontally and the
+    /// second vertically; the element with the lowest subscripts sits at
+    /// <paramref name="p1"/> and the highest at <paramref name="p2"/>.
+    /// </summary>
+    public void EmitCells(GfxPoint p1, GfxPoint p2, NumericArrayValue cells, IGraphicsDevice dev)
+    {
+        if (cells.Bounds.Rank != 2)
+            throw new BasicRuntimeException(6401, "MAT GRAPH CELLS needs a two-dimensional array");
+        var nx = cells.Bounds.Upper[0] - cells.Bounds.Lower[0] + 1;
+        var ny = cells.Bounds.Upper[1] - cells.Bounds.Lower[1] + 1;
+        if (nx <= 0 || ny <= 0) return;
+
+        var a = ToSurface(ToNdc(p1));
+        var b = ToSurface(ToNdc(p2));
+        var rect = new GfxRect(Math.Min(a.X, b.X), Math.Max(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.Y, b.Y));
+        // A zero-width or zero-height rectangle (the standard recommends a line of
+        // cells) draws nothing.
+        if (rect.Left == rect.Right || rect.Bottom == rect.Top) return;
+        var clipNdc = EffectiveClipRect();
+        var c0 = ToSurface(new GfxPoint(clipNdc.XMin, clipNdc.YMin));
+        var c1 = ToSurface(new GfxPoint(clipNdc.XMax, clipNdc.YMax));
+        var visible = new GfxRect(
+            Math.Max(rect.Left, c0.X), Math.Min(rect.Right, c1.X),
+            Math.Max(rect.Bottom, c0.Y), Math.Min(rect.Top, c1.Y));
+        if (visible.Left >= visible.Right || visible.Bottom >= visible.Top) return;
+
+        // Devices take the cells row by row from the top-left; the window may flip
+        // either axis, so walk the array from whichever corner ends up there.
+        var flipX = a.X > b.X;
+        var firstAtTop = a.Y > b.Y;
+        var colors = new int[nx * ny];
+        var max = dev.MaxColor;
+        for (var r = 0; r < ny; r++)
+        {
+            var j = firstAtTop ? r : ny - 1 - r;
+            for (var c = 0; c < nx; c++)
+            {
+                var i = flipX ? nx - 1 - c : c;
+                var k = ToIndex(cells[i * ny + j]);
+                colors[r * nx + c] = k < 0 || k > max ? 1 : k;   // 11085 (nonfatal): the default colour
+            }
+        }
+
+        if (dev is ICellArrayDevice cellDevice) cellDevice.DrawCells(rect, nx, ny, colors, visible);
+        else FillCells(rect, nx, ny, colors, visible, dev);
+    }
+
+    /// <summary>Cells for a device that can only fill areas: one rectangle per run of
+    /// same-coloured cells in a row, then the AREA COLOR put back.</summary>
+    private void FillCells(GfxRect rect, int nx, int ny, int[] colors, GfxRect visible, IGraphicsDevice dev)
+    {
+        var cw = (rect.Right - rect.Left) / nx;
+        var ch = (rect.Top - rect.Bottom) / ny;
+        var current = -1;
+        for (var r = 0; r < ny; r++)
+        {
+            var y1 = Math.Min(rect.Top - r * ch, visible.Top);
+            var y0 = Math.Max(rect.Top - (r + 1) * ch, visible.Bottom);
+            if (y0 >= y1) continue;
+            for (var c = 0; c < nx;)
+            {
+                var color = colors[r * nx + c];
+                var end = c + 1;
+                while (end < nx && colors[r * nx + end] == color) end++;
+                var x0 = Math.Max(rect.Left + c * cw, visible.Left);
+                var x1 = Math.Min(rect.Left + end * cw, visible.Right);
+                if (x0 < x1)
+                {
+                    if (color != current) dev.SetColor(GfxColorTarget.Area, current = color);
+                    dev.FillArea([new GfxPoint(x0, y0), new GfxPoint(x1, y0), new GfxPoint(x1, y1), new GfxPoint(x0, y1)]);
+                }
+                c = end;
+            }
+        }
+        if (current >= 0 && current != AreaColor) dev.SetColor(GfxColorTarget.Area, AreaColor);
+    }
+
+    // -- COLOR MIX -------------------------------------------------------
+
+    private double[]? _mix;   // red, green, blue per colour index, once SET COLOR MIX is used
+
+    /// <summary>SET COLOR MIX (index) red, green, blue. An index outside 0 to MAX COLOR is
+    /// exception 11085 and an intensity outside 0–1 is 11088 — both nonfatal: the mix is
+    /// left as it was, and an intensity is taken to the nearest end of the range.</summary>
+    public void SetColorMix(int index, double red, double green, double blue, IGraphicsDevice dev)
+    {
+        if (index < 0 || index > dev.MaxColor || index >= GfxPalette.Count) return;
+        red = Intensity(red);
+        green = Intensity(green);
+        blue = Intensity(blue);
+        var mix = Mixes();
+        mix[3 * index] = red;
+        mix[3 * index + 1] = green;
+        mix[3 * index + 2] = blue;
+        if (dev is IColorMixDevice mixDevice) mixDevice.SetColorMix(index, red, green, blue);
+    }
+
+    /// <summary>What ASK COLOR MIX (index) reads: component 0–2 is red, green or blue (the
+    /// last SET COLOR MIX for it, else its starting colour); 3 is the STATUS — 11086 for
+    /// an index outside 0 to MAX COLOR, whose intensities read as zero.</summary>
+    public Value QueryColorMix(int index, int component, IGraphicsDevice dev, bool native)
+    {
+        var valid = index >= 0 && index <= dev.MaxColor && index < GfxPalette.Count;
+        if (component == 3) return Num(valid ? 0 : 11086, native);
+        return Num(valid ? Mixes()[3 * index + component] : 0, native);
+    }
+
+    private double[] Mixes()
+    {
+        if (_mix is not null) return _mix;
+        _mix = new double[3 * GfxPalette.Count];
+        for (var i = 0; i < GfxPalette.Count; i++)
+            (_mix[3 * i], _mix[3 * i + 1], _mix[3 * i + 2]) = GfxPalette.DefaultMix(i);
+        return _mix;
+    }
+
+    private static double Intensity(double v) => double.IsNaN(v) ? 0 : Math.Clamp(v, 0, 1);
+
     // -- Transforms ------------------------------------------------------
 
     private GfxPoint ToNdc(GfxPoint p) => new(

@@ -405,6 +405,15 @@ public sealed class BasicCompiler
             case GraphStmt g: CompileGraph(g); break;
             case GraphTextStmt gt: CompileGraphText(gt); break;
             case AskGfxStmt ag: CompileAskGfx(ag); break;
+            case MatGraphCellsStmt mg: CompileMatGraphCells(mg); break;
+            case SetColorMixStmt sm:
+                CompileExpr(sm.Index);
+                CompileExpr(sm.Red);
+                CompileExpr(sm.Green);
+                CompileExpr(sm.Blue);
+                _current.Emit(Opcode.GfxSetColorMix);
+                break;
+            case AskColorMixStmt am: CompileAskColorMix(am); break;
             case DataStmt:
                 // DATA was collected by sema into _info.DataPool at compile time;
                 // there's no runtime opcode to emit for the DATA statement itself.
@@ -514,6 +523,36 @@ public sealed class BasicCompiler
             _current.Emit(Opcode.GfxText);
             _current.EmitU32(1u);
             _current.EmitU32((uint)gt.Items.Count);
+        }
+    }
+
+    private void CompileMatGraphCells(MatGraphCellsStmt mg)
+    {
+        CompileExpr(mg.X1);
+        CompileExpr(mg.Y1);
+        CompileExpr(mg.X2);
+        CompileExpr(mg.Y2);
+        var target = LookupMatTarget(mg.ArrayName, isString: false);
+        _current.Emit(Opcode.GfxCells);
+        _current.EmitU32((uint)target.Depth);
+        _current.EmitU32((uint)target.Slot);
+    }
+
+    private void CompileAskColorMix(AskColorMixStmt am)
+    {
+        // The index is evaluated once (like the tree-walker), into a temp; then each
+        // target gets its component — red, green, blue, then the status.
+        var indexSlot = AllocTemp();
+        CompileExpr(am.Index);
+        _current.Emit(Opcode.StoreLocal); _current.EmitU32(indexSlot);
+        Expr?[] targets = [am.Red, am.Green, am.Blue, am.Status];
+        for (var component = 0; component < targets.Length; component++)
+        {
+            if (targets[component] is not { } target) continue;
+            _current.Emit(Opcode.LoadLocal); _current.EmitU32(indexSlot);
+            _current.Emit(Opcode.GfxAskColorMix);
+            _current.EmitU32((uint)component);
+            EmitStoreToTarget(target);
         }
     }
 

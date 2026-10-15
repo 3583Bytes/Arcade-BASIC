@@ -52,6 +52,22 @@ public class TuiGraphicsTests
     }
 
     [Fact]
+    public void CellArraysDrawAsBlocks()
+    {
+        // The default canvas is 80 x 24 characters; a 2 x 1 array across the left half of
+        // the top row: colour 40 (a mixed colour, shown as the nearest of 16), then 0.
+        var canvas = RunOntoCanvas("""
+            SET WINDOW 0, 80, 0, 24
+            SET COLOR MIX (40) 1, 0.4, 0.4
+            DIM A(2, 1)
+            LET A(1, 1) = 40
+            MAT GRAPH CELLS, IN 0, 24; 40, 23: A
+            """);
+        var top = canvas.RenderToText().Split('\n')[0];
+        Assert.Equal(new string('█', 20) + new string(' ', 60), top);
+    }
+
+    [Fact]
     public void TextLabelMarksCanvasNonEmpty()
     {
         var canvas = RunOntoCanvas("""

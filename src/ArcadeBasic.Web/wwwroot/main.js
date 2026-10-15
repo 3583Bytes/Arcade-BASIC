@@ -15,11 +15,12 @@ const RUNNING = 0, SLEEPING = 1, NEEDS_INPUT = 2, AWAITING_AUDIO = 3, HALTED = 4
 const SLICE = 20_000;          // instructions per Step call
 const FRAME_BUDGET_MS = 10;    // VM time allowed per animation frame
 
-// The 16-colour palette every backend shares (RasterGraphicsDevice).
-const PALETTE = ['#000000', '#ffffff', '#ff5555', '#55ff55', '#5555ff', '#ff55ff', '#55ffff', '#ffff55',
-                 '#aaaaaa', '#aa0000', '#00aa00', '#0000aa', '#aa00aa', '#00aaaa', '#aa5500', '#ffffff'];
+// The colours (GfxPalette): 256 of them, which SET COLOR MIX can change. A frame
+// brings the whole palette with it whenever it has changed — always the first.
+let palette = Array(256).fill('#ffffff');   // CSS colours
+const paletteAbgr = new Uint32Array(256);   // the same, as ImageData pixels (little-endian ABGR)
 // CanvasGraphicsDevice command codes.
-const COLOR = 2, LINES = 3, AREA = 4, POINTS = 5, TEXT = 6, LINE_STYLE = 7, POINT_STYLE = 8;
+const COLOR = 2, LINES = 3, AREA = 4, POINTS = 5, TEXT = 6, LINE_STYLE = 7, POINT_STYLE = 8, CELLS = 9, PALETTE = 10;
 // SET LINE STYLE 1 solid, 2 dashed, 3 dotted — the SVG backend's dash patterns.
 const DASHES = { 2: [12, 6], 3: [3, 5] };
 
@@ -82,7 +83,7 @@ function tick() {
   }
   appendOutput(P.TakeOutput());
   const frame = P.TakeFrame();
-  if (frame.length) { drawFrame(frame, P.FrameText()); r.frames++; }
+  if (frame.length) { drawFrame(frame, P.FrameText(), P.FrameCells()); r.frames++; }
   showStats(r);
   if (halted) {
     const error = P.Error();
@@ -97,7 +98,7 @@ function tick() {
 
 // The canvas is drawn at the screen's real pixel density (fitCanvas), and straight
 // lines are snapped to the pixel grid, so every line is crisp and the same weight.
-let lastFrame = null;   // [cmds, texts] — redrawn when the canvas is resized or glow toggled
+let lastFrame = null;   // [cmds, texts, cells] — redrawn when the canvas is resized or glow toggled
 
 /** Size the canvas's backing store to its on-screen size in device pixels. */
 function fitCanvas() {
@@ -120,8 +121,10 @@ function geometry() {
   return { W, H, dpr, lineWidth, inset, w: W - 2 * inset, h: H - 2 * inset };
 }
 
-function drawFrame(cmds, texts) {
-  lastFrame = [cmds, texts];
+function drawFrame(cmds, texts, cells = []) {
+  lastFrame = [cmds, texts, cells];
+  let i = 0;
+  if (cmds[0] === PALETTE) { setPalette(cmds, 1); i = 1 + 256; }
   const { W, H, dpr, lineWidth, inset, w, h } = geometry();
   const X = x => inset + x * w, Y = y => inset + (1 - y) * h;   // unit square, origin bottom-left
   // Snap to the pixel grid: an odd-width line's centre on a pixel centre, an even one's on an edge.
@@ -132,8 +135,10 @@ function drawFrame(cmds, texts) {
   let lineStyle = 1, pointStyle = 3;                // GraphicsState's defaults
   lastTexts = [];
   ctx.shadowBlur = 0;
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = palette[0];                       // colour 0 is the background
   ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = false;                // cells stay crisp squares when scaled up
+  let atlas = null;                                 // this frame's cell arrays, uploaded on first use
   ctx.lineWidth = lineWidth;
   ctx.lineJoin = 'miter';
   ctx.lineCap = 'square';
@@ -142,13 +147,28 @@ function drawFrame(cmds, texts) {
   ctx.font = `${Math.round(w / 80 / 0.6)}px ui-monospace, Menlo, monospace`;
   ctx.textBaseline = 'alphabetic';
   const paint = index => {
-    const c = PALETTE[index] ?? PALETTE[1];
+    const c = palette[index] ?? palette[1];
     ctx.strokeStyle = ctx.fillStyle = c;
     if (glow) { ctx.shadowColor = c; ctx.shadowBlur = 6 * dpr; }
   };
-  for (let i = 0; i < cmds.length;) {
+  while (i < cmds.length) {
     const op = cmds[i++];
     if (op === COLOR) { colors[cmds[i]] = cmds[i + 1]; i += 2; continue; }
+    if (op === CELLS) {
+      // MAT GRAPH CELLS: its block of the atlas, scaled into the rectangle (edges on
+      // whole pixels, so neighbouring arrays meet without seams), cut to what's visible.
+      const [l, b, r, t, cols, rows, vl, vb, vr, vt, ax, ay] = cmds.slice(i, i + 12);
+      i += 12;
+      if (!atlas) atlas = uploadAtlas(cells);
+      const x0 = Math.round(X(l)), x1 = Math.round(X(r)), y0 = Math.round(Y(t)), y1 = Math.round(Y(b));
+      const cx0 = Math.round(X(vl)), cx1 = Math.round(X(vr)), cy0 = Math.round(Y(vt)), cy1 = Math.round(Y(vb));
+      const cut = cx0 > x0 || cx1 < x1 || cy0 > y0 || cy1 < y1;
+      ctx.shadowBlur = 0;
+      if (cut) { ctx.save(); ctx.beginPath(); ctx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); ctx.clip(); }
+      ctx.drawImage(atlas, ax, ay, cols, rows, x0, y0, x1 - x0, y1 - y0);
+      if (cut) ctx.restore();
+      continue;
+    }
     if (op === LINE_STYLE) { lineStyle = cmds[i++]; continue; }
     if (op === POINT_STYLE) { pointStyle = cmds[i++]; continue; }
     if (op === TEXT) {
@@ -173,6 +193,28 @@ function drawFrame(cmds, texts) {
     if (op === LINES || (op === POINTS && pointStyle !== 1)) ctx.stroke();
     else { if (op === AREA) ctx.closePath(); ctx.fill(); }
   }
+}
+
+/** The colours a PALETTE command carries: 256 ARGB values from cmds[at]. */
+function setPalette(cmds, at) {
+  palette = [];
+  for (let k = 0; k < 256; k++) {
+    const c = cmds[at + k] >>> 0, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    palette.push(`rgb(${r},${g},${b})`);
+    paletteAbgr[k] = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+  }
+}
+
+/** Put a frame's cell atlas (width, height, then colour indices row by row) into an
+ *  image, in one upload, for drawImage to scale pieces of. */
+const atlasCanvas = document.createElement('canvas'), atlasCtx = atlasCanvas.getContext('2d');
+function uploadAtlas(cells) {
+  const w = cells[0], h = cells[1];
+  if (atlasCanvas.width !== w || atlasCanvas.height !== h) { atlasCanvas.width = w; atlasCanvas.height = h; }
+  const image = atlasCtx.createImageData(w, h), pixels = new Uint32Array(image.data.buffer);
+  for (let k = 0; k < w * h; k++) pixels[k] = paletteAbgr[cells[2 + k]] ?? paletteAbgr[1];
+  atlasCtx.putImageData(image, 0, 0);
+  return atlasCanvas;
 }
 
 // SET POINT STYLE 1 dot, 2 plus, 3 asterisk (adds to the current path).

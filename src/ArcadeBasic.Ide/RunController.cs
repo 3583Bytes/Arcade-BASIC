@@ -70,6 +70,7 @@ internal sealed class RunController
         _graphicsShown = false;
         _graphics.Canvas.ClearBuffer();
         _graphics.Canvas.ResetPointer();
+        _graphics.Canvas.ResetPalette();
         _keyboard.Clear();
         InstallKeyHook();
         _onStateChanged(RunState.Running);

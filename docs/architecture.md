@@ -254,8 +254,17 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
   `LOCATE POINT` (wait for a press) and `GET MOUSE` (sample), mapping back to problem
   coordinates with `GraphicsState.ToProblem`. The IDE's Graphics tab and the browser
   canvas implement it; elsewhere `LOCATE POINT` reads typed coordinates.
+- **`ICellArrayDevice`, `IColorMixDevice`** — optional too: a device that draws
+  `MAT GRAPH CELLS` itself (the browser uploads each frame's cells as one image and
+  scales pieces of it; the terminals light block quadrants; raster and SVG fill
+  pixels or rectangles) and one whose colours `SET COLOR MIX` changes (each keeps a
+  `GfxPalette`: 256 colours, approximated to 16 or 256 on terminals). Without
+  `ICellArrayDevice`, `GraphicsState` fills each run of same-coloured cells with
+  `FillArea`, so every backend — Unity's included — draws cells unchanged.
+  Capabilities arrive as new interfaces rather than new `IGraphicsDevice` members so
+  existing implementations keep compiling.
 
-Both interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
+These interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
 value types crossing the boundary), so the same code path serves the CLI,
 standalone binaries, the IDE, and Unity.
 

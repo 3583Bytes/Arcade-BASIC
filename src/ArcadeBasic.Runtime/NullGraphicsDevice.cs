@@ -6,11 +6,11 @@ namespace ArcadeBasic.Runtime;
 /// Graphic-output statements execute and update state but draw nothing; ASK
 /// queries return benign capability defaults.
 /// </summary>
-public sealed class NullGraphicsDevice : IGraphicsDevice
+public sealed class NullGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
 {
     public static readonly NullGraphicsDevice Instance = new();
 
-    public int MaxColor => 15;
+    public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
     public int MaxPointStyle => 3;
     public GfxDeviceSize DeviceSize => new(0, 0, "OTHER");
@@ -24,4 +24,6 @@ public sealed class NullGraphicsDevice : IGraphicsDevice
     public void FillArea(IReadOnlyList<GfxPoint> polygon) { }
     public void DrawText(GfxPoint at, string text) { }
     public void Flush() { }
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible) { }
+    public void SetColorMix(int index, double red, double green, double blue) { }
 }

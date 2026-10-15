@@ -57,7 +57,8 @@ token. Examples use uppercase by convention.
 
 **Graphics (§13):** [SET WINDOW / VIEWPORT / DEVICE …](#graphics) · [SET CLIP](#graphics) ·
 [SET … STYLE / COLOR](#graphics) · [ASK …](#graphics) · [CLEAR](#graphics) ·
-[GRAPH POINTS / LINES / AREA / TEXT](#graphics)
+[GRAPH POINTS / LINES / AREA / TEXT](#graphics) ·
+[MAT GRAPH CELLS / SET COLOR MIX](#pictures-and-colours-mat-graph-cells-set-color-mix)
 
 ---
 
@@ -1016,6 +1017,31 @@ ASK MAX COLOR M                 ! capability queries; optional " STATUS s" claus
 To build a curve or any shape with a variable number of vertices, drive `GRAPH`
 from a loop (coordinate expressions may reference variables) — see
 [`examples/graphics.bas`](../examples/graphics.bas).
+
+### Pictures and colours: `MAT GRAPH CELLS`, `SET COLOR MIX`
+
+`MAT GRAPH CELLS` fills a rectangle with a grid of coloured cells, one per element
+of a two-dimensional array — an image, a sprite, a texture, a whole frame of
+pixels. The first subscript runs across and the second up or down; the element
+with the lowest subscripts goes at the first corner, the highest at the second.
+Each element's rounded value is its colour.
+
+```basic
+OPTION BASE 1
+DIM SPRITE(8, 8)                ! SPRITE(x, y): 8 across, 8 down
+MAT READ SPRITE                 ! (filled from DATA, say)
+MAT GRAPH CELLS, IN 10, 20; 18, 12: SPRITE   ! top-left (10,20) to bottom-right (18,12)
+
+SET COLOR MIX (20) 0.6, 0.3, 0.1   ! colour 20 is now brown: red, green, blue, each 0-1
+ASK COLOR MIX (20) R, G, B      ! read it back; optional " STATUS s" (11086: no such colour)
+```
+
+There are 256 colours, 0–255 (`ASK MAX COLOR`): 0 is the background (black), 1
+white, 2–15 the bright and dark primaries, and 16–255 the xterm 256-colour palette
+until `SET COLOR MIX` changes them. Terminals show each as the nearest colour they
+have. Both are ANSI Full BASIC (§13.3.4.4, §13.2); `CELLS` isn't a reserved word.
+See [`examples/maze3d.bas`](../examples/maze3d.bas) — textured walls, one
+texture column per screen column.
 
 ### Mouse: `LOCATE POINT` / `GET POINT`, `GET MOUSE`
 

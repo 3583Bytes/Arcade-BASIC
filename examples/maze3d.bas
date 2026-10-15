@@ -1,12 +1,14 @@
 ! maze3d.bas — a first-person 3D maze in the style of Wolfenstein 3D: find the    @category Games
 ! green door before the time runs out. The view is ray cast: for each column of
 ! the screen a ray steps across the map grid (the DDA algorithm) until it hits a
-! wall, and the distance sets how tall that column's slice of wall is. Each slice
-! is one GRAPH AREA, so a frame is a floor and a row of coloured columns — about
-! 160 rectangles, drawn with the ECMA-116 §13 graphics module. Walls facing
-! north/south are shaded darker than east/west ones, and far walls darker still.
-! In a terminal each column is half a character (block elements, 2 x 2 per cell);
-! in the browser playground it's a 6-pixel strip.
+! wall, and the distance sets how tall that column's slice of wall is. The walls
+! are textured: where the ray hit along the wall picks a column of a 16 x 16
+! texture, and MAT GRAPH CELLS (ANSI Full BASIC's cell array) stretches that
+! column over the slice — the device does the scaling, as Wolfenstein's renderer
+! did. SET COLOR MIX gives the textures their own colours, with darker copies for
+! walls facing north/south and far away. In the browser playground a slice is a
+! 6-pixel strip; in a terminal, half a character (block elements, 2 x 2 per cell,
+! one colour per character), so the textures show best up close.
 !
 ! The minimap (top left) shows only the walls you've seen. KEYDOWN (held keys)
 ! walks and turns, INKEY$ reads the other keys, SLEEP paces the loop —
@@ -56,7 +58,132 @@ FOR R = 0 TO MH - 1
   NEXT Q
 NEXT R
 
-! ---- wall colours: lit (east/west faces, near) and shaded (north/south, far) --
+! ---- textures: 16 x 16, one digit per texel (0 the darkest .. 3), drawn one
+!      column at a time with MAT GRAPH CELLS --------------------------------------
+LET TW = 16                        ! texels across and down
+LET SHADE = 0.6                    ! how much darker shaded walls are
+DIM TSLOT(9)                       ! each wall type's texture
+LET TSLOT(1) = 0                   ! stone
+LET TSLOT(2) = 1                   ! brick
+LET TSLOT(3) = 2                   ! wood
+LET TSLOT(4) = 3                   ! tiles
+LET TSLOT(9) = 4                   ! the door
+DIM TEX(9, 15, 15)                 ! TEX(texture, x, y): a colour index; 5-9 are 0-4 shaded
+DIM STRIP(0, 15)                   ! the column being drawn: 1 across, 16 down
+! Each texture's four colours (red, green, blue, 0-1), as colours 16-35 lit and
+! 36-55 shaded: texture t's colour c is 16 + 4 * t + c.
+! stone
+DATA 0.10, 0.10, 0.16, 0.32, 0.36, 0.52, 0.46, 0.50, 0.66, 0.24, 0.27, 0.40
+! brick
+DATA 0.42, 0.40, 0.36, 0.62, 0.22, 0.14, 0.76, 0.32, 0.20, 0.46, 0.14, 0.10
+! wood
+DATA 0.20, 0.12, 0.04, 0.62, 0.42, 0.18, 0.72, 0.52, 0.24, 0.48, 0.30, 0.12
+! tiles
+DATA 0.08, 0.26, 0.28, 0.24, 0.62, 0.64, 0.32, 0.74, 0.76, 0.78, 0.96, 0.96
+! door
+DATA 0.04, 0.22, 0.06, 0.12, 0.52, 0.18, 0.20, 0.68, 0.26, 0.95, 0.85, 0.30
+FOR I = 0 TO 19
+  READ CR, CG, CB
+  SET COLOR MIX (16 + I) CR, CG, CB
+  SET COLOR MIX (36 + I) CR * SHADE, CG * SHADE, CB * SHADE
+NEXT I
+! stone
+DATA "0222222220222220"
+DATA "0211111110211110"
+DATA "0211111310211110"
+DATA "0233333330233330"
+DATA "0000000000000000"
+DATA "2222022222220222"
+DATA "1111021111110211"
+DATA "1111021111110211"
+DATA "3333023333330233"
+DATA "0000000000000000"
+DATA "0222222022222220"
+DATA "0211111021111110"
+DATA "0211111021111110"
+DATA "0211111021111110"
+DATA "0233333023333330"
+DATA "0000000000000000"
+! brick
+DATA "2222222022222220"
+DATA "1111111011111110"
+DATA "3333333033333330"
+DATA "0000000000000000"
+DATA "2220222222202222"
+DATA "1110111111101111"
+DATA "3330333333303333"
+DATA "0000000000000000"
+DATA "2222222022222220"
+DATA "1111111011111110"
+DATA "3333333033333330"
+DATA "0000000000000000"
+DATA "2220222222202222"
+DATA "1110111111101111"
+DATA "3330333333303333"
+DATA "0000000000000000"
+! wood
+DATA "2330211021102110"
+DATA "2110211021102110"
+DATA "2110211021102330"
+DATA "2110233021102110"
+DATA "2110211021102110"
+DATA "2110201021102110"
+DATA "2110211023302110"
+DATA "2330211021102110"
+DATA "2110211021102110"
+DATA "2110211021102330"
+DATA "2110233021102110"
+DATA "2110211020102110"
+DATA "2110211021102110"
+DATA "2110211023302110"
+DATA "2330211021102110"
+DATA "2110211021102110"
+! tiles
+DATA "1111111022222220"
+DATA "1331111023322220"
+DATA "1111111022222220"
+DATA "1111111022222220"
+DATA "1111111022222220"
+DATA "1111111022222220"
+DATA "1111111022222220"
+DATA "0000000000000000"
+DATA "2222222011111110"
+DATA "2332222013311110"
+DATA "2222222011111110"
+DATA "2222222011111110"
+DATA "2222222011111110"
+DATA "2222222011111110"
+DATA "2222222011111110"
+DATA "0000000000000000"
+! door
+DATA "0000000000000000"
+DATA "0222222222222220"
+DATA "0220000000000220"
+DATA "0220111111111220"
+DATA "0220111111111220"
+DATA "0220111111111220"
+DATA "0220111111111220"
+DATA "0222222222222220"
+DATA "0222222222233220"
+DATA "0220000000000220"
+DATA "0220111111111220"
+DATA "0220111111111220"
+DATA "0220111111111220"
+DATA "0220111111111220"
+DATA "0222222222222220"
+DATA "0000000000000000"
+FOR TT = 0 TO 4
+  FOR Y = 0 TO TW - 1
+    READ ROW$
+    FOR X = 0 TO TW - 1
+      LET C = VAL(MID$(ROW$, X + 1, 1))
+      LET TEX(TT, X, Y) = 16 + 4 * TT + C
+      LET TEX(TT + 5, X, Y) = 36 + 4 * TT + C
+    NEXT X
+  NEXT Y
+NEXT TT
+
+! ---- minimap colours: lit (east/west faces, near) and shaded (north/south, far) --
 DIM BRIGHT(9)
 DIM DARK(9)
 LET BRIGHT(1) = 4                  ! blue
@@ -111,6 +238,9 @@ LET VY0 = 4                        ! the 3D view's bottom, top and eye level
 LET VY1 = 92
 LET VC = 48
 LET PROJ = 1
+LET WX = 0                         ! where a ray hit along the wall (0-1)
+LET TX = 0                         ! and so the texture column it shows
+LET TT = 0                         ! which texture
 
 ! ---- session loop: each pass plays one game; R restarts ----------------------
 DO
@@ -138,7 +268,10 @@ END
 1000 REM ---- render ----
 CLEAR
 GOSUB 1700                         ! measure the screen
-SET WINDOW 0, W, 0, H              ! one unit per dot
+! The 3D view, between the HUD's two rows: one unit per dot, as for the rest of
+! the screen, but clipped there so near walls don't run over the HUD.
+SET VIEWPORT 0, 1, VY0 / H, VY1 / H
+SET WINDOW 0, W, VY0, VY1
 ! The floor; the ceiling is the black background.
 SET AREA COLOR 8
 GRAPH AREA: 0, VY0; W, VY0; W, VC; 0, VC
@@ -194,18 +327,24 @@ FOR X = 0 TO NR - 1
   IF SIDE = 0 THEN LET PD = SDX - DDX ELSE LET PD = SDY - DDY
   IF PD < 0.05 THEN LET PD = 0.05
   LET LH = PROJ / PD
-  LET Y0 = VC - LH / 2
-  LET Y1 = VC + LH / 2
-  IF Y0 < VY0 THEN LET Y0 = VY0
-  IF Y1 > VY1 THEN LET Y1 = VY1
-  IF SIDE = 1 OR PD > FAR THEN
-    SET AREA COLOR DARK(T)
-  ELSE
-    SET AREA COLOR BRIGHT(T)
-  END IF
+  ! Where along the wall the ray hit (0-1) is the texture's column. Seen from the
+  ! west or the north it would read right to left, so turn it round.
+  IF SIDE = 0 THEN LET WX = PY + PD * RY ELSE LET WX = PX + PD * RX
+  LET TX = INT((WX - INT(WX)) * TW)
+  IF SIDE = 0 AND RX < 0 THEN LET TX = TW - 1 - TX
+  IF SIDE = 1 AND RY > 0 THEN LET TX = TW - 1 - TX
+  LET TT = TSLOT(T)
+  IF SIDE = 1 OR PD > FAR THEN LET TT = TT + 5   ! the shaded copy
+  FOR K = 0 TO TW - 1
+    LET STRIP(0, K) = TEX(TT, TX, K)
+  NEXT K
+  ! The column, stretched from the top of the slice (where STRIP(0, 0) goes) to the
+  ! bottom.
   LET XL = X * CW
-  GRAPH AREA: XL, Y0; XL + CW, Y0; XL + CW, Y1; XL, Y1
+  MAT GRAPH CELLS, IN XL, VC + LH / 2; XL + CW, VC - LH / 2: STRIP
 NEXT X
+SET VIEWPORT 0, 1, 0, 1            ! the whole screen again
+SET WINDOW 0, W, 0, H
 IF SHOWMAP = 1 THEN GOSUB 1500
 GOSUB 1600                         ! the HUD
 IF STATE <> 0 THEN GOSUB 1800      ! the end message

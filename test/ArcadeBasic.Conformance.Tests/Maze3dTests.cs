@@ -15,13 +15,15 @@ namespace ArcadeBasic.Conformance.Tests;
 public class Maze3dTests
 {
     /// <summary>A screen that keeps each presented frame's filled areas (with their
-    /// colour) and text, and a keyboard the test drives.</summary>
-    private sealed class Screen : IGraphicsDevice, IKeyboard, IKeyState
+    /// colour), cell arrays and text, and a keyboard the test drives.</summary>
+    private sealed class Screen : IGraphicsDevice, ICellArrayDevice, IKeyboard, IKeyState
     {
         private readonly List<(int Color, GfxPoint[] Polygon)> _areas = [];
+        private readonly List<(GfxRect Rect, int[] Colors)> _strips = [];
         private readonly List<string> _texts = [];
         private int _areaColor = 1;
         public List<(int Color, GfxPoint[] Polygon)> Areas { get; private set; } = [];
+        public List<(GfxRect Rect, int[] Colors)> Strips { get; private set; } = [];
         public List<string> Texts { get; private set; } = [];
         public readonly HashSet<string> Held = [];
         public readonly Queue<string> Typed = new();
@@ -29,15 +31,23 @@ public class Maze3dTests
         public void Clear()
         {
             _areas.Clear();
+            _strips.Clear();
             _texts.Clear();
         }
 
         public void FillArea(IReadOnlyList<GfxPoint> polygon) => _areas.Add((_areaColor, [.. polygon]));
         public void DrawText(GfxPoint at, string text) => _texts.Add(text);
 
+        public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+        {
+            Assert.Equal((1, 16), (columns, rows));        // one texture column
+            _strips.Add((rect, colors));
+        }
+
         public void Flush()
         {
             Areas = [.. _areas];
+            Strips = [.. _strips];
             Texts = [.. _texts];
         }
 
@@ -53,28 +63,37 @@ public class Maze3dTests
         public void SetPointStyle(int style) { }
         public void DrawPoints(IReadOnlyList<GfxPoint> points) { }
         public void DrawLines(IReadOnlyList<GfxPoint> polyline) { }
-        public int MaxColor => 15;
+        public int MaxColor => 255;
         public int MaxLineStyle => 3;
         public int MaxPointStyle => 3;
         public GfxDeviceSize DeviceSize => new(160, 96, "OTHER");
 
-        /// <summary>The wall slices: the areas one screen column (1/160) wide that
-        /// reach eye level, left to right.</summary>
-        public List<(int Color, double Bottom, double Top)> Columns() =>
-        [
-            .. Areas
-                .Where(a => Math.Abs(a.Polygon.Max(p => p.X) - a.Polygon.Min(p => p.X) - 1.0 / 160) < 1e-9)
-                .Select(a => (a.Color, Bottom: a.Polygon.Min(p => p.Y), Top: a.Polygon.Max(p => p.Y), Left: a.Polygon.Min(p => p.X)))
-                .Where(c => c.Bottom <= 0.5 && c.Top >= 0.5)
-                .OrderBy(c => c.Left)
-                .Select(c => (c.Color, c.Bottom, c.Top)),
-        ];
+        /// <summary>The wall slices, left to right: each one texture column (1 x 16 cells)
+        /// one screen column (1/160) wide.</summary>
+        public List<(GfxRect Rect, int[] Colors)> Columns()
+        {
+            Assert.All(Strips, s => Assert.Equal(1.0 / 160, s.Rect.Right - s.Rect.Left, 9));
+            return [.. Strips.OrderBy(s => s.Rect.Left)];
+        }
 
         public double CentreHeight()
         {
             var columns = Columns();
-            var (_, bottom, top) = columns[columns.Count / 2];
-            return top - bottom;
+            var rect = columns[columns.Count / 2].Rect;
+            return rect.Top - rect.Bottom;
+        }
+
+        /// <summary>Which texture the slice in the middle of the view shows (0 stone,
+        /// 1 brick, 2 wood, 3 tiles, 4 the door), and whether it's the shaded copy: lit
+        /// texture t's colours are 16 + 4t to 19 + 4t, shaded ones 20 higher.</summary>
+        public (int Texture, bool Shaded) CentreTexture() => Texture(Columns()[80].Colors);
+
+        public static (int Texture, bool Shaded) Texture(int[] colors)
+        {
+            var c = colors.Min();
+            Assert.InRange(c, 16, 55);
+            Assert.All(colors, k => Assert.Equal((c - 16) / 4, (k - 16) / 4));   // one texture's colours
+            return (c < 36 ? (c - 16) / 4 : (c - 36) / 4, c >= 36);
         }
     }
 
@@ -122,14 +141,15 @@ public class Maze3dTests
         var vm = Start(screen);
         NextFrame(vm, screen);
 
-        // You start facing east down a corridor: a lit wall ahead (bright blue), the
-        // corridor's sides shaded (dark blue) — one slice per screen column.
+        // You start facing east down a corridor of stone: a lit wall ahead, the
+        // corridor's sides shaded — one textured slice per screen column.
         var columns = screen.Columns();
         Assert.Equal(160, columns.Count);
-        Assert.Equal(4, columns[80].Color);
-        Assert.Equal(11, columns[0].Color);
-        Assert.Equal(11, columns[^1].Color);
-        Assert.True(columns[80].Top - columns[80].Bottom < columns[0].Top - columns[0].Bottom);   // ahead is farther
+        Assert.Equal((0, false), screen.CentreTexture());
+        Assert.Equal((0, true), Screen.Texture(columns[0].Colors));
+        Assert.Equal((0, true), Screen.Texture(columns[^1].Colors));
+        double Height(GfxRect r) => r.Top - r.Bottom;
+        Assert.True(Height(columns[80].Rect) < Height(columns[0].Rect));   // ahead is farther
         Assert.Contains(screen.Texts, t => t == "TIME 90");
     }
 
@@ -158,13 +178,13 @@ public class Maze3dTests
         var screen = new Screen();
         var vm = Start(screen);
         NextFrame(vm, screen);
-        Assert.Equal(4, screen.Columns()[80].Color);   // ahead, east: a lit east/west face
+        Assert.Equal((0, false), screen.CentreTexture());   // ahead, east: a lit east/west face
 
         // A quarter turn (20 frames of 0.08 rad): facing south down column 1 of the
         // map, the wall at its end is a north/south face, so it's shaded.
         screen.Held.Add("d");
         Frames(vm, screen, 20);
-        Assert.Equal(11, screen.Columns()[80].Color);
+        Assert.Equal((0, true), screen.CentreTexture());
     }
 
     [Fact]
@@ -174,7 +194,7 @@ public class Maze3dTests
         var screen = new Screen();
         var vm = Start(screen, ("LET PX = 1.5\nLET PY = 1.5", "LET PX = 13.5\nLET PY = 14.5"));
         NextFrame(vm, screen);
-        Assert.Equal(3, screen.Columns()[80].Color);   // green, ahead
+        Assert.Equal((4, false), screen.CentreTexture());   // the door, ahead
 
         screen.Held.Add("w");                          // a held key: there is a keyboard, so it asks R / Q
         for (var i = 0; i < 40 && !screen.Texts.Contains("YOU ESCAPED!"); i++) NextFrame(vm, screen);

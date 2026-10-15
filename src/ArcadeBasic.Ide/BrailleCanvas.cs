@@ -34,6 +34,7 @@ internal sealed class BrailleCanvas : View
     private readonly CellSurface _back = new(DefaultDotsW / 2, DefaultDotsH / 4);
     private readonly CellSurface _front = new(DefaultDotsW / 2, DefaultDotsH / 4);
     private readonly object _lock = new();
+    private readonly GfxPalette _palette = new();   // SET COLOR MIX; shown as the nearest of 16
 
     public int PixelWidth { get { lock (_lock) return _back.DotsW; } }
     public int PixelHeight { get { lock (_lock) return _back.DotsH; } }
@@ -181,6 +182,22 @@ internal sealed class BrailleCanvas : View
         lock (_lock) _back.Text(at, text, color);
     }
 
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+    {
+        lock (_lock) _back.Cells(rect, columns, rows, colors, visible);
+    }
+
+    public void SetColorMix(int index, double red, double green, double blue)
+    {
+        lock (_lock) _palette.Set(index, red, green, blue);
+    }
+
+    /// <summary>A program is starting: back to the standard colours.</summary>
+    internal void ResetPalette()
+    {
+        lock (_lock) _palette.Reset();
+    }
+
     /// <summary>The frame being drawn, as text (one line per cell row) — for headless
     /// tests and debugging.</summary>
     internal string RenderToText()
@@ -209,7 +226,7 @@ internal sealed class BrailleCanvas : View
                 for (var cx = 0; cx < cols; cx++)
                 {
                     var cell = _front[cx, cy];
-                    driver.SetAttribute(Attr(driver, cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color));
+                    driver.SetAttribute(Attr(driver, _palette.Nearest16(cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color)));
                     AddRune(cx, cy, new Rune(_front.Glyph(cx, cy)));
                 }
             }

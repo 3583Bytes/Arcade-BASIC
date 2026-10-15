@@ -69,6 +69,21 @@ public class AnsiGraphicsDeviceTests
     }
 
     [Fact]
+    public void ColoursBeyondTheStandard16UseThe256ColourPalette()
+    {
+        var w = new StringWriter();
+        var d = Device(w, cols: 10, rows: 4);
+        d.SetColorMix(40, 1, 0, 0);                        // pure red: xterm 196
+        d.DrawCells(new GfxRect(0, 0.5, 0, 1), 1, 1, [40], new GfxRect(0, 0.5, 0, 1));
+        d.SetColor(GfxColorTarget.Area, 9);                // a standard colour: the terminal's own
+        d.FillArea([new GfxPoint(0.5, 0), new GfxPoint(1, 0), new GfxPoint(1, 1), new GfxPoint(0.5, 1)]);
+        d.Present();
+        var output = w.ToString();
+        Assert.Contains("\x1b[38;5;196m█████", output);
+        Assert.Contains("\x1b[31m█████", output);
+    }
+
+    [Fact]
     public void EndSessionLeavesTheAlternateScreen()
     {
         var w = new StringWriter();

@@ -270,4 +270,9 @@ public enum Opcode : byte
     GfxInputDevice,        // stack: device number; raises 11140 unless it is 1 (the only device)
     LocatePoint,           // operand: 2 target groups (x, y) — stack: their subscripts; waits for a pick (or reads "x, y" with no pointer)
     GetMouse,              // operand: 3 target groups (x, y, state) — stack: their subscripts; samples the pointer
+
+    // -- Cell arrays and colour mixes (appended so the values above stay stable) --
+    GfxCells,              // operand: u32 depth, u32 slot (the array) — stack (top last): x1, y1, x2, y2; MAT GRAPH CELLS
+    GfxSetColorMix,        // stack (top last): index, red, green, blue; SET COLOR MIX
+    GfxAskColorMix,        // operand: u32 component (0 red, 1 green, 2 blue, 3 status) — stack: index; pushes ASK COLOR MIX's value
 }

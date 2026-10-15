@@ -1327,9 +1327,21 @@ public sealed partial class BasicParser
                 var e = ParseExpression();
                 return e is null ? null : new SetColorStmt(SpanFrom(start, Previous().Span), tgt, e);
             }
+            case TokenKind.KwColor:
+            {
+                // SET COLOR MIX (index) red, green, blue
+                Advance();
+                var index = ParseColorMixIndex(); if (index is null) return null;
+                var red = ParseExpression(); if (red is null) return null;
+                if (!ExpectKind(TokenKind.Comma, "','")) return null;
+                var green = ParseExpression(); if (green is null) return null;
+                if (!ExpectKind(TokenKind.Comma, "','")) return null;
+                var blue = ParseExpression(); if (blue is null) return null;
+                return new SetColorMixStmt(SpanFrom(start, Previous().Span), index, red, green, blue);
+            }
             default:
                 ErrorAt(Peek(), ErrExpectedToken,
-                    "expected WINDOW, VIEWPORT, DEVICE, CLIP, POINT, LINE, TEXT, or AREA after SET");
+                    "expected WINDOW, VIEWPORT, DEVICE, CLIP, POINT, LINE, TEXT, AREA, or COLOR MIX after SET");
                 return null;
         }
     }
@@ -1396,12 +1408,38 @@ public sealed partial class BasicParser
                 Advance();
                 if (!ExpectKind(TokenKind.KwColor, "'COLOR'")) return null;
                 obj = GfxAskObject.AreaColor; break;
+            case TokenKind.KwColor:
+            {
+                // ASK COLOR MIX (index) red, green, blue [STATUS var]
+                Advance();
+                var index = ParseColorMixIndex(); if (index is null) return null;
+                var red = ParseExpression(); if (red is null) return null;
+                if (!ExpectKind(TokenKind.Comma, "','")) return null;
+                var green = ParseExpression(); if (green is null) return null;
+                if (!ExpectKind(TokenKind.Comma, "','")) return null;
+                var blue = ParseExpression(); if (blue is null) return null;
+                Expr? status = null;
+                if (Match(TokenKind.KwStatus))
+                {
+                    status = ParseExpression(); if (status is null) return null;
+                }
+                return new AskColorMixStmt(SpanFrom(start, Previous().Span), index, red, green, blue, status);
+            }
             default:
                 ErrorAt(Peek(), ErrExpectedToken, "expected a graphics object after ASK");
                 return null;
         }
 
         return FinishAsk(start, obj);
+    }
+
+    /// <summary>MIX (index), after SET COLOR / ASK COLOR.</summary>
+    private Expr? ParseColorMixIndex()
+    {
+        if (!ExpectKind(TokenKind.KwMix, "'MIX'")) return null;
+        if (!ExpectKind(TokenKind.LParen, "'('")) return null;
+        var index = ParseExpression(); if (index is null) return null;
+        return ExpectKind(TokenKind.RParen, "')'") ? index : null;
     }
 
     /// <summary>Parse the target variable list and optional STATUS clause of an ASK.</summary>

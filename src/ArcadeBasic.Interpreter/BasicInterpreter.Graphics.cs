@@ -92,6 +92,44 @@ public sealed partial class BasicInterpreter
         return FlowControl.Continue;
     }
 
+    private FlowControl ExecMatGraphCells(MatGraphCellsStmt mg, ActivationRecord frame)
+    {
+        var p1 = new GfxPoint(
+            GraphicsState.ToCoord(EvalNumber(mg.X1, frame)),
+            GraphicsState.ToCoord(EvalNumber(mg.Y1, frame)));
+        var p2 = new GfxPoint(
+            GraphicsState.ToCoord(EvalNumber(mg.X2, frame)),
+            GraphicsState.ToCoord(EvalNumber(mg.Y2, frame)));
+        var sym = LookupArraySymbol(mg.ArrayName, isString: false);
+        if (TryReadArray(sym, frame) is not NumericArrayValue cells)
+            throw new BasicRuntimeException(6004, $"MAT GRAPH CELLS requires {mg.ArrayName} to be DIM-ed first");
+        _gfx.EmitCells(p1, p2, cells, _graphics);
+        return FlowControl.Continue;
+    }
+
+    private FlowControl ExecSetColorMix(SetColorMixStmt sm, ActivationRecord frame)
+    {
+        var index = GraphicsState.ToIndex(EvalNumber(sm.Index, frame));
+        var red = GraphicsState.ToCoord(EvalNumber(sm.Red, frame));
+        var green = GraphicsState.ToCoord(EvalNumber(sm.Green, frame));
+        var blue = GraphicsState.ToCoord(EvalNumber(sm.Blue, frame));
+        _gfx.SetColorMix(index, red, green, blue, _graphics);
+        return FlowControl.Continue;
+    }
+
+    private FlowControl ExecAskColorMix(AskColorMixStmt am, ActivationRecord frame)
+    {
+        // The index is evaluated once; the targets are assigned red, green, blue, then
+        // the status — the order the VM lowers them in.
+        var index = GraphicsState.ToIndex(EvalNumber(am.Index, frame));
+        WriteAssignableTarget(am.Red, _gfx.QueryColorMix(index, 0, _graphics, _native), frame);
+        WriteAssignableTarget(am.Green, _gfx.QueryColorMix(index, 1, _graphics, _native), frame);
+        WriteAssignableTarget(am.Blue, _gfx.QueryColorMix(index, 2, _graphics, _native), frame);
+        if (am.Status is not null)
+            WriteAssignableTarget(am.Status, _gfx.QueryColorMix(index, 3, _graphics, _native), frame);
+        return FlowControl.Continue;
+    }
+
     private FlowControl ExecAskGfx(AskGfxStmt ag, ActivationRecord frame)
     {
         // GfxAskObject and GfxQuery share ordinals (see their definitions). The

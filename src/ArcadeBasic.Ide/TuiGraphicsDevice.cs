@@ -6,11 +6,12 @@ namespace ArcadeBasic.Ide;
 /// Terminal graphics backend: hands the core's primitives (normalized device
 /// coordinates, origin bottom-left) to a <see cref="BrailleCanvas"/>, whose
 /// <see cref="CellSurface"/> draws them as box-drawing lines, block fills, Braille
-/// dots and text. Colours map to the 16-colour terminal palette. Drawing happens on
+/// dots and text, and MAT GRAPH CELLS as blocks. There are 256 colours (SET COLOR
+/// MIX changes them); each shows as the nearest of the terminal's 16. Drawing happens on
 /// the interpreter's background thread — the canvas serialises access. The canvas's
 /// mouse is the pointer for LOCATE POINT and GET MOUSE.
 /// </summary>
-internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
+internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer, ICellArrayDevice, IColorMixDevice
 {
     private readonly BrailleCanvas _canvas;
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
@@ -18,7 +19,7 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
 
     public TuiGraphicsDevice(BrailleCanvas canvas) => _canvas = canvas;
 
-    public int MaxColor => 15;
+    public int MaxColor => GfxPalette.Count - 1;   // the terminal shows each as the nearest of its 16
     public int MaxLineStyle => 3;
     public int MaxPointStyle => 3;
     public GfxDeviceSize DeviceSize => new(_canvas.PixelWidth, _canvas.PixelHeight, "OTHER");
@@ -46,6 +47,12 @@ internal sealed class TuiGraphicsDevice : IGraphicsDevice, IPointer
     public void FillArea(IReadOnlyList<GfxPoint> polygon) => _canvas.FillArea(polygon, _areaColor);
 
     public void DrawText(GfxPoint at, string text) => _canvas.DrawText(at, text, _textColor);
+
+    public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible) =>
+        _canvas.DrawCells(rect, columns, rows, colors, visible);
+
+    public void SetColorMix(int index, double red, double green, double blue) =>
+        _canvas.SetColorMix(index, red, green, blue);
 
     // A frame is complete: promote it to the canvas's front buffer so the UI shows
     // it atomically. SLEEP calls this each frame; without it the UI would sample
