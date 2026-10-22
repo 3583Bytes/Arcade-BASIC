@@ -15,30 +15,22 @@ publish.
 
 ## 1. Prerequisites
 
-### .NET 9 SDK (required for everything)
+### .NET 10 SDK (required for everything)
 
-The repo pins the SDK major version in [`global.json`](../global.json) (`9.0.1xx`).
-Any `9.0.1xx` SDK works.
+The repo pins the SDK major version in [`global.json`](../global.json) (`10.0`).
+Any .NET 10 SDK (10.0.100 or later) works.
 
 | Platform | Get the SDK |
 |---|---|
-| All | <https://dotnet.microsoft.com/download/dotnet/9.0> |
-| Windows | `winget install Microsoft.DotNet.SDK.9` |
+| All | <https://dotnet.microsoft.com/download/dotnet/10.0> |
+| Windows | `winget install Microsoft.DotNet.SDK.10` |
 | Linux | distro packages, or the [install script](https://learn.microsoft.com/dotnet/core/install/linux) |
-| macOS | the official installer above, or Homebrew: `brew install dotnet@9` |
-
-> **Homebrew note (macOS):** `dotnet@9` is *keg-only*, so it isn't put on your
-> `PATH` automatically. Either use the official installer (which does), or add
-> the keg yourself:
-> ```sh
-> export PATH="$(brew --prefix dotnet@9)/bin:$PATH"
-> export DOTNET_ROOT="$(brew --prefix dotnet@9)/libexec"
-> ```
+| macOS | the official installer above, or Homebrew: `brew install --cask dotnet-sdk` |
 
 Verify:
 
 ```sh
-dotnet --list-sdks      # should list a 9.0.1xx SDK
+dotnet --list-sdks      # should list a 10.0.x SDK
 ```
 
 ### Native toolchain (only for the AOT CLI / standalone binaries)
@@ -142,7 +134,7 @@ Smoke-test:
 ```
 
 (Omitting `-o` puts the binary at
-`src/ArcadeBasic.Cli/bin/Release/net9.0/<RID>/publish/arcade-basic`.)
+`src/ArcadeBasic.Cli/bin/Release/net10.0/<RID>/publish/arcade-basic`.)
 
 ---
 
@@ -279,7 +271,7 @@ cp publish/cli/arcade-basic /usr/local/bin/     # macOS/Linux
 ```
 
 When you run the IDE via `dotnet run`, the "IDE binary" is the build apphost
-under `src/ArcadeBasic.Ide/bin/<Config>/net9.0/`, so the `PATH` approach is the
+under `src/ArcadeBasic.Ide/bin/<Config>/net10.0/`, so the `PATH` approach is the
 simplest in that case.
 
 ---

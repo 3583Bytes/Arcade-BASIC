@@ -4,13 +4,18 @@
        animation loop, drawing on a canvas. Not in ArcadeBasic.sln yet, so CI
        doesn't build it. -->
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
     <OutputType>Exe</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- The engine formats and parses with the invariant culture throughout, so
          the ICU data (~140-240 KB brotli) isn't needed. -->
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Publishing compiles the .NET code — the VM above all — to WebAssembly ahead
+         of time, rather than shipping it to the browser's .NET interpreter. Needs the
+         wasm-tools workload (dotnet workload install wasm-tools). A plain build still
+         runs interpreted, for a quick edit-and-run loop. -->
+    <RunAOTCompilation>true</RunAOTCompilation>
   </PropertyGroup>
 
   <ItemGroup>

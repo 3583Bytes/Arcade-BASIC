@@ -288,7 +288,7 @@ The parser collects up to a configurable number of errors per file before giving
 
 ## Target frameworks
 
-The library projects (`ArcadeBasic.Core` through `ArcadeBasic.Vm` — everything except the CLI) **multi-target** `net9.0` and `netstandard2.1`. The CLI stays single-target `net9.0` because it uses `Environment.ProcessPath`, `File.SetUnixFileMode`, and AOT publishing — none of which exist on netstandard.
+The library projects (`ArcadeBasic.Core` through `ArcadeBasic.Vm` — everything except the CLI) **multi-target** `net10.0` and `netstandard2.1`. The CLI stays single-target `net10.0` because it uses `Environment.ProcessPath`, `File.SetUnixFileMode`, and AOT publishing — none of which exist on netstandard.
 
 A small `Polyfill.cs` file at the repo root is conditionally compiled into every non-`net5.0+` build (see `Directory.Build.props`) and supplies:
 

@@ -134,8 +134,8 @@ Gatekeeper bypass: right-click → Open, or `xattr -d com.apple.quarantine`).
 
 ## Implementation notes
 
-- **Terminal.Gui v1.x** — the v2 line requires net10; sticking to v1 keeps the
-  IDE on net9 like the rest of the solution.
+- **Terminal.Gui v1.x** — v2 is a rewrite with a different API; moving to it is a
+  port of the whole IDE, not an upgrade.
 - **No AOT** — Terminal.Gui leans on reflection, so this binary isn't
   AOT-published. The CLI still is.
 - **BasicEngine** — every Run kicks off `ArcadeBasic.BasicEngine.Run` against

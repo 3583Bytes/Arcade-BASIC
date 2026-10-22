@@ -96,7 +96,7 @@ unity/scripts/copy-stubs.sh osx-arm64       # one specific RID
 
 Each invocation runs `dotnet publish ... -p:PublishAot=true` and copies
 the resulting binary into `Stubs/` with the right RID-tagged filename.
-Requires the .NET 9 SDK on your machine.
+Requires the .NET 10 SDK on your machine.
 
 > **Lockstep**: `copy-stubs.sh` also re-runs `copy-dlls.sh` first, so the
 > bytecode-serializer version in `unity/Runtime/Plugins/*.dll` (used by the

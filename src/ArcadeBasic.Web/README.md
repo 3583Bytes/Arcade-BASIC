@@ -18,12 +18,22 @@ dotnet run --project src/ArcadeBasic.Web -c Release
 ```
 
 To host it anywhere static (GitHub Pages, `python3 -m http.server`), publish and
-serve `bin/Release/net9.0/publish/wwwroot`:
+serve `bin/Release/net10.0/publish/wwwroot`:
 
 ```sh
 dotnet publish -c Release src/ArcadeBasic.Web
-python3 -m http.server -d src/ArcadeBasic.Web/bin/Release/net9.0/publish/wwwroot 8080
+python3 -m http.server -d src/ArcadeBasic.Web/bin/Release/net10.0/publish/wwwroot 8080
 ```
+
+Publishing compiles the .NET code to WebAssembly ahead of time
+(`RunAOTCompilation`), so it needs the WebAssembly build tools once:
+`dotnet workload install wasm-tools` (run it outside the repo, with `sudo` if your
+.NET install is system-wide). It takes about a minute and makes the download
+about 2.2 MB compressed, against 1.65 MB for the plain build — and the VM about
+ten times faster: in Firefox, native Mandelbrot runs in 15 ms rather than 150, and
+`maze3d` takes 5 ms of each 40 ms frame rather than 16. `dotnet run` and
+`dotnet build` don't compile ahead of time, so they stay quick for trying changes,
+at the interpreter's speed.
 
 `?bench=1` runs the measurements and POSTs them to `/results` (for a test server
 that accepts them; a plain static server just ignores the request): compute

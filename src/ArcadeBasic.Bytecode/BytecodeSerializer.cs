@@ -268,7 +268,7 @@ public static class EmbeddedPayload
 
     /// <summary>
     /// Read exactly <c>buffer.Length</c> bytes from <paramref name="stream"/> or throw.
-    /// Stream.ReadExactly is .NET 7+; this helper works on both net9 and netstandard2.1.
+    /// Stream.ReadExactly is .NET 7+; this helper works on both net10 and netstandard2.1.
     /// </summary>
     private static void ReadExact(Stream stream, byte[] buffer)
     {

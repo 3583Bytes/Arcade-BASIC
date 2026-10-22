@@ -1,5 +1,5 @@
 // Compiler-feature polyfills for targets that don't ship them in the BCL.
-// Included into every non-net9 build via Directory.Build.props. All types are
+// Included into every netstandard build via Directory.Build.props. All types are
 // `internal` so they never become part of the public surface.
 
 #if !NET5_0_OR_GREATER

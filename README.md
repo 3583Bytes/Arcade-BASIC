@@ -161,7 +161,7 @@ See [`examples/README.md`](examples/README.md) for the full list with a tree-wal
 
 ## Embedding in .NET, Unity, Xamarin
 
-The library projects (lexer through VM) multi-target **`net9.0`** *and* **`netstandard2.1`**, so they drop into anything from a modern ASP.NET host to a Unity game. The smallest possible embed:
+The library projects (lexer through VM) multi-target **`net10.0`** *and* **`netstandard2.1`**, so they drop into anything from a modern ASP.NET host to a Unity game. The smallest possible embed:
 
 ```csharp
 using ArcadeBasic;
@@ -174,7 +174,7 @@ For Unity, the [`unity/`](unity/) folder is a ready-to-use UPM package — `pack
 
 ## Quick build from source
 
-Requires the .NET 9 SDK.
+Requires the .NET 10 SDK.
 
 ```sh
 git clone https://github.com/3583Bytes/Arcade-BASIC.git arcade-basic
@@ -187,7 +187,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
 # Produce an AOT-compiled standalone CLI for the current platform
 # (PublishAot is set in the CLI csproj, so no need to pass it on the cmdline)
 dotnet publish src/ArcadeBasic.Cli -c Release -r osx-arm64
-# → src/ArcadeBasic.Cli/bin/Release/net9.0/<rid>/publish/arcade-basic
+# → src/ArcadeBasic.Cli/bin/Release/net10.0/<rid>/publish/arcade-basic
 ```
 
 Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are attached to each tagged GitHub release — both `arcade-basic` (the CLI) and `arcade-basic-ide` (the IDE), plus the Unity package zip. No .NET install needed on the target machine.

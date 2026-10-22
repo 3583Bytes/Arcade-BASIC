@@ -6,7 +6,7 @@ If you haven't already, skim [`docs/architecture.md`](docs/architecture.md) firs
 
 ## Prerequisites
 
-- **.NET 9 SDK** (`dotnet --version` ≥ 9.0).
+- **.NET 10 SDK** (`dotnet --version` ≥ 10.0).
 - An editor that understands C# 13 + nullable reference types. Rider, VS, or VS Code + C# Dev Kit all work.
 - The repo is plain Git; no submodules, no LFS.
 
@@ -35,7 +35,7 @@ dotnet run --project src/ArcadeBasic.Cli -- analyze examples/factorial.bas
 
 # AOT-publish.
 dotnet publish src/ArcadeBasic.Cli -c Release -r <rid>
-# → src/ArcadeBasic.Cli/bin/Release/net9.0/<rid>/publish/arcade-basic
+# → src/ArcadeBasic.Cli/bin/Release/net10.0/<rid>/publish/arcade-basic
 ```
 
 Release builds set `TreatWarningsAsErrors=true`, so anything that builds cleanly in Debug must also be warning-free for CI.
@@ -70,9 +70,9 @@ docs/
 
 ### Target frameworks
 
-The library projects multi-target `net9.0;netstandard2.1`. The CLI is single-target `net9.0` (it uses APIs that only exist on .NET 6+). Test projects are single-target `net9.0`.
+The library projects multi-target `net10.0;netstandard2.1`. The CLI is single-target `net10.0` (it uses APIs that only exist on .NET 6+). Test projects are single-target `net10.0`.
 
-When adding code to a library project, prefer APIs that exist on both targets. If you need a `net9.0`-only API, either:
+When adding code to a library project, prefer APIs that exist on both targets. If you need a `net10.0`-only API, either:
 
 - Wrap the call in `#if NET5_0_OR_GREATER` (or a more specific version guard) with a netstandard fallback, **or**
 - Push the call out into `ArcadeBasic.Cli`, where it's free to use anything.

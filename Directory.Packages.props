@@ -8,7 +8,7 @@
     <!-- Decimal arithmetic per Q2 -->
     <PackageVersion Include="Singulink.Numerics.BigDecimal" Version="3.0.0" />
 
-    <!-- Console TUI front-end (v1.x line — v2 requires net10) -->
+    <!-- Console TUI front-end (v1.x line; v2 is a rewrite with a different API) -->
     <PackageVersion Include="Terminal.Gui" Version="1.19.0" />
 
     <!-- Test stack -->
