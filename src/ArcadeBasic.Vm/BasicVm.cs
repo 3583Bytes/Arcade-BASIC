@@ -90,7 +90,7 @@ public sealed class BasicVm
 
     /// <summary>The operand stack, shared by every frame. A frame's own values sit
     /// above its <see cref="CallFrame.StackBase"/>.</summary>
-    private readonly Stack<Value> _stack = new(256);
+    private readonly OperandStack _stack = new(256);
 
     private ActivationRecord _programFrame = null!;
 
@@ -150,7 +150,40 @@ public sealed class BasicVm
         _native = program.NativeArithmetic;
         _zero = NumericValue.Zeroed(_native);
         _one = NumericValue.From(1, _native);
+        _builtinKinds = new BuiltinKind[program.BuiltinNames.Count];
+        _builtinFns = new BuiltinImpls.BuiltinFn?[program.BuiltinNames.Count];
+        for (var i = 0; i < program.BuiltinNames.Count; i++)
+        {
+            var name = program.BuiltinNames[i].ToUpperInvariant();
+            _builtinKinds[i] = name switch
+            {
+                "EXTYPE" => BuiltinKind.Extype,
+                "EXLINE" => BuiltinKind.Exline,
+                "EXTEXT" => BuiltinKind.Extext,
+                "INKEY" => BuiltinKind.Inkey,
+                "KEYDOWN" => BuiltinKind.Keydown,
+                "RND" => BuiltinKind.Rnd,
+                "ABS" => BuiltinKind.Abs,
+                "SGN" => BuiltinKind.Sgn,
+                "INT" => BuiltinKind.Int,
+                "SQR" => BuiltinKind.Sqr,
+                "SIN" => BuiltinKind.Sin,
+                "COS" => BuiltinKind.Cos,
+                "TAN" => BuiltinKind.Tan,
+                "ATN" => BuiltinKind.Atn,
+                _ => BuiltinKind.Table,
+            };
+            _builtinFns[i] = BuiltinImpls.All.TryGetValue(name, out var fn) ? fn : null;
+        }
     }
+
+    /// <summary>What each of the program's builtins is, worked out once: the ones the VM
+    /// answers itself, the numeric ones it computes unboxed under OPTION ARITHMETIC
+    /// NATIVE, and the rest (BuiltinImpls' table).</summary>
+    private enum BuiltinKind { Table, Extype, Exline, Extext, Inkey, Keydown, Rnd, Abs, Sgn, Int, Sqr, Sin, Cos, Tan, Atn }
+
+    private readonly BuiltinKind[] _builtinKinds;
+    private readonly BuiltinImpls.BuiltinFn?[] _builtinFns;
 
     /// <summary>Run the program to the end on this thread, doing the waiting itself —
     /// SLEEP sleeps, INPUT blocks on the reader, foreground audio drains. Returns the
@@ -301,7 +334,7 @@ public sealed class BasicVm
 
         var cf = _frames.Peek();
         var top = _handlerStack.Pop();
-        while (_stack.Count > top.StackBaseline) _stack.Pop();
+        _stack.Truncate(top.StackBaseline);
         _currentException = new BasicException(ex.TypeCode, _currentLine, ex.Message);
         // A CONTINUE inside the USE body resumes at the statement after the one
         // that raised — in the catching frame, so after a CALL that raised.
@@ -325,7 +358,7 @@ public sealed class BasicVm
     {
         var done = _frames.Pop();
         while (_handlerStack.Count > done.HandlerBase) _handlerStack.Pop();
-        while (_stack.Count > done.StackBase) _stack.Pop();
+        _stack.Truncate(done.StackBase);
         if (_frames.Count == 0) return false;
         if (done.ReturnsValue)
             _stack.Push(done.Locals.GetOrDefault(done.ReturnSlot, done.ReturnsString ? StringValue.Empty : _zero));
@@ -450,7 +483,9 @@ public sealed class BasicVm
                     {
                         var limit = (NumericValue)frame.Get((int)ReadU32(code, ref pc));
                         var step = (NumericValue)frame.Get((int)ReadU32(code, ref pc));
-                        var cmp = Numbers.Compare((NumericValue)stack.Pop(), limit);
+                        var cmp = _native
+                            ? stack.PopNumber().CompareTo(limit.D)
+                            : Numbers.Compare((NumericValue)stack.Pop(), limit);
                         stack.Push(NumericValue.Bool(step.IsNegative ? cmp < 0 : cmp > 0, _native));
                         break;
                     }
@@ -495,10 +530,10 @@ public sealed class BasicVm
                 case Opcode.GfxSetBounds:
                     {
                         var kind = (int)ReadU32(code, ref pc);
-                        var t = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var b = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var r = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var l = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var t = stack.PopNumber();
+                        var b = stack.PopNumber();
+                        var r = stack.PopNumber();
+                        var l = stack.PopNumber();
                         switch (kind)
                         {
                             case 0: _gfx.SetWindow(l, r, b, t); break;
@@ -545,8 +580,8 @@ public sealed class BasicVm
                         var pts = new GfxPoint[count];
                         for (var i = count - 1; i >= 0; i--)
                         {
-                            var y = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                            var x = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                            var y = stack.PopNumber();
+                            var x = stack.PopNumber();
                             pts[i] = new GfxPoint(x, y);
                         }
                         switch (geom)
@@ -573,8 +608,8 @@ public sealed class BasicVm
                             var image = ((StringValue)stack.Pop()).V;
                             text = PictureFormat.Apply(PictureFormat.Parse(image), items);
                         }
-                        var ay = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var ax = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var ay = stack.PopNumber();
+                        var ax = stack.PopNumber();
                         _gfx.EmitText(new GfxPoint(ax, ay), text, _graphics);
                         break;
                     }
@@ -589,10 +624,10 @@ public sealed class BasicVm
                     {
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
-                        var y2 = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var x2 = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var y1 = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var x1 = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var y2 = stack.PopNumber();
+                        var x2 = stack.PopNumber();
+                        var y1 = stack.PopNumber();
+                        var x1 = stack.PopNumber();
                         if (ResolveOuter(frame, programFrame, depth).GetOrDefault(slot, NumericValue.Zero) is not NumericArrayValue cells)
                             throw new BasicRuntimeException(6004, "MAT GRAPH CELLS requires the array to be DIM-ed first");
                         _gfx.EmitCells(new GfxPoint(x1, y1), new GfxPoint(x2, y2), cells, _graphics);
@@ -600,9 +635,9 @@ public sealed class BasicVm
                     }
                 case Opcode.GfxSetColorMix:
                     {
-                        var blue = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var green = GraphicsState.ToCoord((NumericValue)stack.Pop());
-                        var red = GraphicsState.ToCoord((NumericValue)stack.Pop());
+                        var blue = stack.PopNumber();
+                        var green = stack.PopNumber();
+                        var red = stack.PopNumber();
                         var index = GraphicsState.ToIndex((NumericValue)stack.Pop());
                         _gfx.SetColorMix(index, red, green, blue, _graphics);
                         break;
@@ -616,7 +651,7 @@ public sealed class BasicVm
                     }
 
                 case Opcode.Pop: stack.Pop(); break;
-                case Opcode.Dup: stack.Push(stack.Peek()); break;
+                case Opcode.Dup: stack.Dup(); break;
                 case Opcode.Swap:
                     var s1 = stack.Pop();
                     var s2 = stack.Pop();
@@ -633,16 +668,20 @@ public sealed class BasicVm
                 case Opcode.LoadOne: stack.Push(_one); break;
                 case Opcode.LoadMinusOne: stack.Push(NumericValue.Bool(true, _native)); break;
 
+                // Native numbers stay unboxed from the operand stack to the variable
+                // and back (see OperandStack and ActivationRecord.SetNumber).
                 case Opcode.LoadLocal:
                     {
                         var slot = (int)ReadU32(code, ref pc);
-                        stack.Push(frame.GetOrDefault(slot, _zero));
+                        if (frame.TryGetUnboxed(slot, out var n)) stack.PushNumber(n);
+                        else stack.Push(frame.GetOrDefault(slot, _zero));
                         break;
                     }
                 case Opcode.StoreLocal:
                     {
                         var slot = (int)ReadU32(code, ref pc);
-                        frame.Set(slot, stack.Pop());
+                        if (stack.TryPopUnboxed(out var n)) frame.SetNumber(slot, n);
+                        else frame.Set(slot, stack.Pop());
                         break;
                     }
                 case Opcode.LoadOuter:
@@ -652,7 +691,8 @@ public sealed class BasicVm
                         var f = frame;
                         for (var i = 0; i < depth && f is not null; i++) f = f.Parent;
                         f ??= programFrame;
-                        stack.Push(f.GetOrDefault(slot, _zero));
+                        if (f.TryGetUnboxed(slot, out var n)) stack.PushNumber(n);
+                        else stack.Push(f.GetOrDefault(slot, _zero));
                         break;
                     }
                 case Opcode.StoreOuter:
@@ -662,14 +702,34 @@ public sealed class BasicVm
                         var f = frame;
                         for (var i = 0; i < depth && f is not null; i++) f = f.Parent;
                         f ??= programFrame;
-                        f.Set(slot, stack.Pop());
+                        if (stack.TryPopUnboxed(out var n)) f.SetNumber(slot, n);
+                        else f.Set(slot, stack.Pop());
                         break;
                     }
 
-                case Opcode.Add: Arithmetic(stack, Numbers.Add); break;
-                case Opcode.Sub: Arithmetic(stack, Numbers.Subtract); break;
-                case Opcode.Mul: Arithmetic(stack, Numbers.Multiply); break;
-                case Opcode.Div: Arithmetic(stack, Numbers.Divide); break;
+                // Under OPTION ARITHMETIC NATIVE every number is a double: work on them
+                // unboxed (Numbers.Native's overflow check, Numbers.Divide's zero check).
+                case Opcode.Add:
+                    if (_native) stack.PushNumber(Finite(stack.PopNumber() + stack.PopNumber()));
+                    else Arithmetic(stack, Numbers.Add);
+                    break;
+                case Opcode.Sub:
+                    if (_native) { var b = stack.PopNumber(); stack.PushNumber(Finite(stack.PopNumber() - b)); }
+                    else Arithmetic(stack, Numbers.Subtract);
+                    break;
+                case Opcode.Mul:
+                    if (_native) stack.PushNumber(Finite(stack.PopNumber() * stack.PopNumber()));
+                    else Arithmetic(stack, Numbers.Multiply);
+                    break;
+                case Opcode.Div:
+                    if (_native)
+                    {
+                        var b = stack.PopNumber();
+                        if (b == 0) throw new BasicRuntimeException(1001, "division by zero");
+                        stack.PushNumber(Finite(stack.PopNumber() / b));
+                    }
+                    else Arithmetic(stack, Numbers.Divide);
+                    break;
                 case Opcode.Pow: Arithmetic(stack, Numbers.Power); break;
                 case Opcode.Mod: Arithmetic(stack, Numbers.Mod); break;
                 case Opcode.Rem: Arithmetic(stack, Numbers.Remainder); break;
@@ -681,15 +741,36 @@ public sealed class BasicVm
                         break;
                     }
                 case Opcode.Neg:
-                    stack.Push(Numbers.Negate((NumericValue)stack.Pop()));
+                    if (_native) stack.PushNumber(-stack.PopNumber());
+                    else stack.Push(Numbers.Negate((NumericValue)stack.Pop()));
                     break;
 
-                case Opcode.Eq: Compare(stack, c => c == 0); break;
-                case Opcode.Ne: Compare(stack, c => c != 0); break;
-                case Opcode.Lt: Compare(stack, c => c < 0); break;
-                case Opcode.Le: Compare(stack, c => c <= 0); break;
-                case Opcode.Gt: Compare(stack, c => c > 0); break;
-                case Opcode.Ge: Compare(stack, c => c >= 0); break;
+                // Two native numbers compare directly; anything else (strings, decimals)
+                // goes through Compare.
+                case Opcode.Eq:
+                    if (stack.TryPopNativePair(out var eqA, out var eqB)) stack.Push(NumericValue.Bool(eqA == eqB, _native));
+                    else Compare(stack, c => c == 0);
+                    break;
+                case Opcode.Ne:
+                    if (stack.TryPopNativePair(out var neA, out var neB)) stack.Push(NumericValue.Bool(neA != neB, _native));
+                    else Compare(stack, c => c != 0);
+                    break;
+                case Opcode.Lt:
+                    if (stack.TryPopNativePair(out var ltA, out var ltB)) stack.Push(NumericValue.Bool(ltA < ltB, _native));
+                    else Compare(stack, c => c < 0);
+                    break;
+                case Opcode.Le:
+                    if (stack.TryPopNativePair(out var leA, out var leB)) stack.Push(NumericValue.Bool(leA <= leB, _native));
+                    else Compare(stack, c => c <= 0);
+                    break;
+                case Opcode.Gt:
+                    if (stack.TryPopNativePair(out var gtA, out var gtB)) stack.Push(NumericValue.Bool(gtA > gtB, _native));
+                    else Compare(stack, c => c > 0);
+                    break;
+                case Opcode.Ge:
+                    if (stack.TryPopNativePair(out var geA, out var geB)) stack.Push(NumericValue.Bool(geA >= geB, _native));
+                    else Compare(stack, c => c >= 0);
+                    break;
 
                 case Opcode.And: Logical(stack, (a, b) => a && b); break;
                 case Opcode.Or: Logical(stack, (a, b) => a || b); break;
@@ -715,13 +796,13 @@ public sealed class BasicVm
                 case Opcode.JumpIfTrue:
                     {
                         var off = ReadI32(code, ref pc);
-                        if (!((NumericValue)stack.Pop()).IsZero) pc += off;
+                        if (!stack.PopIsZero()) pc += off;
                         break;
                     }
                 case Opcode.JumpIfFalse:
                     {
                         var off = ReadI32(code, ref pc);
-                        if (((NumericValue)stack.Pop()).IsZero) pc += off;
+                        if (stack.PopIsZero()) pc += off;
                         break;
                     }
                 case Opcode.GosubFlow:
@@ -744,46 +825,60 @@ public sealed class BasicVm
                     {
                         var bid = (int)ReadU32(code, ref pc);
                         var argc = (int)ReadU32(code, ref pc);
-                        var name = _program.BuiltinNames[bid];
+                        var kind = _builtinKinds[bid];
+                        if (_native && argc == 1 && kind >= BuiltinKind.Abs)
+                        {
+                            // The numeric builtins, unboxed: what BuiltinImpls computes
+                            // for a native argument, with its checks.
+                            var x = stack.PopNumber();
+                            stack.PushNumber(kind switch
+                            {
+                                BuiltinKind.Abs => Math.Abs(x),
+                                BuiltinKind.Sgn => x == 0 ? 0 : x < 0 ? -1 : 1,
+                                BuiltinKind.Int => Math.Floor(x),
+                                BuiltinKind.Sqr => x < 0
+                                    ? throw new BasicRuntimeException(3005, "SQR requires a non-negative argument")
+                                    : RealResult("SQR", Math.Sqrt(x)),
+                                BuiltinKind.Sin => RealResult("SIN", Math.Sin(x)),
+                                BuiltinKind.Cos => RealResult("COS", Math.Cos(x)),
+                                BuiltinKind.Tan => RealResult("TAN", Math.Tan(x)),
+                                _ => RealResult("ATN", Math.Atan(x)),
+                            });
+                            break;
+                        }
                         var args = new Value[argc];
                         for (var i = argc - 1; i >= 0; i--) args[i] = stack.Pop();
                         // EXTYPE/EXLINE/EXTEXT$ must see the VM's current
                         // exception. BuiltinImpls has zero-returning stubs for
                         // them (they don't have access to interpreter state),
                         // so we intercept here before the BuiltinImpls dispatch.
-                        if (string.Equals(name, "EXTYPE", StringComparison.OrdinalIgnoreCase))
+                        switch (kind)
                         {
-                            stack.Push(NumericValue.From(_currentException?.Type ?? 0, _native));
-                        }
-                        else if (string.Equals(name, "EXLINE", StringComparison.OrdinalIgnoreCase))
-                        {
-                            stack.Push(NumericValue.From(_currentException?.Line ?? 0, _native));
-                        }
-                        else if (string.Equals(name, "EXTEXT", StringComparison.OrdinalIgnoreCase))
-                        {
-                            stack.Push(_currentException is null
-                                ? StringValue.Empty
-                                : new StringValue(_currentException.Text));
-                        }
-                        else if (string.Equals(name, "INKEY", StringComparison.OrdinalIgnoreCase))
-                        {
-                            stack.Push(new StringValue(_keys.ReadKey()));   // non-blocking key poll
-                        }
-                        else if (string.Equals(name, "KEYDOWN", StringComparison.OrdinalIgnoreCase))
-                        {
-                            stack.Push(NumericValue.Bool(_keys.IsDown(((StringValue)args[0]).V), _native));
-                        }
-                        else if (string.Equals(name, "RND", StringComparison.OrdinalIgnoreCase))
-                        {
-                            stack.Push(_random.Next(_native));   // this run's sequence; any argument is ignored
-                        }
-                        else if (BuiltinImpls.All.TryGetValue(name, out var fn))
-                        {
-                            stack.Push(fn(args, _native));
-                        }
-                        else
-                        {
-                            throw new BasicRuntimeException(0, $"builtin '{name}' not implemented");
+                            case BuiltinKind.Extype:
+                                stack.Push(NumericValue.From(_currentException?.Type ?? 0, _native));
+                                break;
+                            case BuiltinKind.Exline:
+                                stack.Push(NumericValue.From(_currentException?.Line ?? 0, _native));
+                                break;
+                            case BuiltinKind.Extext:
+                                stack.Push(_currentException is null
+                                    ? StringValue.Empty
+                                    : new StringValue(_currentException.Text));
+                                break;
+                            case BuiltinKind.Inkey:
+                                stack.Push(new StringValue(_keys.ReadKey()));   // non-blocking key poll
+                                break;
+                            case BuiltinKind.Keydown:
+                                stack.Push(NumericValue.Bool(_keys.IsDown(((StringValue)args[0]).V), _native));
+                                break;
+                            case BuiltinKind.Rnd:
+                                stack.Push(_random.Next(_native));   // this run's sequence; any argument is ignored
+                                break;
+                            default:
+                                var fn = _builtinFns[bid]
+                                    ?? throw new BasicRuntimeException(0, $"builtin '{_program.BuiltinNames[bid]}' not implemented");
+                                stack.Push(fn(args, _native));
+                                break;
                         }
                         break;
                     }
@@ -1304,7 +1399,7 @@ public sealed class BasicVm
                     {
                         var slot = (int)ReadU32(code, ref pc);
                         var rank = (int)ReadU32(code, ref pc);
-                        stack.Push(ReadElement(stack, frame, slot, rank));
+                        PushElement(stack, frame, slot, rank);
                         break;
                     }
                 case Opcode.LoadElementOuter:
@@ -1312,7 +1407,7 @@ public sealed class BasicVm
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var rank = (int)ReadU32(code, ref pc);
-                        stack.Push(ReadElement(stack, ResolveOuter(frame, programFrame, depth), slot, rank));
+                        PushElement(stack, ResolveOuter(frame, programFrame, depth), slot, rank);
                         break;
                     }
                 case Opcode.StoreElement:
@@ -1367,7 +1462,7 @@ public sealed class BasicVm
     }
 
     private static void MatBinaryNumeric(
-        Stack<Value> stack,
+        OperandStack stack,
         Func<BigDecimal[], Bounds, BigDecimal[], Bounds, (BigDecimal[] Data, Bounds Bounds)> op)
     {
         var r = (NumericArrayValue)stack.Pop();
@@ -1659,7 +1754,7 @@ public sealed class BasicVm
     }
 
     /// <summary>Pop the targets' subscripts (pushed in target order) and assign each its value.</summary>
-    private static void AssignTargets(InputTargetDesc[] descs, Value[] values, Stack<Value> stack,
+    private static void AssignTargets(InputTargetDesc[] descs, Value[] values, OperandStack stack,
         ActivationRecord frame, ActivationRecord programFrame)
     {
         var indices = new int[descs.Length][];
@@ -1732,7 +1827,7 @@ public sealed class BasicVm
         return f ?? programFrame;
     }
 
-    private static void AllocArray(Stack<Value> stack, ActivationRecord target, int slot, int rank, bool isString, bool native)
+    private static void AllocArray(OperandStack stack, ActivationRecord target, int slot, int rank, bool isString, bool native)
     {
         var lower = new int[rank];
         var upper = new int[rank];
@@ -1753,14 +1848,26 @@ public sealed class BasicVm
         target.Set(slot, array);
     }
 
-    private static Value ReadElement(Stack<Value> stack, ActivationRecord frame, int slot, int rank)
+    /// <summary>Pop the subscripts and push the element (a native one unboxed).</summary>
+    private static void PushElement(OperandStack stack, ActivationRecord frame, int slot, int rank)
     {
-        var indices = PopIndices(stack, rank);
+        Span<int> indices = stackalloc int[rank];
+        for (var i = rank - 1; i >= 0; i--) indices[i] = stack.PopInt32();
         var arr = frame.GetOrDefault(slot, NumericValue.Zero);
         try
         {
-            if (arr is NumericArrayValue narr) return narr[narr.Bounds.IndexOf(indices)];
-            if (arr is StringArrayValue sarr) return new StringValue(sarr.Data[sarr.Bounds.IndexOf(indices)] ?? "");
+            if (arr is NumericArrayValue narr)
+            {
+                var at = narr.Bounds.IndexOf(indices);
+                if (narr.IsNative) stack.PushNumber(narr.GetNative(at));
+                else stack.Push(narr[at]);
+                return;
+            }
+            if (arr is StringArrayValue sarr)
+            {
+                stack.Push(new StringValue(sarr.Data[sarr.Bounds.IndexOf(indices)] ?? ""));
+                return;
+            }
         }
         catch (ArgumentOutOfRangeException ex)
         {
@@ -1773,15 +1880,21 @@ public sealed class BasicVm
         throw new BasicRuntimeException(0, "array not allocated; missing DIM");
     }
 
-    private static void WriteElement(Stack<Value> stack, ActivationRecord frame, int slot, int rank)
+    private static void WriteElement(OperandStack stack, ActivationRecord frame, int slot, int rank)
     {
-        var indices = PopIndices(stack, rank);
-        var value = stack.Pop();
+        Span<int> indices = stackalloc int[rank];
+        for (var i = rank - 1; i >= 0; i--) indices[i] = stack.PopInt32();
         var arr = frame.GetOrDefault(slot, NumericValue.Zero);
         try
         {
-            if (arr is NumericArrayValue narr) { narr[narr.Bounds.IndexOf(indices)] = (NumericValue)value; return; }
-            if (arr is StringArrayValue sarr) { sarr.Data[sarr.Bounds.IndexOf(indices)] = ((StringValue)value).V; return; }
+            if (arr is NumericArrayValue narr)
+            {
+                var at = narr.Bounds.IndexOf(indices);
+                if (narr.IsNative && stack.TryPopUnboxed(out var n)) narr.SetNative(at, n);
+                else narr[at] = (NumericValue)stack.Pop();
+                return;
+            }
+            if (arr is StringArrayValue sarr) { sarr.Data[sarr.Bounds.IndexOf(indices)] = ((StringValue)stack.Pop()).V; return; }
         }
         catch (ArgumentOutOfRangeException ex)
         {
@@ -1794,19 +1907,17 @@ public sealed class BasicVm
         throw new BasicRuntimeException(0, "array not allocated; missing DIM");
     }
 
-    private static int[] PopIndices(Stack<Value> stack, int rank)
+    private static int[] PopIndices(OperandStack stack, int rank)
     {
         var indices = new int[rank];
-        for (var i = rank - 1; i >= 0; i--) indices[i] = ((NumericValue)stack.Pop()).ToInt32();
+        for (var i = rank - 1; i >= 0; i--) indices[i] = stack.PopInt32();
         return indices;
     }
 
     private static uint ReadU32(byte[] code, ref int pc)
     {
-        uint v = code[pc++];
-        v |= (uint)code[pc++] << 8;
-        v |= (uint)code[pc++] << 16;
-        v |= (uint)code[pc++] << 24;
+        var v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(code.AsSpan(pc, 4));
+        pc += 4;
         return v;
     }
 
@@ -1822,14 +1933,23 @@ public sealed class BasicVm
         return rt;
     }
 
-    private static void Arithmetic(Stack<Value> stack, Func<NumericValue, NumericValue, NumericValue> op)
+    /// <summary>A numeric builtin's result, unless it isn't finite (BuiltinImpls' 1003).</summary>
+    private static double RealResult(string fn, double r) =>
+        double.IsFinite(r) ? r : throw new BasicRuntimeException(1003, $"{fn}: result overflows");
+
+    /// <summary>A native result, unless it overflowed (Numbers.Native's exception 1002).</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static double Finite(double d) =>
+        double.IsFinite(d) ? d : throw new BasicRuntimeException(1002, "numeric overflow");
+
+    private static void Arithmetic(OperandStack stack, Func<NumericValue, NumericValue, NumericValue> op)
     {
         var b = (NumericValue)stack.Pop();
         var a = (NumericValue)stack.Pop();
         stack.Push(op(a, b));
     }
 
-    private void Compare(Stack<Value> stack, Func<int, bool> holds)
+    private void Compare(OperandStack stack, Func<int, bool> holds)
     {
         var b = stack.Pop();
         var a = stack.Pop();
@@ -1843,14 +1963,14 @@ public sealed class BasicVm
     }
 
     /// <summary>AND/OR/XOR/IMP/EQV over the operands' truth (nonzero = true).</summary>
-    private void Logical(Stack<Value> stack, Func<bool, bool, bool> op)
+    private void Logical(OperandStack stack, Func<bool, bool, bool> op)
     {
         var b = !((NumericValue)stack.Pop()).IsZero;
         var a = !((NumericValue)stack.Pop()).IsZero;
         stack.Push(NumericValue.Bool(op(a, b), _native));
     }
 
-    private void Bitwise(Stack<Value> stack, Func<long, long, long> op)
+    private void Bitwise(OperandStack stack, Func<long, long, long> op)
     {
         var b = ((NumericValue)stack.Pop()).ToInt64();
         var a = ((NumericValue)stack.Pop()).ToInt64();

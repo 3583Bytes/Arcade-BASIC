@@ -355,6 +355,19 @@ public class ExampleParityTests
         // decimal is unbounded; a native overflow raises 1002
         ["LET X = 1E300\nWHEN EXCEPTION IN\nPRINT X * X > 0\nUSE\nPRINT \"overflow\"; EXTYPE\nEND WHEN\n",
          "-1 \n", "overflow 1002 \n"],
+        // the VM's unboxed native paths keep the same semantics: + overflows, / by zero ...
+        ["LET X = 1E308\nWHEN EXCEPTION IN\nPRINT X + X > 0\nUSE\nPRINT \"overflow\"; EXTYPE\nEND WHEN\n",
+         "-1 \n", "overflow 1002 \n"],
+        ["LET Z = 0\nWHEN EXCEPTION IN\nPRINT 1 / Z\nUSE\nPRINT EXTYPE\nEND WHEN\n", " 1001 \n", " 1001 \n"],
+        // ... the numeric builtins ...
+        ["PRINT INT(-2.5); ABS(-3); SGN(-0.5); SGN(0); SQR(16); INT(7); ATN(0); COS(0)\n",
+         "-3  3 -1  0  4  7  0  1 \n", "-3  3 -1  0  4  7  0  1 \n"],
+        // ... a number through a FUNCTION's return slot, SELECT CASE and an array ...
+        ["FUNCTION F(X)\nLET F = X * 2\nEND FUNCTION\nLET Y = 3 + 4\nPRINT F(Y); Y\nSELECT CASE Y - 4\nCASE 3\nPRINT \"three\"\nEND SELECT\n" +
+         "DIM A(2)\nLET A(1) = Y / 2\nLET A(2) = A(1) + A(1)\nPRINT A(2) = Y\n",
+         " 14  7 \nthree\n-1 \n", " 14  7 \nthree\n-1 \n"],
+        // ... and a condition mixing a string comparison with numeric ones
+        ["LET A$ = \"b\"\nLET N = 2\nIF A$ > \"a\" AND N > 1 AND NOT N = 3 THEN PRINT \"yes\"\n", "yes\n", "yes\n"],
     ];
 
     [Theory]

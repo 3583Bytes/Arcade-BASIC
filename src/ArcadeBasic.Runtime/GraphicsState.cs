@@ -49,8 +49,11 @@ public sealed class GraphicsState
 
     /// <summary>Round an evaluated numeric value to a style/colour index.</summary>
     public static int ToIndex(NumericValue v) => v.IsNative
-        ? (int)Math.Round(v.D, MidpointRounding.ToEven)
+        ? ToIndex(v.D)
         : (int)BigDecimal.Round(v.V, 0, RoundingMode.MidpointToEven);
+
+    /// <summary><see cref="ToIndex(NumericValue)"/> for a native number.</summary>
+    public static int ToIndex(double v) => (int)Math.Round(v, MidpointRounding.ToEven);
 
     /// <summary>
     /// Compute the value an ASK statement reads for the given object and target
@@ -220,7 +223,7 @@ public sealed class GraphicsState
             for (var c = 0; c < nx; c++)
             {
                 var i = flipX ? nx - 1 - c : c;
-                var k = ToIndex(cells[i * ny + j]);
+                var k = cells.IsNative ? ToIndex(cells.GetNative(i * ny + j)) : ToIndex(cells[i * ny + j]);
                 colors[r * nx + c] = k < 0 || k > max ? 1 : k;   // 11085 (nonfatal): the default colour
             }
         }

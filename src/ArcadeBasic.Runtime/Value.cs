@@ -125,6 +125,13 @@ public sealed record class NumericArrayValue : Value
 
     public bool IsNative => _native is not null;
 
+    /// <summary>A native array's element as a double, without wrapping it (the VM's
+    /// unboxed fast path). Only for an <see cref="IsNative"/> array.</summary>
+    public double GetNative(int index) => _native![index];
+
+    /// <summary>Store a double into a native array's element.</summary>
+    public void SetNative(int index, double value) => _native![index] = value;
+
     public NumericValue this[int index]
     {
         get => _native is not null ? NumericValue.FromDouble(_native[index]) : new NumericValue(_decimal![index]);
