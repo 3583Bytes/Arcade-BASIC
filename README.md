@@ -152,7 +152,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `KEYDOWN` + `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
 | [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
-| [`maze3d.bas`](examples/maze3d.bas) | first-person 3D maze, Wolfenstein-style — ray casting with textured walls (`MAT GRAPH CELLS` stretches a texture column over each screen column; `SET COLOR MIX` colours), `KEYDOWN` walking and turning |
+| [`maze3d.bas`](examples/maze3d.bas) | first-person 3D maze, Wolfenstein-style — ray casting with textured walls, floor and ceiling (`MAT GRAPH CELLS` stretches a texture column over each screen column and draws the floor and ceiling a dot at a time; `SET COLOR MIX` colours), `KEYDOWN` walking and turning |
 | [`music.bas`](examples/music.bas) | audio — `SOUND`, `BEEP`, and `PLAY` (MML); render to WAV with `--wav` |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |

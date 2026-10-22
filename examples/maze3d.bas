@@ -5,10 +5,15 @@
 ! are textured: where the ray hit along the wall picks a column of a 16 x 16
 ! texture, and MAT GRAPH CELLS (ANSI Full BASIC's cell array) stretches that
 ! column over the slice — the device does the scaling, as Wolfenstein's renderer
-! did. SET COLOR MIX gives the textures their own colours, with darker copies for
-! walls facing north/south and far away. In the browser playground a slice is a
-! 6-pixel strip; in a terminal, half a character (block elements, 2 x 2 per cell,
-! one colour per character), so the textures show best up close.
+! did. The floor and ceiling are textured too, a dot at a time: each row of the
+! screen below eye level looks at the floor a known distance away, so following
+! the column's ray that far finds the spot — and its texel — that dot shows. Only
+! the rows the wall leaves visible are worked out; they're drawn as two cell
+! arrays, and the walls over them. SET COLOR MIX gives the textures their own
+! colours, with darker copies for walls facing north/south and anything far
+! away. In the browser playground a dot is 6 pixels; in a terminal, half a
+! character (block elements, 2 x 2 per cell, one colour per character), so the
+! textures show best up close.
 !
 ! The minimap (top left) shows only the walls you've seen. KEYDOWN (held keys)
 ! walks and turns, INKEY$ reads the other keys, SLEEP paces the loop —
@@ -58,20 +63,22 @@ FOR R = 0 TO MH - 1
   NEXT Q
 NEXT R
 
-! ---- textures: 16 x 16, one digit per texel (0 the darkest .. 3), drawn one
-!      column at a time with MAT GRAPH CELLS --------------------------------------
+! ---- textures: 16 x 16, one digit per texel (0 the darkest .. 3) --------------
+! Seven of them: five for walls, the floor, the ceiling. Each is kept twice, lit
+! and shaded: TEX(2t, x, y) and TEX(2t + 1, x, y) are colour indices.
 LET TW = 16                        ! texels across and down
-LET SHADE = 0.6                    ! how much darker shaded walls are
-DIM TSLOT(9)                       ! each wall type's texture
+LET SHADE = 0.6                    ! how much darker shaded surfaces are
+DIM TSLOT(9)                       ! each wall type's texture (its lit copy)
 LET TSLOT(1) = 0                   ! stone
-LET TSLOT(2) = 1                   ! brick
-LET TSLOT(3) = 2                   ! wood
-LET TSLOT(4) = 3                   ! tiles
-LET TSLOT(9) = 4                   ! the door
-DIM TEX(9, 15, 15)                 ! TEX(texture, x, y): a colour index; 5-9 are 0-4 shaded
-DIM STRIP(0, 15)                   ! the column being drawn: 1 across, 16 down
-! Each texture's four colours (red, green, blue, 0-1), as colours 16-35 lit and
-! 36-55 shaded: texture t's colour c is 16 + 4 * t + c.
+LET TSLOT(2) = 2                   ! brick
+LET TSLOT(3) = 4                   ! wood
+LET TSLOT(4) = 6                   ! tiles
+LET TSLOT(9) = 8                   ! the door
+LET FLOORTEX = 10                  ! the floor; the ceiling is FLOORTEX + 2
+DIM TEX(13, 15, 15)
+DIM STRIP(0, 15)                   ! a wall column being drawn: 1 across, 16 down
+! Each texture's four colours (red, green, blue, 0-1). Texture t's colour c is
+! 16 + 8t + c lit and 20 + 8t + c shaded: colours 16-71.
 ! stone
 DATA 0.10, 0.10, 0.16, 0.32, 0.36, 0.52, 0.46, 0.50, 0.66, 0.24, 0.27, 0.40
 ! brick
@@ -82,11 +89,17 @@ DATA 0.20, 0.12, 0.04, 0.62, 0.42, 0.18, 0.72, 0.52, 0.24, 0.48, 0.30, 0.12
 DATA 0.08, 0.26, 0.28, 0.24, 0.62, 0.64, 0.32, 0.74, 0.76, 0.78, 0.96, 0.96
 ! door
 DATA 0.04, 0.22, 0.06, 0.12, 0.52, 0.18, 0.20, 0.68, 0.26, 0.95, 0.85, 0.30
-FOR I = 0 TO 19
-  READ CR, CG, CB
-  SET COLOR MIX (16 + I) CR, CG, CB
-  SET COLOR MIX (36 + I) CR * SHADE, CG * SHADE, CB * SHADE
-NEXT I
+! floor
+DATA 0.16, 0.15, 0.13, 0.40, 0.37, 0.32, 0.48, 0.45, 0.39, 0.30, 0.28, 0.24
+! ceiling
+DATA 0.08, 0.06, 0.04, 0.30, 0.22, 0.14, 0.36, 0.27, 0.17, 0.22, 0.16, 0.10
+FOR TT = 0 TO 6
+  FOR C = 0 TO 3
+    READ CR, CG, CB
+    SET COLOR MIX (16 + 8 * TT + C) CR, CG, CB
+    SET COLOR MIX (20 + 8 * TT + C) CR * SHADE, CG * SHADE, CB * SHADE
+  NEXT C
+NEXT TT
 ! stone
 DATA "0222222220222220"
 DATA "0211111110211110"
@@ -172,16 +185,63 @@ DATA "0220111111111220"
 DATA "0220111111111220"
 DATA "0222222222222220"
 DATA "0000000000000000"
-FOR TT = 0 TO 4
+! floor
+DATA "1111131022322220"
+DATA "1111111022222220"
+DATA "1111311023222230"
+DATA "1113111022222220"
+DATA "1111111032222320"
+DATA "1131111022222220"
+DATA "1311111022223220"
+DATA "0000000000000000"
+DATA "3222222011111110"
+DATA "2222232011311110"
+DATA "2222322011111110"
+DATA "2222222013111130"
+DATA "2223222031111110"
+DATA "2232222011111310"
+DATA "2222222011113110"
+DATA "0000000000000000"
+! ceiling
+DATA "1110111111111111"
+DATA "3110111311111131"
+DATA "1110111111111111"
+DATA "0000000000000000"
+DATA "2222222220222222"
+DATA "2232222220222222"
+DATA "2222222220222222"
+DATA "0000000000000000"
+DATA "1111111111111110"
+DATA "1111311111131110"
+DATA "1111111111111110"
+DATA "0000000000000000"
+DATA "2222202222222222"
+DATA "2222203222222322"
+DATA "2222202222222222"
+DATA "0000000000000000"
+FOR TT = 0 TO 6
   FOR Y = 0 TO TW - 1
     READ ROW$
     FOR X = 0 TO TW - 1
       LET C = VAL(MID$(ROW$, X + 1, 1))
-      LET TEX(TT, X, Y) = 16 + 4 * TT + C
-      LET TEX(TT + 5, X, Y) = 36 + 4 * TT + C
+      LET TEX(2 * TT, X, Y) = 16 + 8 * TT + C
+      LET TEX(2 * TT + 1, X, Y) = 20 + 8 * TT + C
     NEXT X
   NEXT Y
 NEXT TT
+
+! ---- the floor and ceiling, a dot at a time --------------------------------------
+! FLR(x, r) is the floor's colour r dots below eye level in screen column x, CEI the
+! ceiling's r dots above; both are sized to the screen in 1700. Each frame's ray
+! for a column remembers its wall slice in CTT/CTX/CLH, so the walls can be drawn
+! after (over) the floor and ceiling.
+DIM FLR(0, 0)
+DIM CEI(0, 0)
+DIM FDIST(159)                     ! how far away the floor is, r dots below eye level
+DIM FSLOT(159)                     ! and which copy of its texture (shaded far away)
+DIM CTT(319)                       ! per column: the wall's texture, its column, its height
+DIM CTX(319)
+DIM CLH(319)
 
 ! ---- minimap colours: lit (east/west faces, near) and shaded (north/south, far) --
 DIM BRIGHT(9)
@@ -241,6 +301,15 @@ LET PROJ = 1
 LET WX = 0                         ! where a ray hit along the wall (0-1)
 LET TX = 0                         ! and so the texture column it shows
 LET TT = 0                         ! which texture
+LET FR = 44                        ! the floor: its rows, and the screen they were sized for
+LET LASTW = 0
+LET LASTH = 0
+LET D = 0                          ! a floor dot: how far away, where, which texel
+LET FX = 0
+LET FY = 0
+LET U = 0
+LET V = 0
+LET FT = 0
 
 ! ---- session loop: each pass plays one game; R restarts ----------------------
 DO
@@ -272,10 +341,8 @@ GOSUB 1700                         ! measure the screen
 ! the screen, but clipped there so near walls don't run over the HUD.
 SET VIEWPORT 0, 1, VY0 / H, VY1 / H
 SET WINDOW 0, W, VY0, VY1
-! The floor; the ceiling is the black background.
-SET AREA COLOR 8
-GRAPH AREA: 0, VY0; W, VY0; W, VC; 0, VC
-! One ray per column, through the middle of the column.
+! One ray per column, through the middle of the column: it finds the column's
+! wall, then the floor and ceiling the wall leaves showing.
 FOR X = 0 TO NR - 1
   LET CAM = (2 * X + 1) / NR - 1   ! -1 at the left edge of the view, +1 at the right
   LET RX = DX + PLX * CAM
@@ -334,13 +401,38 @@ FOR X = 0 TO NR - 1
   IF SIDE = 0 AND RX < 0 THEN LET TX = TW - 1 - TX
   IF SIDE = 1 AND RY > 0 THEN LET TX = TW - 1 - TX
   LET TT = TSLOT(T)
-  IF SIDE = 1 OR PD > FAR THEN LET TT = TT + 5   ! the shaded copy
+  IF SIDE = 1 OR PD > FAR THEN LET TT = TT + 1   ! the shaded copy
+  LET CTT(X) = TT
+  LET CTX(X) = TX
+  LET CLH(X) = LH
+  ! The rows below the wall's foot (and above its top): the ray reaches the floor
+  ! FDIST(R) away at (PX, PY) + FDIST(R) * (RX, RY), in some tile; where in the tile
+  ! is the texel.
+  FOR R = INT(LH / 2) TO FR - 1
+    LET D = FDIST(R)
+    LET FX = PX + D * RX
+    LET FY = PY + D * RY
+    LET U = INT((FX - INT(FX)) * TW)
+    LET V = INT((FY - INT(FY)) * TW)
+    LET FT = FSLOT(R)
+    LET FLR(X, R) = TEX(FT, U, V)
+    LET CEI(X, R) = TEX(FT + 2, U, V)
+  NEXT R
+NEXT X
+! The floor down from eye level and the ceiling up from it (FLR(0, 0) and
+! CEI(0, 0) sit at eye level, on the left), then the walls over them, each its
+! texture's column stretched from the top of the slice (where STRIP(0, 0) goes)
+! to the bottom. Rows the walls hide still hold earlier frames' floor: hidden.
+MAT GRAPH CELLS, IN 0, VC; W, VC - FR: FLR
+MAT GRAPH CELLS, IN 0, VC; W, VC + FR: CEI
+FOR X = 0 TO NR - 1
+  LET TT = CTT(X)
+  LET TX = CTX(X)
   FOR K = 0 TO TW - 1
     LET STRIP(0, K) = TEX(TT, TX, K)
   NEXT K
-  ! The column, stretched from the top of the slice (where STRIP(0, 0) goes) to the
-  ! bottom.
   LET XL = X * CW
+  LET LH = CLH(X)
   MAT GRAPH CELLS, IN XL, VC + LH / 2; XL + CW, VC - LH / 2: STRIP
 NEXT X
 SET VIEWPORT 0, 1, 0, 1            ! the whole screen again
@@ -425,6 +517,22 @@ LET VY0 = 4                        ! the view sits between the HUD's two rows
 LET VY1 = H - 4
 LET VC = (VY0 + VY1) / 2           ! eye level
 LET PROJ = W / 2 / FOV             ! a wall 1 tile tall, 1 tile away, in dots
+LET FR = VC - VY0                  ! dot rows of floor below eye level (as many of ceiling above)
+IF W <> LASTW OR H <> LASTH THEN
+  ! A new screen size: new floor and ceiling buffers, and the floor's distance for
+  ! each row. A dot r rows below eye level (its middle r + 0.5 down) shows the
+  ! floor, half a tile below the eye, at the distance where half a tile looks
+  ! that tall: 0.5 * PROJ / (r + 0.5).
+  MAT REDIM FLR(NR - 1, FR - 1)
+  MAT REDIM CEI(NR - 1, FR - 1)
+  FOR R = 0 TO FR - 1
+    LET FDIST(R) = 0.5 * PROJ / (R + 0.5)
+    LET FSLOT(R) = FLOORTEX
+    IF FDIST(R) > FAR THEN LET FSLOT(R) = FLOORTEX + 1
+  NEXT R
+  LET LASTW = W
+  LET LASTH = H
+END IF
 RETURN
 
 ! ======================================================================

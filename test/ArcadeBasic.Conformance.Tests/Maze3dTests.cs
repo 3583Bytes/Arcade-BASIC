@@ -20,10 +20,13 @@ public class Maze3dTests
     {
         private readonly List<(int Color, GfxPoint[] Polygon)> _areas = [];
         private readonly List<(GfxRect Rect, int[] Colors)> _strips = [];
+        private readonly List<(GfxRect Rect, int Columns, int Rows, int[] Colors)> _planes = [];
         private readonly List<string> _texts = [];
         private int _areaColor = 1;
         public List<(int Color, GfxPoint[] Polygon)> Areas { get; private set; } = [];
         public List<(GfxRect Rect, int[] Colors)> Strips { get; private set; } = [];
+        /// <summary>The floor and the ceiling: one cell per dot, below and above eye level.</summary>
+        public List<(GfxRect Rect, int Columns, int Rows, int[] Colors)> Planes { get; private set; } = [];
         public List<string> Texts { get; private set; } = [];
         public readonly HashSet<string> Held = [];
         public readonly Queue<string> Typed = new();
@@ -32,6 +35,7 @@ public class Maze3dTests
         {
             _areas.Clear();
             _strips.Clear();
+            _planes.Clear();
             _texts.Clear();
         }
 
@@ -40,14 +44,15 @@ public class Maze3dTests
 
         public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
         {
-            Assert.Equal((1, 16), (columns, rows));        // one texture column
-            _strips.Add((rect, colors));
+            if ((columns, rows) == (1, 16)) _strips.Add((rect, colors));   // a wall: one texture column
+            else _planes.Add((rect, columns, rows, colors));
         }
 
         public void Flush()
         {
             Areas = [.. _areas];
             Strips = [.. _strips];
+            Planes = [.. _planes];
             Texts = [.. _texts];
         }
 
@@ -84,16 +89,17 @@ public class Maze3dTests
         }
 
         /// <summary>Which texture the slice in the middle of the view shows (0 stone,
-        /// 1 brick, 2 wood, 3 tiles, 4 the door), and whether it's the shaded copy: lit
-        /// texture t's colours are 16 + 4t to 19 + 4t, shaded ones 20 higher.</summary>
+        /// 1 brick, 2 wood, 3 tiles, 4 the door, 5 the floor, 6 the ceiling), and whether
+        /// it's the shaded copy: texture t's colours are 16 + 8t to 19 + 8t lit, the next
+        /// four shaded.</summary>
         public (int Texture, bool Shaded) CentreTexture() => Texture(Columns()[80].Colors);
 
-        public static (int Texture, bool Shaded) Texture(int[] colors)
+        public static (int Texture, bool Shaded) Texture(IEnumerable<int> colors)
         {
-            var c = colors.Min();
-            Assert.InRange(c, 16, 55);
-            Assert.All(colors, k => Assert.Equal((c - 16) / 4, (k - 16) / 4));   // one texture's colours
-            return (c < 36 ? (c - 16) / 4 : (c - 36) / 4, c >= 36);
+            var copies = colors.Select(k => (k - 16) / 4).Distinct().ToList();
+            Assert.All(colors, k => Assert.InRange(k, 16, 71));
+            Assert.Single(copies);                         // one texture's colours, one copy
+            return (copies[0] / 2, copies[0] % 2 == 1);
         }
     }
 
@@ -151,6 +157,38 @@ public class Maze3dTests
         double Height(GfxRect r) => r.Top - r.Bottom;
         Assert.True(Height(columns[80].Rect) < Height(columns[0].Rect));   // ahead is farther
         Assert.Contains(screen.Texts, t => t == "TIME 90");
+    }
+
+    [Fact]
+    public void TheFloorAndCeilingAreTexturedAndDarkenFarAway()
+    {
+        var screen = new Screen();
+        var vm = Start(screen);
+        NextFrame(vm, screen);
+
+        // The floor below eye level and the ceiling above it, a cell per dot: 160
+        // across, 44 rows (the 88-dot view's half) each.
+        Assert.Equal(2, screen.Planes.Count);
+        var (floor, ceiling) = (screen.Planes[0], screen.Planes[1]);
+        Assert.Equal((160, 44), (floor.Columns, floor.Rows));
+        Assert.Equal((160, 44), (ceiling.Columns, ceiling.Rows));
+        Assert.True(floor.Rect.Top <= 0.5 + 1e-9 && ceiling.Rect.Bottom >= 0.5 - 1e-9);
+
+        // Down the middle of the corridor (the wall ahead hides the rows nearest eye
+        // level), the floor and ceiling show their own textures. Devices get the top
+        // row first: for the floor that's eye level, for the ceiling the nearest row.
+        static int[] Rows(int[] colors, int from, int to) =>
+            [.. Enumerable.Range(from, to - from).Select(r => colors[r * 160 + 80])];
+        Assert.Equal((5, false), Screen.Texture(Rows(floor.Colors, 14, 44)));
+        Assert.Equal((6, false), Screen.Texture(Rows(ceiling.Colors, 0, 30)));
+
+        // Beyond FAR (6 tiles; here 2) the floor is the shaded copy: the row 14 dots
+        // below eye level is 4.2 tiles away, the bottom one 1.4.
+        var near = new Screen();
+        var vm2 = Start(near, ("LET FAR = 6 ", "LET FAR = 2 "));
+        NextFrame(vm2, near);
+        Assert.Equal((5, true), Screen.Texture(Rows(near.Planes[0].Colors, 14, 16)));
+        Assert.Equal((5, false), Screen.Texture(Rows(near.Planes[0].Colors, 40, 44)));
     }
 
     [Fact]
