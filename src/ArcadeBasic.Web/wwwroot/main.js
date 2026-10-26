@@ -1,4 +1,4 @@
-// Arcade BASIC playground (spike). The .NET side (Program.cs) compiles a program
+// Arcade BASIC playground. The .NET side (Program.cs) compiles a program
 // and steps the bytecode VM; this page owns the loop: each animation frame it runs
 // the VM for a slice of time, waits out SLEEPs, draws the newest frame on the
 // canvas, and feeds the keyboard back. ?bench=1 runs the measurements and posts
@@ -302,11 +302,25 @@ canvas.addEventListener('lostpointercapture', () => P.PointerCancel());
 $('glow').addEventListener('change', () => { if (lastFrame) drawFrame(...lastFrame); });
 fitCanvas();
 
+// The page's address names the example (…/#breakout), so a link can open any of
+// them; with none it starts on the 3D maze.
 const examples = $('examples');
-for (const name of P.Examples()) examples.add(new Option(name, name));
-examples.value = 'invaders.bas';
+for (const name of P.Examples()) examples.add(new Option(name.replace(/\.bas$/, ''), name));
+const named = () => {
+  const name = decodeURIComponent(location.hash.slice(1)).toLowerCase();
+  return name && P.Examples().find(n => n.toLowerCase() === name || n.toLowerCase() === name + '.bas');
+};
+examples.value = named() || 'maze3d.bas';
 const loadExample = () => { source.value = P.ExampleSource(examples.value); };
-examples.addEventListener('change', () => { stop(); loadExample(); });
+examples.addEventListener('change', () => {
+  stop();
+  loadExample();
+  history.replaceState(null, '', '#' + examples.value.replace(/\.bas$/, ''));
+});
+window.addEventListener('hashchange', () => {
+  const name = named();
+  if (name && name !== examples.value) { stop(); examples.value = name; loadExample(); }
+});
 loadExample();
 $('run').addEventListener('click', () => start(source.value));
 $('stop').addEventListener('click', stop);
@@ -317,6 +331,10 @@ $('loading').textContent = '';
 const params = new URLSearchParams(location.search);
 if (params.has('bench')) bench();
 if (params.get('selftest') === 'kanban') kanbanSelftest();
+// ?selftest=page: report which example the address opened (for checking deep links).
+if (params.get('selftest') === 'page')
+  fetch('/results', { method: 'POST', body: JSON.stringify({ example: examples.value, hash: location.hash,
+    firstLine: source.value.split('\n')[0], examples: P.Examples().length }) });
 
 // ?selftest=kanban: drag card #5 onto Done with real DOM pointer events, type Q, report.
 async function kanbanSelftest() {

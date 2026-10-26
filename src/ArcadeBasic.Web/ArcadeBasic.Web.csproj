@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
 
-  <!-- SPIKE: the browser playground — the bytecode VM stepped from the page's
-       animation loop, drawing on a canvas. Not in ArcadeBasic.sln yet, so CI
-       doesn't build it. -->
+  <!-- The browser playground: the bytecode VM stepped from the page's animation
+       loop, drawing on a canvas. Published to GitHub Pages by
+       .github/workflows/pages.yml; not in ArcadeBasic.sln, so CI doesn't build it. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>

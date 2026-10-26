@@ -2,13 +2,17 @@
 
 [![CI](https://github.com/3583Bytes/Arcade-BASIC/actions/workflows/ci.yml/badge.svg)](https://github.com/3583Bytes/Arcade-BASIC/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/3583Bytes/Arcade-BASIC?label=release)](https://github.com/3583Bytes/Arcade-BASIC/releases/latest)
-[![.NET](https://img.shields.io/badge/.NET-9.0-512BD4)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![Spec: ISO 10279](https://img.shields.io/badge/spec-ISO%2010279%3A1991-blue)](https://www.iso.org/standard/18305.html)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A fun and modern re-implementation of **Full BASIC** including an interpreter, compiler, and IDE Based on (ISO/IEC 10279:1991, ANSI X3.113-1987) and ECMA-116 for Graphics module implementation.
 
 Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity game, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
+
+**[▶ Play in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: pick a program (a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…), read and edit its BASIC, and run it.
+
+[![A first-person 3D maze written in Arcade BASIC, running in the browser](src/ArcadeBasic.Web/wwwroot/preview.png)](https://3583bytes.github.io/Arcade-BASIC/)
 
 ## Why? 
 

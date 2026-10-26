@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Arcade BASIC Playground</title>
+  <meta name="description" content="Write and run classic BASIC in your browser: a Full BASIC (ANSI/ECMA-116) engine compiled to WebAssembly, with graphics, arcade games, and a first-person 3D maze written in BASIC.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Arcade BASIC Playground">
+  <meta property="og:description" content="Classic BASIC in your browser — edit the programs and run them: arcade games, a kanban board, and a textured 3D maze, all written in BASIC.">
+  <meta property="og:image" content="https://3583bytes.github.io/Arcade-BASIC/preview.png">
+  <meta name="twitter:card" content="summary_large_image">
   <style>
     :root {
       --bg: #101114; --panel: #181a1f; --text: #e6e6e6; --muted: #9aa0a6;
@@ -31,6 +37,11 @@
     #inputRow input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 5px 8px; font: 13px ui-monospace, Menlo, monospace; }
     #stats { color: var(--muted); font: 12px ui-monospace, Menlo, monospace; margin-top: 8px; }
     #loading { color: var(--muted); }
+    header nav { margin-left: auto; display: flex; gap: 14px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    #hint { color: var(--muted); margin: 8px 0 0; }
+    footer { color: var(--muted); padding: 0 16px 16px; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -41,16 +52,25 @@
     <button id="stop" disabled>Stop</button>
     <label><input type="checkbox" id="glow"> phosphor glow</label>
     <span id="loading">loading .NET…</span>
+    <nav>
+      <a href="https://github.com/3583Bytes/Arcade-BASIC">GitHub</a>
+      <a href="https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/keywords.md">Language reference</a>
+    </nav>
   </header>
   <main>
     <textarea id="source" spellcheck="false" aria-label="BASIC source"></textarea>
     <section>
       <canvas id="screen" width="960" height="576" tabindex="0" aria-label="Program screen (click to give it the keyboard)"></canvas>
+      <p id="hint">Pick a program, press <b>Run</b>, then click the screen so it gets your keys. Edit the source on the left and run it again.</p>
       <pre id="output" aria-live="polite"></pre>
       <form id="inputRow"><input id="inputLine" autocomplete="off" aria-label="Program input"><button>Enter</button></form>
       <div id="stats"></div>
     </section>
   </main>
+  <footer>
+    Arcade BASIC is a Full BASIC (ANSI X3.113 / ECMA-116) interpreter and bytecode VM written in C#;
+    here it runs in your browser, compiled to WebAssembly. Nothing is sent anywhere.
+  </footer>
   <script type="module" src="./main.js"></script>
 </body>
 </html>

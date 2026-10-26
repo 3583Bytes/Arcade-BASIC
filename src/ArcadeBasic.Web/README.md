@@ -1,4 +1,4 @@
-# Arcade BASIC playground (spike)
+# Arcade BASIC playground
 
 A browser page that runs Arcade BASIC programs on the bytecode VM, compiled to
 WebAssembly with the plain .NET WebAssembly SDK (no Blazor). The page
@@ -7,7 +7,13 @@ for up to ~10 ms, waits out `SLEEP`s, shows `PRINT` output, asks for `INPUT`, an
 replays the newest frame onto a `<canvas>`. Keys go to the program while the
 canvas has focus, with exact held-key state for `KEYDOWN`.
 
-Not in `ArcadeBasic.sln` yet, so CI doesn't build it.
+It's live at <https://3583bytes.github.io/Arcade-BASIC/>, published by
+[`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) whenever `main`
+changes (GitHub Pages must be set to deploy from GitHub Actions: Settings → Pages →
+Source). The address names the example to open — `…/Arcade-BASIC/#breakout` — and
+the picker keeps it up to date, so any example can be linked to; with none it opens
+`maze3d`. It isn't in `ArcadeBasic.sln`, so the CI workflow doesn't build it; the
+Pages one does.
 
 ## Run it
 
@@ -39,7 +45,8 @@ at the interpreter's speed.
 that accepts them; a plain static server just ignores the request): compute
 loops, then ten seconds each of `invaders`, `breakout` and `maze3d` for their
 frame rate and VM time per frame. Add `&snapshot` to include each game's last
-frame as a PNG.
+frame as a PNG. `?selftest=kanban` drags a card with real pointer events and
+reports the board; `?selftest=page` reports which example the address opened.
 
 ## Pieces
 
