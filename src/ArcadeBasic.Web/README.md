@@ -29,6 +29,11 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
 - **Kept in this browser**: every open tab and its text is saved in
   `localStorage` as you type, so a reload brings it all back. Nothing is sent
   anywhere.
+- **Sound**: `SOUND`, `BEEP` and `PLAY` play through Web Audio as a square wave,
+  like the PC speaker (`wwwroot/audio.js`); foreground music holds the program up
+  until it's played and background (`MB`) music doesn't, up to GW-BASIC's 32 tones.
+  The browser allows sound after the first click or key press (Run counts), and the
+  Sound box turns it off. The arcade examples have sound effects.
 - **Links**: the address names the example showing (`…/Arcade-BASIC/#breakout`),
   and *File → Copy a link* puts a whole program, compressed, in the address
   (`#code=…`).
@@ -73,7 +78,9 @@ frame as a PNG. `?selftest=kanban` drags a card with real pointer events and
 reports the board; `?selftest=page` reports which program the address opened and
 the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
-tabs, Save (catching the download), line endings, links — and reports each step.
+tabs, Save (catching the download), line endings, links, sound timing and Web
+Audio (oscillators started, with the test profile allowing autoplay) — and reports
+each step.
 Run `?selftest=page` again in the same browser profile to see the tabs come back.
 
 ## The editor bundle
@@ -95,8 +102,10 @@ npm ci && npm run build
 | `Program.cs` | `[JSExport]` surface: check, load/compile, `Step`, output, input, frames, keys, stats, the error's line |
 | `CanvasGraphicsDevice.cs` | §13 backend: records each frame as a flat command list the page replays |
 | `BrowserKeyboard.cs` | `IKeyboard` + `IKeyState` from DOM `keydown`/`keyup` |
+| `BrowserAudio.cs` | `IAudioDevice` + `IAudioQueue`: collects tones for the page |
 | `wwwroot/main.js` | the loop, canvas drawing (optional phosphor glow), keyboard, input, menus, shortcuts, themes, links |
 | `wwwroot/editor.js` | the CodeMirror editor: BASIC colouring, problems, runtime-error line, completion, go to definition |
 | `wwwroot/documents.js` | the tabs: examples, files (open, save, drop), changes, what's kept in the browser |
+| `wwwroot/audio.js` | sound: tones on a timeline, played as Web Audio square waves |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

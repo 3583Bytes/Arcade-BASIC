@@ -8,6 +8,7 @@
 import { dotnet } from './_framework/dotnet.js';
 import { createEditor } from './editor.js';
 import { createDocuments } from './documents.js';
+import { createAudio, QUEUE } from './audio.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
@@ -23,6 +24,9 @@ let readyMs = 0;
 const RUNNING = 0, SLEEPING = 1, NEEDS_INPUT = 2, AWAITING_AUDIO = 3, HALTED = 4, NEEDS_POINT = 5;
 const SLICE = 20_000;          // instructions per Step call
 const FRAME_BUDGET_MS = 10;    // VM time allowed per animation frame
+// A foreground SOUND/PLAY resumes this soon before its tones end, so the next
+// statement's tones follow on without a gap (the page only steps on animation frames).
+const AUDIO_LEAD_MS = 20;
 
 // The colours (GfxPalette): 256 of them, which SET COLOR MIX can change. A frame
 // brings the whole palette with it whenever it has changed — always the first.
@@ -43,6 +47,7 @@ const store = {
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* no storage */ } },
 };
 
+const audio = createAudio();
 let run = null;   // the running program's loop state
 let lastTexts = [];   // the last drawn frame's text: [{ x, y, text }] in unit coordinates
 
@@ -142,6 +147,7 @@ function ask({ title, message = '', input = null, buttons }) {
 function runActive() {
   const doc = documents.active;
   if (!P || !doc) return;
+  audio.unlock();                        // (a click or key press: the browser now allows sound)
   start(editor.state.doc.toString(), null, doc);
 }
 
@@ -155,7 +161,8 @@ function start(text, onHalt, doc = null) {
     if (doc) editor.goToFirstProblem();
     return false;
   }
-  run = { sleepingUntil: 0, waiting: false, waitingPoint: false, began: performance.now(), ticks: 0, frames: 0, vmMs: 0, onHalt, doc };
+  audio.reset();
+  run = { sleepingUntil: 0, audioUntil: 0, waiting: false, waitingPoint: false, began: performance.now(), ticks: 0, frames: 0, vmMs: 0, onHalt, doc };
   documents.setRunning(doc);
   $('stop').disabled = false;
   canvas.focus();
@@ -163,7 +170,9 @@ function start(text, onHalt, doc = null) {
   return true;
 }
 
-function stop() {
+/** Stop the program; its sound stops too unless it ended by itself (background music plays on). */
+function stop(silence = true) {
+  if (silence) audio.stop();
   if (run) { P.Stop(); documents.setRunning(null); }
   run = null;
   $('stop').disabled = true;
@@ -176,13 +185,21 @@ function tick() {
   if (!r) return;
   r.ticks++;
   let halted = false;
-  if (!r.waiting && !r.waitingPoint && performance.now() >= r.sleepingUntil) {
+  const playing = audio.queued();
+  const ready = performance.now() >= Math.max(r.sleepingUntil, r.audioUntil) && playing <= QUEUE;
+  if (!r.waiting && !r.waitingPoint && ready) {
     const t0 = performance.now();
+    P.SetTonesPlaying(playing);
     for (;;) {
       const s = P.Step(SLICE);
-      if (s === RUNNING || s === AWAITING_AUDIO) {        // no audio yet: don't wait for it
+      if (s === RUNNING) {
         if (performance.now() - t0 < FRAME_BUDGET_MS) continue;
         break;
+      }
+      if (s === AWAITING_AUDIO) {     // a foreground SOUND, BEEP or PLAY; or a full background queue
+        audio.play(P.TakeTones());
+        if (P.MaxQueuedTones() === 0) r.audioUntil = performance.now() + audio.remaining() - AUDIO_LEAD_MS;
+        break;                        // (with a full queue, the wait is the `playing <= QUEUE` above)
       }
       if (s === SLEEPING) {
         // Wake-ups land on animation frames, so time each SLEEP from the previous
@@ -200,6 +217,7 @@ function tick() {
     }
     r.vmMs += performance.now() - t0;
   }
+  audio.play(P.TakeTones());                              // background music (MB)
   appendOutput(P.TakeOutput());
   const frame = P.TakeFrame();
   if (frame.length) { drawFrame(frame, P.FrameText(), P.FrameCells()); r.frames++; }
@@ -209,7 +227,7 @@ function tick() {
     const line = error ? P.CurrentLine() : 0;
     if (error) appendOutput('\n' + error + '\n', 'error');
     r.instructions = P.Instructions();
-    stop();
+    stop(false);
     if (error && r.doc && documents.all.includes(r.doc)) {   // point at the line that failed
       if (documents.active !== r.doc) documents.show(r.doc);
       editor.showRuntimeError(line);
@@ -407,6 +425,7 @@ function showStats(r, finished = false) {
 // Keys go to the program only while the canvas has focus (so typing in the editor
 // doesn't); the page's own shortcuts (F5, Ctrl+S, …) are taken before it sees them.
 canvas.addEventListener('keydown', e => {
+  audio.unlock();
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   P.KeyDown(e.code, e.key, e.repeat);
   e.preventDefault();
@@ -426,6 +445,7 @@ const unitPoint = e => {
 canvas.addEventListener('pointermove', e => P?.PointerMove(...unitPoint(e)));
 canvas.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !P) return;
+  audio.unlock();
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not a live pointer (synthetic) */ }
   canvas.focus();
   P.PointerDown(...unitPoint(e));
@@ -443,6 +463,15 @@ glowBox.addEventListener('change', () => {
   if (lastFrame) drawFrame(...lastFrame);
 });
 fitCanvas();
+
+const soundBox = $('sound');
+soundBox.checked = store.get('arcade-basic.sound') !== '0';
+audio.muted = !soundBox.checked;
+soundBox.addEventListener('change', () => {
+  store.set('arcade-basic.sound', soundBox.checked ? '1' : '0');
+  audio.muted = !soundBox.checked;
+  if (soundBox.checked) audio.unlock();
+});
 
 // -- The page's controls ------------------------------------------------------------------
 
@@ -511,14 +540,14 @@ const menus = [...document.querySelectorAll('.menu')].map(menu => {
 document.addEventListener('pointerdown', e => menus.forEach(m => { if (!m.menu.contains(e.target)) m.close(); }));
 
 $('run').addEventListener('click', runActive);
-$('stop').addEventListener('click', stop);
+$('stop').addEventListener('click', () => stop());
 
 // The keyboard shortcuts, wherever the focus is.
 window.addEventListener('keydown', e => {
   const mod = isMac ? e.metaKey : e.ctrlKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   let action = null;
-  if (key === 'F5' && !mod) action = e.shiftKey ? stop : runActive;
+  if (key === 'F5' && !mod) action = e.shiftKey ? () => stop() : runActive;
   else if (mod && key === 'Enter') action = runActive;
   else if (mod && !e.altKey && key === 's') action = e.shiftKey ? actions.saveAs : actions.save;
   else if (mod && !e.altKey && !e.shiftKey && key === 'o') action = actions.open;
@@ -629,7 +658,7 @@ async function openAddress(hash) {
 
 // -- Starting up -------------------------------------------------------------------------------
 
-window.arcadeBasic = { editor, documents, run: runActive };   // for the browser console (and screenshots)
+window.arcadeBasic = { editor, documents, audio, run: runActive };   // for the browser console (and screenshots)
 
 const startHash = location.hash;
 const restored = documents.restore();    // what was open last time, before .NET is even here
@@ -677,7 +706,7 @@ $('loading').textContent = '';
 const params = new URLSearchParams(location.search);
 if (params.has('bench')) bench();
 if (params.get('selftest') === 'kanban') kanbanSelftest();
-if (params.get('selftest') === 'ide') import('./selftest.js').then(m => m.ideSelftest({ P, editor, documents, ask, start, stop, pack, openAddress, $ }));
+if (params.get('selftest') === 'ide') import('./selftest.js').then(m => m.ideSelftest({ P, editor, documents, ask, start, stop, pack, openAddress, $, audio }));
 // ?selftest=page: report which program the address opened and what's in the tabs.
 if (params.get('selftest') === 'page')
   fetch('/results', { method: 'POST', body: JSON.stringify({ example: documents.active?.name, hash: location.hash,

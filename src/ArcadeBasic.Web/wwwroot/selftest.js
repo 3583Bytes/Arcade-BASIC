@@ -2,7 +2,7 @@
 // /results (for the local test server). Headless Firefox has no File System Access
 // API, so this covers Open and Save's fallbacks: a downloaded file, here caught
 // before it reaches the disk.
-export async function ideSelftest({ editor, documents, pack, openAddress, $ }) {
+export async function ideSelftest({ editor, documents, pack, openAddress, $, audio }) {
   const pause = (ms = 300) => new Promise(r => setTimeout(r, ms));
   const view = editor.view;
   const result = {};
@@ -168,6 +168,39 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $ }) {
     const code = await pack(text);
     await openAddress('#code=' + code);
     return { codeLength: code.length, active: documents.active.name, same: view.state.doc.toString() === text };
+  });
+
+  await step('soundTiming', async () => {
+    // How long until the program PRINTs "after": a foreground tune holds it up, background music doesn't.
+    const timeTo = async program => {
+      documents.newProgram();
+      setText(program);
+      const t0 = performance.now();
+      $('run').click();
+      for (let i = 0; i < 400 && !$('output').textContent.includes('after'); i++) await pause(10);
+      return Math.round(performance.now() - t0);
+    };
+    return {
+      foregroundPlay500: await timeTo('PLAY "T240 L8 CDEC"\nPRINT "after"\n'),             // 4 eighths at T240
+      backgroundPlay0: await timeTo('PLAY "MB T240 L8 CDEC"\nPRINT "after"\n'),
+      sound500: await timeTo('SOUND 440, 9.1\nPRINT "after"\n'),                          // 9.1 ticks of 18.2/s
+      fullQueue470: await timeTo('FOR I = 1 TO 40\nPLAY "MB T255 L16 C"\nNEXT I\nPRINT "after"\n'),   // 8 of 40 notes must play first
+      twoPlaysInARow1000: await timeTo('PLAY "T240 L8 CDEC"\nPLAY "T240 L8 CDEC"\nPRINT "after"\n'),
+    };
+  });
+
+  await step('webAudio', async () => {
+    // With autoplay allowed (the test profile's setting), Run's click starts audio:
+    // count the square waves actually started for four notes and a rest.
+    let started = 0;
+    const start = OscillatorNode.prototype.start;
+    OscillatorNode.prototype.start = function (...args) { started++; return start.apply(this, args); };
+    documents.newProgram();
+    setText('PLAY "T240 L8 C D P8 E C"\nPRINT "after"\n');
+    $('run').click();
+    for (let i = 0; i < 200 && !$('output').textContent.includes('after'); i++) await pause(10);
+    OscillatorNode.prototype.start = start;
+    return { state: audio.state, oscillators: started };
   });
 
   await step('keptInBrowser', async () => {

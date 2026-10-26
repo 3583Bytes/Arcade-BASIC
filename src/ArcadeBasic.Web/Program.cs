@@ -21,6 +21,7 @@ internal static partial class Playground
 
     private static readonly CanvasGraphicsDevice Screen = new();
     private static readonly BrowserKeyboard Keyboard = new();
+    private static readonly BrowserAudio Audio = new();
     private static BasicVm? s_vm;
     private static StringWriter s_output = new() { NewLine = "\n" };
     private static LineInputQueue s_input = new();
@@ -71,8 +72,9 @@ internal static partial class Playground
         s_input = new LineInputQueue();
         Screen.Reset();
         Keyboard.Clear();
+        Audio.Clear();
         s_last = default;
-        s_vm = new BasicVm(compiled, s_output, s_input, Screen, Keyboard);
+        s_vm = new BasicVm(compiled, s_output, s_input, Screen, Keyboard, Audio);
         return "";
     }
 
@@ -164,6 +166,20 @@ internal static partial class Playground
 
     [JSExport]
     internal static void ProvideInput(string line) => s_input.Provide(line);
+
+    /// <summary>The tones played since the last call (see <see cref="BrowserAudio.Take"/>).</summary>
+    [JSExport]
+    [return: JSMarshalAs<JSType.Array<JSType.Number>>]
+    internal static double[] TakeTones() => Audio.Take();
+
+    /// <summary>How many tones the page is still playing, for GW-BASIC's background-music limit.</summary>
+    [JSExport]
+    internal static void SetTonesPlaying(int count) => Audio.SetPlaying(count);
+
+    /// <summary>After <see cref="StepStatus.AwaitingAudio"/>: resume once no more than this many
+    /// tones are left to play (0: all of them).</summary>
+    [JSExport]
+    internal static int MaxQueuedTones() => s_last.MaxQueuedTones;
 
     /// <summary>The newest complete frame's commands (see <see cref="CanvasGraphicsDevice"/>), or empty if unchanged.</summary>
     [JSExport]

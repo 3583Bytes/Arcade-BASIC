@@ -5,6 +5,9 @@
 ! module, so it draws on the Braille console: it runs in the IDE, via
 ! `arcade-basic run examples/invaders.bas`, and as a standalone binary.
 !
+! The sound effects are PLAY "MB…": background music (GW-BASIC), which plays
+! while the game runs on.
+!
 ! Controls:   hold A / LEFT  move left     hold D / RIGHT  move right
 !             SPACE  fire             Q  quit
 ! After a game ends:  R  play again    Q  quit
@@ -146,6 +149,7 @@ DO
       LET BLIVE = 1
       LET BX = PX
       LET BLY = 3
+      PLAY "MB T255 L64 O6 C O5 A F"   ! pew
     END IF
   END IF
 LOOP
@@ -177,6 +181,7 @@ IF BLIVE = 1 THEN
       IF BX >= AX AND BX <= AX + AW AND BLY >= AY - 0.5 AND BLY <= AY + AH + 1 THEN
         LET ALIVE(I) = 0
         LET BLIVE = 0
+        PLAY "MB T255 L64 O3 C O2 A F"
         LET SC = SC + 10
         LET NLEFT = NLEFT - 1
         IF SC > HISCORE THEN LET HISCORE = SC     ! HUD shows the live best
@@ -196,6 +201,8 @@ END IF
 LET STEPF = 1 + INT(NLEFT / 3)
 IF FC >= STEPF THEN
   LET FC = 0
+  LET MN = (MN MOD 4) + 1          ! the march: four falling bass notes, one per step
+  PLAY "MB T255 L32 N" & STR$(35 - MN)
   LET GRIDW = (NCOL - 1) * COLSP + AW
   LET GX = GX + DX
   IF GX < 2 OR GX + GRIDW > FW - 2 THEN
@@ -253,6 +260,7 @@ RETURN
 ! 5200  Finalize a game: flag a new record in the message, then persist.
 ! ======================================================================
 5200 REM ---- finalize ----
+IF STATE = 1 THEN PLAY "MB T180 L16 O4 C E G O5 C8" ELSE PLAY "MB T120 L8 O3 G E C4"
 IF NEWREC = 1 THEN LET MSG$ = MSG$ & "  -  NEW HIGH!"
 GOSUB 5100
 IF ANYKEY = 1 THEN
@@ -278,6 +286,7 @@ LET FC = 0
 LET SC = 0
 LET NLEFT = NA
 LET STATE = 0
+LET MN = 0                       ! the march's last note (1..4)
 LET QUIT = 0
 LET NEWREC = 0
 LET PREVHI = HISCORE

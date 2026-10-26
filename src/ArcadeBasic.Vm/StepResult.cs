@@ -18,8 +18,10 @@ public enum StepStatus
     NeedsInput,
 
     /// <summary>A foreground <c>SOUND</c>, <c>BEEP</c> or <c>PLAY</c> wants its audio to
-    /// finish before the program continues. Resume once the audio device has played
-    /// what it was given (<see cref="BasicVm.Run()"/> calls its <c>Flush()</c>).</summary>
+    /// finish before the program continues — or background music has more tones queued
+    /// than GW-BASIC's buffer holds (an <see cref="Runtime.IAudioQueue"/> device). Resume
+    /// once no more than <see cref="StepResult.MaxQueuedTones"/> are left to play
+    /// (<see cref="BasicVm.Run()"/> calls the device's <c>Flush()</c>).</summary>
     AwaitingAudio,
 
     /// <summary>The program has ended — normally, by an unhandled exception
@@ -40,11 +42,16 @@ public enum StepStatus
 /// unhandled exception, 2 if cancelled.</param>
 /// <param name="Error">For <see cref="StepStatus.Halted"/>: the unhandled exception, formatted as the
 /// CLI reports it (<c>unhandled exception type N at line L: text</c>); null otherwise.</param>
-public readonly record struct StepResult(StepStatus Status, double SleepSeconds = 0, int ExitCode = 0, string? Error = null)
+/// <param name="MaxQueuedTones">For <see cref="StepStatus.AwaitingAudio"/>: resume once no more than
+/// this many tones are left to play — 0 after a foreground statement (all of it),
+/// <see cref="Runtime.AudioState.BackgroundCapacity"/> when background music overfilled the buffer.</param>
+public readonly record struct StepResult(StepStatus Status, double SleepSeconds = 0, int ExitCode = 0, string? Error = null,
+    int MaxQueuedTones = 0)
 {
     internal static readonly StepResult Running = new(StepStatus.Running);
     internal static readonly StepResult NeedsInput = new(StepStatus.NeedsInput);
     internal static readonly StepResult AwaitingAudio = new(StepStatus.AwaitingAudio);
+    internal static readonly StepResult AudioQueueFull = new(StepStatus.AwaitingAudio, MaxQueuedTones: Runtime.AudioState.BackgroundCapacity);
     internal static readonly StepResult NeedsPoint = new(StepStatus.NeedsPoint);
     internal static readonly StepResult Ended = new(StepStatus.Halted);
 

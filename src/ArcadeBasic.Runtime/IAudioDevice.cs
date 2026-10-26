@@ -22,6 +22,21 @@ public interface IAudioDevice
 }
 
 /// <summary>
+/// Optional, for an audio device that can't block: one whose host plays the tones
+/// later, on its own clock, and steps the program (a browser's Web Audio). GW-BASIC
+/// holds <see cref="AudioState.BackgroundCapacity"/> tones of background (<c>MB</c>)
+/// music and makes a program that gets further ahead wait for room;
+/// <see cref="RealtimeAudioDevice"/> does that by blocking in <see cref="IAudioDevice.Emit"/>.
+/// A device that can't block says how many tones it holds instead, and a stepped VM
+/// pauses after the statement that overfilled it until the host has played enough.
+/// </summary>
+public interface IAudioQueue
+{
+    /// <summary>Tones given and not played yet.</summary>
+    int Queued { get; }
+}
+
+/// <summary>
 /// Optional sink for <b>non-fatal</b> audio diagnostics: an initialization or
 /// playback failure that a device handles by degrading to silence rather than
 /// throwing (a <c>SOUND</c> statement must never crash a program just because the

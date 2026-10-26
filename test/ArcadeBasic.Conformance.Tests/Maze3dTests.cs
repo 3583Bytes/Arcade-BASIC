@@ -18,6 +18,11 @@ public class Maze3dTests
     /// colour), cell arrays and text, and a keyboard the test drives.</summary>
     private sealed class Screen : IGraphicsDevice, ICellArrayDevice, IKeyboard, IKeyState
     {
+        /// <summary>What it played, a tone a line: <c>TONE Hz sounded silent</c>.</summary>
+        public RecordingAudioDevice Audio { get; } = new();
+
+        public int Count(string hz) => Audio.Transcript.Split('\n').Count(t => t.StartsWith($"TONE {hz} "));
+
         private readonly List<(int Color, GfxPoint[] Polygon)> _areas = [];
         private readonly List<(GfxRect Rect, int[] Colors)> _strips = [];
         private readonly List<(GfxRect Rect, int Columns, int Rows, int[] Colors)> _planes = [];
@@ -126,7 +131,7 @@ public class Maze3dTests
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors);
         Assert.Empty(diags.All);   // no warnings either
-        return new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), new LineInputQueue(), screen, screen);
+        return new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), new LineInputQueue(), screen, screen, screen.Audio);
     }
 
     /// <summary>Step until the program presents its next frame (SLEEP) or ends —
@@ -245,6 +250,7 @@ public class Maze3dTests
         for (var i = 0; i < 25; i++) NextFrame(vm, screen);
         Assert.Contains("The door is locked: find the key", screen.Texts);
         Assert.DoesNotContain("YOU ESCAPED!", screen.Texts);
+        Assert.Equal(2, screen.Count("65.4064"));   // one buzz (O2 C, rest, C) for a second of pushing
     }
 
     [Fact]
@@ -261,6 +267,7 @@ public class Maze3dTests
         screen.Held.Add("w");                          // a held key: there is a keyboard, so it asks R / Q
         for (var i = 0; i < 40 && !screen.Texts.Contains("YOU ESCAPED!"); i++) NextFrame(vm, screen);
         Assert.Contains("YOU ESCAPED!", screen.Texts);
+        Assert.StartsWith("TONE 1046.5023 ", screen.Audio.Transcript.Split('\n')[^2]);   // the fanfare's last note, O6 C
 
         screen.Held.Clear();
         screen.Typed.Enqueue("q");
@@ -300,6 +307,7 @@ public class Maze3dTests
         Assert.Contains("GEMS 1   MAZE 3D", screen.Texts);
         Assert.Contains("A gem: +10 seconds", screen.Texts);
         Assert.Contains("TIME 100", screen.Texts);     // 90 + 10, under a second in
+        Assert.Equal(1, screen.Count("783.9909"));     // the sparkle: O5 G, O6 C E
         Assert.Empty(screen.Sprites);                  // picked up: gone
     }
 
@@ -312,6 +320,8 @@ public class Maze3dTests
         for (var i = 0; i < 100 && status != StepStatus.Halted; i++) status = NextFrame(vm, screen);
         Assert.Equal(StepStatus.Halted, status);       // no prompt: nobody pressed a key
         Assert.Contains("OUT OF TIME", screen.Texts);
+        Assert.Equal(1, screen.Count("880.0000"));     // the last seconds tick (2 → 1), O5 A
+        Assert.StartsWith("TONE 130.8128 ", screen.Audio.Transcript.Split('\n')[^2]);   // ... D C2: O3 C
     }
 
     [Fact]

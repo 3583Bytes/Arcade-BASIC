@@ -25,7 +25,7 @@ namespace ArcadeBasic.Runtime;
 /// </summary>
 public sealed class RealtimeAudioDevice : IAudioDevice, IDisposable
 {
-    private readonly BlockingCollection<WorkItem> _queue = new(boundedCapacity: 32);
+    private readonly BlockingCollection<WorkItem> _queue = new(boundedCapacity: AudioState.BackgroundCapacity);
     private readonly Thread _worker;
     private readonly Func<IPcmSink> _sinkFactory;
     private readonly AudioDiagnostic? _onDiagnostic;

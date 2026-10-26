@@ -12,8 +12,7 @@ namespace ArcadeBasic.Runtime;
 ///
 /// Semantics follow the GW-BASIC User's Guide; see docs/audio-extension.md for the
 /// sourced spec and the implementation-defined choices (A4 = 440 Hz equal
-/// temperament; `MB` background music is parsed but rendered as foreground in this
-/// phase).
+/// temperament).
 /// </summary>
 public sealed class AudioState
 {
@@ -21,11 +20,15 @@ public sealed class AudioState
     public int Octave = 4;        // O0..O6
     public int Length = 4;        // default note length denominator (L1..L64)
     public int Tempo = 120;       // quarter notes (L4) per minute (T32..T255)
-    public bool Background;       // MB set; MF (default) clears. Phase 1: no async.
+    public bool Background;       // MB set; MF (default) clears
 
     private double _articulation = 7.0 / 8.0;   // MN default; ML=1, MS=3/4
 
     private const double TicksPerSecond = 18.2;  // GW-BASIC SOUND duration unit
+
+    /// <summary>GW-BASIC's background-music buffer, in tones: a program in <c>MB</c> that
+    /// gets further ahead than this waits for room.</summary>
+    public const int BackgroundCapacity = 32;
 
     // -- SOUND / BEEP ----------------------------------------------------
 
@@ -118,7 +121,7 @@ public sealed class AudioState
             case 'L': _articulation = 1.0; break;         // legato
             case 'S': _articulation = 3.0 / 4.0; break;   // staccato
             case 'F': Background = false; break;          // foreground
-            case 'B': Background = true; break;           // background (Phase 1: rendered as foreground)
+            case 'B': Background = true; break;           // background
             default: throw new BasicRuntimeException(5, $"PLAY: unknown M command 'M{s[i - 1]}'");
         }
     }

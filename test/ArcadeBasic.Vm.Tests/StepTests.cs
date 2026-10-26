@@ -152,6 +152,44 @@ public class StepTests
         output.ToString().Should().Be("a\nb\n");
     }
 
+    /// <summary>A device that can't block (a browser's): it holds what it's given until
+    /// the test "plays" some.</summary>
+    private sealed class HeldAudio : IAudioDevice, IAudioQueue
+    {
+        public int Queued { get; set; }
+        public void Emit(ToneEvent tone) => Queued++;
+        public void Flush() { }
+    }
+
+    [Fact]
+    public void BackgroundMusicPastTheBufferWaitsForRoom()
+    {
+        // GW-BASIC holds 32 tones of MB music; the 33rd waits. A device that can't block
+        // says how full it is, and the VM pauses after the statement that overfilled it.
+        var output = Output();
+        var audio = new HeldAudio();
+        var vm = Vm("FOR I = 1 TO 40\nPLAY \"MB C\"\nNEXT I\nPRINT \"after\"\n", output, audio: audio);
+
+        vm.Step(10_000).Should().Be(new StepResult(StepStatus.AwaitingAudio, MaxQueuedTones: 32));
+        audio.Queued.Should().Be(33);
+        audio.Queued = 32;                                               // one played
+        vm.Step(10_000).Should().Be(new StepResult(StepStatus.AwaitingAudio, MaxQueuedTones: 32));
+        audio.Queued.Should().Be(33);
+        output.ToString().Should().BeEmpty();
+
+        audio.Queued = 0;                                                // all played
+        vm.Step(10_000).Status.Should().Be(StepStatus.Halted);
+        output.ToString().Should().Be("after\n");
+        audio.Queued.Should().Be(6);                                     // the last six
+    }
+
+    [Fact]
+    public void AForegroundStatementWaitsForAllOfIt()
+    {
+        var vm = Vm("PLAY \"C\"\n", Output(), audio: new HeldAudio());
+        vm.Step(10_000).Should().Be(new StepResult(StepStatus.AwaitingAudio, MaxQueuedTones: 0));
+    }
+
     [Fact]
     public void TheBudgetBoundsEveryStepEvenThroughExceptions()
     {

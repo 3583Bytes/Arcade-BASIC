@@ -8,6 +8,9 @@
 ! as a standalone binary. INKEY$/SLEEP are Microsoft BASIC extensions and KEYDOWN
 ! an Arcade BASIC one, not ISO/ECMA Full BASIC — see docs/conformance.md.
 !
+! The sound effects are PLAY "MB…": background music (GW-BASIC), which plays
+! while the game runs on.
+!
 ! Controls:   hold A / LEFT  move left     hold D / RIGHT  move right     Q  quit
 ! After a game ends:  R  play again    Q  quit
 !
@@ -190,6 +193,7 @@ IF BLY <= BRICKTOP AND BLY > BRICKBOT THEN
     IF BRICK(BIDX) = 1 THEN
       LET BRICK(BIDX) = 0
       LET VY = -VY
+      PLAY "MB T255 L32 N" & STR$(58 - 3 * BR)   ! higher rows ring higher
       LET SC = SC + (NROW - BR) * 10      ! higher rows score more
       LET NLEFT = NLEFT - 1
       IF SC > HISCORE THEN LET HISCORE = SC    ! HUD shows the live best
@@ -209,6 +213,7 @@ END IF
 IF VY < 0 AND BLY <= PADTOP AND BLY >= 0 AND BX >= PX - PHW AND BX <= PX + PHW THEN
   LET BLY = PADTOP
   LET VY = SPEED
+  PLAY "MB T255 L32 O3 A"
   LET HITP = (BX - PX) / PHW       ! -1 (left edge) .. +1 (right edge)
   LET VX = HITP * MAXVX
 END IF
@@ -221,6 +226,7 @@ IF BLY < 0 THEN
     GOSUB 5200
     RETURN
   END IF
+  PLAY "MB T160 L16 O3 E C O2 A"
   GOSUB 4000                       ! serve a fresh ball
 END IF
 ! headless / stuck-orbit guard: end the game rather than loop forever
@@ -278,6 +284,7 @@ RETURN
 ! 5200  Finalize a game: flag a new record in the message, then persist.
 ! ======================================================================
 5200 REM ---- finalize ----
+IF STATE = 1 THEN PLAY "MB T180 L16 O4 C E G O5 C8" ELSE PLAY "MB T120 L8 O3 G E C4"
 IF NEWREC = 1 THEN LET MSG$ = MSG$ & "  -  NEW HIGH!"
 GOSUB 5100
 IF ANYKEY = 1 THEN

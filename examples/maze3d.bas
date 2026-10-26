@@ -24,6 +24,9 @@
 ! walks and turns, INKEY$ reads the other keys, SLEEP paces the loop —
 ! extensions, not ISO/ECMA Full BASIC; see docs/conformance.md.
 !
+! The sound effects are PLAY "MB…": background music (GW-BASIC), which plays
+! while the game runs on.
+!
 ! Controls:   hold W / UP  walk     hold S / DOWN  back up
 !             hold A / LEFT  turn left     hold D / RIGHT  turn right
 !             M  minimap on/off     Q  quit
@@ -777,7 +780,9 @@ IF FWD <> 0 THEN
       IF OKIND(I) = 1 THEN
         LET HASKEY = 1
         LET NOTE$ = "You found the key!"
+        PLAY "MB T200 L16 O5 C E G O6 C8"
       ELSE
+        PLAY "MB T255 L32 O5 G O6 C E"
         LET GEMS = GEMS + 1
         LET BONUS = BONUS + GEMTIME
         LET NOTE$ = "A gem: +" & LTRIM$(STR$(GEMTIME)) & " seconds"
@@ -787,10 +792,13 @@ IF FWD <> 0 THEN
   NEXT I
 END IF
 IF NOTEFC > 0 THEN LET NOTEFC = NOTEFC - 1
+LET LASTT = TLEFT
 LET TLEFT = LIMIT + BONUS - INT(FC / FPS)
+IF STATE = 0 AND TLEFT < LASTT AND TLEFT <= 10 AND TLEFT > 0 THEN PLAY "MB T255 L32 O5 A"   ! the last ten seconds tick
 IF STATE = 0 AND TLEFT <= 0 THEN
   LET TLEFT = 0
   LET STATE = 2
+  PLAY "MB T120 L8 O3 G F E D C2"
 END IF
 RETURN
 
@@ -799,8 +807,11 @@ RETURN
 ! ======================================================================
 3500 REM ---- door ----
 IF HASKEY = 1 THEN
+  IF STATE = 0 THEN PLAY "MB T160 L16 O4 C E G O5 C E G O6 C4"
   LET STATE = 1
 ELSE
+  ! (Walking into the door tries it every frame: buzz once per message.)
+  IF NOTEFC = 0 OR NOTE$ <> "The door is locked: find the key" THEN PLAY "MB T255 L16 O2 C P32 C"
   LET NOTE$ = "The door is locked: find the key"
   LET NOTEFC = 2 * FPS
 END IF

@@ -5,6 +5,9 @@
 ! on the Braille console: it runs in the IDE, via
 ! `arcade-basic run examples/snake.bas`, and as a standalone binary.
 !
+! The sound effects are PLAY "MB…": background music (GW-BASIC), which plays
+! while the game runs on.
+!
 ! Controls:   W A S D  or  arrow keys   steer        Q  quit
 ! After a game ends:  R  play again    Q  quit
 !
@@ -173,6 +176,7 @@ END IF
 IF NX = FX AND NY = FY THEN
   IF SLEN < MAXLEN THEN LET SLEN = SLEN + 1
   LET SC = SC + 10
+  PLAY "MB T255 L64 O5 C E G"
   IF SC > HISCORE THEN LET HISCORE = SC      ! HUD shows the live best
   IF SC > PREVHI THEN LET NEWREC = 1         ! beat the saved record
   GOSUB 4000                                 ! drop new food
@@ -238,6 +242,7 @@ RETURN
 ! 5200  Finalize a game: flag a new record in the message, then persist.
 ! ======================================================================
 5200 REM ---- finalize ----
+PLAY "MB T120 L16 O3 G E C O2 G4"
 IF NEWREC = 1 THEN LET MSG$ = MSG$ & "  -  NEW HIGH!"
 GOSUB 5100
 IF ANYKEY = 1 THEN

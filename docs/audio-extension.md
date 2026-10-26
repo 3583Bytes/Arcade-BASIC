@@ -1,8 +1,8 @@
 # Design proposal: audio extension (`SOUND` / `BEEP` / `PLAY`)
 
-> **Status: PROPOSAL — not yet implemented.** This document is the spec we would
-> build to, and the source of the text that will land in `docs/conformance.md` and
-> the READMEs once implemented. Reviewing this doc is the gate before any code.
+> **Status: implemented** — phases 1–3, 5 and 6 below (the terminal, a WAV file,
+> Unity and the browser); phase 4 (`X` / `=`) is a documented deviation. This began
+> as the design proposal and still carries its reasoning.
 >
 > **Target: the full GW-BASIC/QuickBASIC audio feature set** — `SOUND`, `BEEP`,
 > and the complete `PLAY` MML including background music (`MB`) and substring
@@ -189,10 +189,27 @@ PCM-reader callback drains the buffer on Unity's audio thread — the audio anal
 of `BasicScreen`. Wired into the sample IDE's background-task run path
 (`BasicEngine.Run(..., audio:)`), with a fresh device per run and stop/finish
 teardown. The pull-based device is reusable for a future browser/WebAudio
-playground. **Not verified in Unity** — the Unity package isn't part of the dotnet
+playground (in the end the browser schedules tones on the Web Audio clock instead
+— Phase 6). **Not verified in Unity** — the Unity package isn't part of the dotnet
 solution, so the `BufferedAudioDevice` logic is unit-tested but the MonoBehaviour /
 `AudioClip` glue needs a human to confirm in the Editor (and `unity/scripts/copy-dlls.sh`
 must be run so the plugin DLLs include the new Runtime types).
+
+**Phase 6 — Browser (Web Audio). ✅ IMPLEMENTED (verified in headless Firefox, not by ear).**
+The playground can't block — it steps the VM from the page's animation loop — so its
+`BrowserAudio` device (`src/ArcadeBasic.Web`) just collects tones, and the page
+(`wwwroot/audio.js`) lays them end to end on a timeline and plays each as a
+Web Audio square wave (at the PCM renderer's level, with 3 ms fades so notes don't
+click). A foreground statement's wait is the VM's existing `AwaitingAudio`, which the
+page sits out until the tones have played (resuming 20 ms early so consecutive
+statements follow on without a gap). For `MB`'s 32-tone limit the device implements
+`IAudioQueue` (in `Runtime`): a device that can't block says how many tones it holds,
+and `BasicVm.Step` pauses with `AwaitingAudio` and `MaxQueuedTones = 32` after a
+statement that overfills it — so `DO : PLAY "MB C" : LOOP` waits as GW-BASIC's would
+instead of scheduling thousands of notes. The program's timing follows the page's
+timeline whether or not the browser has allowed sound yet (it needs a click or key
+first), so it's the same with the sound off. The arcade examples' sound effects are
+short `PLAY "MB…"` strings.
 
 Docs (`conformance.md` extensions rows, README, `keywords.md`) and a `music.bas`
 example are updated incrementally as each phase lands — so the documentation

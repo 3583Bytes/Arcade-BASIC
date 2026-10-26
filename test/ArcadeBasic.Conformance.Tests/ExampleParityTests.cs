@@ -172,6 +172,36 @@ public class ExampleParityTests
         Assert.True(largeGfx.Transcript == smallGfx.Transcript, $"{name}: the drawn frames differ");
     }
 
+    /// <summary>The games' sound effects are background music (<c>PLAY "MB…"</c>): a game
+    /// playing itself to the end makes sound, finishing with its game-over tune, and never
+    /// waits for any of it (a foreground statement would pause the game).</summary>
+    [Theory]
+    [InlineData("invaders.bas", "130.8128")]     // ... G E C: the last note, O3 C
+    [InlineData("snake.bas", "97.9989")]         // ... C O2 G
+    [InlineData("breakout.bas", "130.8128")]
+    [InlineData("tetris.bas", "130.8128")]
+    public void RealTimeGamesMakeSoundWithoutWaitingForIt(string name, string lastNote)
+    {
+        var (program, info) = FrontEnd(name);
+        var audio = new ArcadeBasic.Runtime.RecordingAudioDevice();
+        var paused = 0;
+        try
+        {
+            ScoreFiles.Delete(name);
+            StepVm(program, info, "", budget: 100_000, randomizeSeed: 1, audio: audio,
+                onStep: r => { if (r.Status == StepStatus.AwaitingAudio) paused++; });
+        }
+        finally
+        {
+            ScoreFiles.Delete(name);
+        }
+
+        var tones = audio.Transcript.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.True(tones.Length > 3, $"{name}: {tones.Length} tones");
+        Assert.StartsWith($"TONE {lastNote} ", tones[^1]);
+        Assert.Equal(0, paused);
+    }
+
     [Theory]
     [MemberData(nameof(AllExamples))]
     public void EveryExampleCompilesOnBothEngines(string name)
@@ -469,17 +499,19 @@ public class ExampleParityTests
     /// halts, skipping the waits, and queueing a line of <paramref name="stdin"/> only
     /// when an INPUT asks for one (end of input once it runs out).</summary>
     private static (string Output, int Exit) StepVm(AstProgram program, SemanticInfo info, string stdin, int budget,
-        int? randomizeSeed = null, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null)
+        int? randomizeSeed = null, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null,
+        ArcadeBasic.Runtime.IAudioDevice? audio = null, Action<StepResult>? onStep = null)
     {
         var compiled = BasicCompiler.Compile(program, info);
         var sw = new StringWriter { NewLine = "\n" };
         var pending = new StringReader(stdin);
         var input = new ArcadeBasic.Runtime.LineInputQueue();
-        var vm = new BasicVm(compiled, sw, input, graphics, randomizeSeed: randomizeSeed);
+        var vm = new BasicVm(compiled, sw, input, graphics, audio: audio, randomizeSeed: randomizeSeed);
         for (long instructions = 0; ; instructions += budget)
         {
             Assert.True(instructions < MaxSteppedInstructions, $"still running after {MaxSteppedInstructions:N0} instructions");
             var r = vm.Step(budget);
+            onStep?.Invoke(r);
             if (r.Status == StepStatus.Halted) return (sw.ToString(), r.ExitCode);
             if (r.Status == StepStatus.NeedsInput)
             {

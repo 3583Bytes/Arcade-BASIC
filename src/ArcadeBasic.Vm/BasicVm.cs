@@ -66,6 +66,7 @@ public sealed class BasicVm
     /// <summary>What <see cref="_audioState"/> plays through: passes tones to the
     /// device but turns a foreground statement's blocking drain into a pause.</summary>
     private readonly DeferredDrainAudio _audioPort;
+    private readonly IAudioQueue? _audioQueue;
 
     /// <summary>OPTION ARITHMETIC NATIVE: numbers the program creates (constants,
     /// INPUT/READ data, builtin results) are doubles instead of decimals.</summary>
@@ -145,6 +146,7 @@ public sealed class BasicVm
         _pickable = p => _gfx.InWindow(_gfx.ToProblem(p));
         _audio = audio ?? NullAudioDevice.Instance;
         _audioPort = new DeferredDrainAudio(_audio);
+        _audioQueue = _audio as IAudioQueue;
         _random = new BasicRandom(randomizeSeed);
         _lineReader = @in as INonBlockingLineReader;
         _native = program.NativeArithmetic;
@@ -213,8 +215,14 @@ public sealed class BasicVm
                     case StepStatus.Sleeping:
                         Wait(TimeSpan.FromMilliseconds(Math.Min(r.SleepSeconds * 1000.0, int.MaxValue)), cancel);
                         break;
-                    case StepStatus.AwaitingAudio:
+                    case StepStatus.AwaitingAudio when r.MaxQueuedTones == 0:
                         _audio.Flush();   // real-time devices block until their queue drains
+                        break;
+                    case StepStatus.AwaitingAudio:
+                        // Background music overfilled a device that can't block: its host is
+                        // playing it elsewhere; wait for room.
+                        while (_audioQueue!.Queued > r.MaxQueuedTones && !cancel.IsCancellationRequested)
+                            Wait(InputPollInterval, cancel);
                         break;
                     case StepStatus.NeedsInput:
                     case StepStatus.NeedsPoint:
@@ -514,20 +522,22 @@ public sealed class BasicVm
                         var dur = ((NumericValue)stack.Pop()).D;   // pushed last → on top
                         var freq = ((NumericValue)stack.Pop()).D;
                         _audioState.EmitSound(freq, dur, _audioPort);
-                        if (_audioPort.TakeDrainRequest()) { cf.Pc = pc; return StepResult.AwaitingAudio; }
+                        if (AudioWait() is { } audioWait) { cf.Pc = pc; return audioWait; }
                         break;
                     }
                 case Opcode.Beep:
-                    _graphics.Flush();
-                    _audioState.EmitBeep(_audioPort);
-                    if (_audioPort.TakeDrainRequest()) { cf.Pc = pc; return StepResult.AwaitingAudio; }
-                    break;
+                    {
+                        _graphics.Flush();
+                        _audioState.EmitBeep(_audioPort);
+                        if (AudioWait() is { } audioWait) { cf.Pc = pc; return audioWait; }
+                        break;
+                    }
                 case Opcode.Play:
                     {
                         _graphics.Flush();
                         var notes = ((StringValue)stack.Pop()).V;
                         _audioState.EmitPlay(notes, _audioPort);
-                        if (_audioPort.TakeDrainRequest()) { cf.Pc = pc; return StepResult.AwaitingAudio; }
+                        if (AudioWait() is { } audioWait) { cf.Pc = pc; return audioWait; }
                         break;
                     }
 
@@ -1983,6 +1993,16 @@ public sealed class BasicVm
     }
 
     private static string FormatNumeric(BigDecimal x) => DisplayFormat.FormatNumeric(x);
+
+    /// <summary>After SOUND, BEEP or PLAY: a foreground statement waits for its audio, and
+    /// background music that has overfilled GW-BASIC's buffer waits for room (a device that
+    /// can't block says so through <see cref="IAudioQueue"/>; one that can blocks in Emit).</summary>
+    private StepResult? AudioWait()
+    {
+        if (_audioPort.TakeDrainRequest()) return StepResult.AwaitingAudio;
+        if (_audioQueue is { Queued: > AudioState.BackgroundCapacity }) return StepResult.AudioQueueFull;
+        return null;
+    }
 
     /// <summary>Forwards tones to the real device, but records a foreground statement's
     /// <c>Flush()</c> — AudioState's "wait until it has played" — instead of blocking in
