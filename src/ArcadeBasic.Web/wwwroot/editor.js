@@ -2,9 +2,12 @@
 // up for BASIC. Its colours are the page's theme variables (style.css), so a theme
 // change restyles it with no work here. The words it colours and suggests, and the
 // problems it underlines, come from the engine once .NET has loaded (setWords,
-// setChecker); until then it's a plain editor.
+// setChecker); until then it's a plain editor. For the debugger it keeps each
+// program's breakpoints (a gutter of red dots), marks the line a paused program is
+// on, and shows a variable's value when you point at it.
 import {
-  EditorState, StateEffect, StateField, Compartment, EditorView, Decoration, keymap, lineNumbers,
+  EditorState, StateEffect, StateField, RangeSet, Compartment, EditorView, Decoration, keymap, lineNumbers,
+  gutter, GutterMarker, hoverTooltip,
   highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor,
   rectangularSelection, crosshairCursor, defaultKeymap, history, historyKeymap, indentWithTab,
   StreamLanguage, HighlightStyle, syntaxHighlighting, syntaxTree, indentOnInput, bracketMatching, indentUnit,
@@ -98,6 +101,19 @@ const theme = EditorView.theme({
   '.cm-panel.cm-panel-lint ul [aria-selected]': { backgroundColor: 'var(--ed-sel)', color: 'var(--ed-text)' },
   '.cm-panel.cm-panel-lint ul:focus [aria-selected]': { backgroundColor: 'var(--ed-sel)', color: 'var(--ed-text)' },
   '.cm-runtimeError': { backgroundColor: 'var(--ed-error-line)', boxShadow: 'inset 3px 0 var(--danger)' },
+  '.cm-pausedLine': { backgroundColor: 'var(--ed-paused-line)', boxShadow: 'inset 3px 0 var(--paused)' },
+  '.cm-breakpoints .cm-gutterElement': {
+    cursor: 'pointer', minWidth: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1px',
+  },
+  '.cm-breakpoints .cm-gutterElement:hover:empty::after': {
+    content: '""', width: '9px', height: '9px', borderRadius: '50%', background: 'var(--bp)', opacity: '.35',
+  },
+  '.cm-bp': { display: 'inline-block', width: '9px', height: '9px', borderRadius: '50%', background: 'var(--bp)' },
+  '.cm-bp-here': {
+    display: 'inline-block', width: '0', height: '0', borderTop: '5px solid transparent',
+    borderBottom: '5px solid transparent', borderLeft: '8px solid var(--paused)',
+  },
+  '.cm-valueTip': { padding: '3px 8px', fontFamily: 'var(--code-font)', whiteSpace: 'pre' },
 });
 
 // The line a program stopped on with an error, until the next run.
@@ -129,6 +145,51 @@ function definitionOf(state, pos) {
     if (pattern.test(line.text)) return line.from + line.text.search(/\S/);
   }
   return null;
+}
+
+// -- Breakpoints and the paused line ----------------------------------------------------
+
+class Dot extends GutterMarker {
+  toDOM() { const dot = document.createElement('span'); dot.className = 'cm-bp'; return dot; }
+}
+class Arrow extends GutterMarker {
+  toDOM() { const arrow = document.createElement('span'); arrow.className = 'cm-bp-here'; return arrow; }
+}
+const dot = new Dot(), arrow = new Arrow();
+
+// Breakpoints, by the start of their line; they move with the text around them.
+const toggleBreakpoint = StateEffect.define({ map: (pos, changes) => changes.mapPos(pos) });
+const breakpoints = StateField.define({
+  create: () => RangeSet.empty,
+  update(set, tr) {
+    set = set.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(toggleBreakpoint)) continue;
+      let has = false;
+      set.between(e.value, e.value, from => { if (from === e.value) has = true; });
+      set = has ? set.update({ filter: from => from !== e.value }) : set.update({ add: [dot.range(e.value)] });
+    }
+    return set;
+  },
+});
+
+// The line (its start) a paused program is about to run.
+const setPaused = StateEffect.define();
+const paused = StateField.define({
+  create: () => null,
+  update(pos, tr) {
+    if (pos != null) pos = tr.changes.mapPos(pos);
+    for (const e of tr.effects) if (e.is(setPaused)) pos = e.value;
+    return pos;
+  },
+  provide: field => EditorView.decorations.from(field, pos =>
+    pos == null ? Decoration.none : Decoration.set([Decoration.line({ class: 'cm-pausedLine' }).range(pos)])),
+});
+
+function breakpointLines(state) {
+  const lines = new Set();
+  for (let it = state.field(breakpoints).iter(); it.value; it.next()) lines.add(state.doc.lineAt(it.from).number);
+  return [...lines].sort((a, b) => a - b);
 }
 
 function goToDefinition(view, pos) {
@@ -181,6 +242,55 @@ export function createEditor(parent, hooks) {
   const language = new Compartment();
   let lang = basic();
   let check = null;   // text → [{ from, to, severity, message }]
+  let statementLines = null;   // the lines a breakpoint can stop at (setStatementLines)
+  let valueOf = null;          // name → its value while paused, else null (setValueLookup)
+
+  /** Breakpoint on or off at the line holding pos. A new one on a line with no
+   *  statement goes on the next line that has one, where the program can stop. */
+  function toggleAt(view, pos) {
+    const doc = view.state.doc;
+    let line = doc.lineAt(pos);
+    let has = false;
+    view.state.field(breakpoints).between(line.from, line.from, from => { if (from === line.from) has = true; });
+    if (!has && statementLines && !statementLines.has(line.number)) {
+      const next = [...statementLines].filter(n => n > line.number && n <= doc.lines).sort((a, b) => a - b)[0];
+      if (next) {
+        line = doc.line(next);
+        view.state.field(breakpoints).between(line.from, line.from, from => { if (from === line.from) has = true; });
+        if (has) return true;                              // already there
+      }
+    }
+    view.dispatch({ effects: toggleBreakpoint.of(line.from) });
+    hooks.onBreakpoints?.(breakpointLines(view.state));
+    return true;
+  }
+
+  const breakpointGutter = gutter({
+    class: 'cm-breakpoints',
+    markers: view => {
+      const set = view.state.field(breakpoints), at = view.state.field(paused);
+      return at == null ? set : set.update({ add: [arrow.range(at)] });
+    },
+    initialSpacer: () => dot,
+    domEventHandlers: { mousedown: (view, line) => toggleAt(view, line.from) },
+  });
+
+  const values = hoverTooltip((view, pos) => {
+    const word = valueOf && view.state.wordAt(pos);
+    if (!word) return null;
+    const name = view.state.sliceDoc(word.from, word.to);
+    const value = valueOf(name);
+    if (value == null) return null;
+    return {
+      pos: word.from, end: word.to, above: true,
+      create() {
+        const dom = document.createElement('div');
+        dom.className = 'cm-valueTip';
+        dom.textContent = `${name.toUpperCase()} = ${value}`;
+        return { dom };
+      },
+    };
+  });
 
   const problems = linter(view => {
     if (!check) return [];
@@ -203,6 +313,7 @@ export function createEditor(parent, hooks) {
   }, { delay: 350 });
 
   const extensions = () => [
+    breakpoints, paused, breakpointGutter, values,
     lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
     EditorState.allowMultipleSelections.of(true), indentOnInput(), bracketMatching(), closeBrackets(),
     autocompletion({ override: [complete], icons: false }), rectangularSelection(), crosshairCursor(),
@@ -211,6 +322,7 @@ export function createEditor(parent, hooks) {
     language.of(lang), syntaxHighlighting(highlight), theme, problems, lintGutter(), runtimeError,
     keymap.of([
       { key: 'F12', run: view => goToDefinition(view, view.state.selection.main.head) },
+      { key: 'F9', run: view => toggleAt(view, view.state.selection.main.head) },
       ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap,
       ...lintKeymap, indentWithTab,
     ]),
@@ -231,9 +343,29 @@ export function createEditor(parent, hooks) {
 
   return {
     view,
-    /** A program's editor state: its text, undo history, cursor. */
-    create(text, cursor = 0) {
-      return EditorState.create({ doc: text, selection: { anchor: Math.min(cursor, text.length) }, extensions: extensions() });
+    /** A program's editor state: its text, undo history, cursor, breakpoints (line numbers). */
+    create(text, cursor = 0, lines = []) {
+      const state = EditorState.create({ doc: text, selection: { anchor: Math.min(cursor, text.length) }, extensions: extensions() });
+      const starts = [...new Set(lines.filter(n => n >= 1 && n <= state.doc.lines))].map(n => state.doc.line(n).from);
+      return starts.length ? state.update({ effects: starts.map(at => toggleBreakpoint.of(at)) }).state : state;
+    },
+    /** The lines with breakpoints in a program's state (the one showing by default). */
+    breakpointLines(state = view.state) { return breakpointLines(state); },
+    /** The lines a breakpoint can stop at, from the engine's last check. */
+    setStatementLines(lines) { statementLines = new Set(lines); },
+    /** Mark the line (1-based) a paused program is about to run; 0 clears it. */
+    showPaused(line) {
+      if (!line || line > view.state.doc.lines) { view.dispatch({ effects: setPaused.of(null) }); return; }
+      const at = view.state.doc.line(line).from;
+      view.dispatch({ effects: [setPaused.of(at), EditorView.scrollIntoView(at, { y: 'nearest', yMargin: 60 })] });
+    },
+    /** Pointing at a name shows lookup(name)'s answer (null: nothing); null turns it off. */
+    setValueLookup(lookup) { valueOf = lookup; },
+    goToLine(line) {
+      if (line < 1 || line > view.state.doc.lines) return;
+      const at = view.state.doc.line(line).from;
+      view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) });
+      view.focus();
     },
     /** Show a program's state (switching tabs). */
     show(state) { view.setState(state); },

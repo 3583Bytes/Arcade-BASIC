@@ -25,8 +25,8 @@ export function createDocuments({ editor, tabs, ask, exampleSource, onShow, noti
   const docs = [];
   let active = null, running = null;
 
-  function make({ id = newId(), name, kind, text, saved = text, crlf = false, handle = null, cursor = 0 }) {
-    return { id, name, kind, state: editor.create(text, cursor), saved, crlf, handle, dirty: text !== saved };
+  function make({ id = newId(), name, kind, text, saved = text, crlf = false, handle = null, cursor = 0, breakpoints = [] }) {
+    return { id, name, kind, state: editor.create(text, cursor, breakpoints), saved, crlf, handle, dirty: text !== saved };
   }
 
   function add(doc) {
@@ -303,7 +303,8 @@ export function createDocuments({ editor, tabs, ask, exampleSource, onShow, noti
       active: active?.id,
       docs: docs.map(d => {
         const text = d.state.doc.toString();
-        return { id: d.id, name: d.name, kind: d.kind, text, saved: d.saved === text ? null : d.saved, crlf: d.crlf, cursor: d.state.selection.main.head };
+        return { id: d.id, name: d.name, kind: d.kind, text, saved: d.saved === text ? null : d.saved, crlf: d.crlf,
+                 cursor: d.state.selection.main.head, breakpoints: editor.breakpointLines(d.state) };
       }),
     };
     try {

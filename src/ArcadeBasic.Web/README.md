@@ -29,6 +29,14 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
 - **Kept in this browser**: every open tab and its text is saved in
   `localStorage` as you type, so a reload brings it all back. Nothing is sent
   anywhere.
+- **A debugger**: click beside a line number (or F9) for a breakpoint; the
+  program stops before that line, which is marked, and the **Variables** tab shows
+  every call in progress and its variables — arrays open to their elements, a
+  small two-dimensional one as a grid (maze3d's map, say), and what the last step
+  changed in colour. Point at a name for its value. Step over (F10), into (F11),
+  out (Shift+F11), continue (F5) or pause a running program (F6); F10/F11 with
+  nothing running starts it stopped at the first line. While a program runs, the
+  Variables tab updates twice a second. Breakpoints are kept with the program.
 - **Sound**: `SOUND`, `BEEP` and `PLAY` play through Web Audio as a square wave,
   like the PC speaker (`wwwroot/audio.js`); foreground music holds the program up
   until it's played and background (`MB`) music doesn't, up to GW-BASIC's 32 tones.
@@ -79,7 +87,8 @@ reports the board; `?selftest=page` reports which program the address opened and
 the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
 tabs, Save (catching the download), line endings, links, sound timing and Web
-Audio (oscillators started, with the test profile allowing autoplay) — and reports
+Audio (oscillators started, with the test profile allowing autoplay), and the
+debugger (breakpoints, stepping, the Variables tab, values on hover) — and reports
 each step.
 Run `?selftest=page` again in the same browser profile to see the tabs come back.
 
@@ -100,11 +109,12 @@ npm ci && npm run build
 | File | Role |
 |---|---|
 | `Program.cs` | `[JSExport]` surface: check, load/compile, `Step`, output, input, frames, keys, stats, the error's line |
+| `Playground.Debug.cs` | the debugger's exports: breakpoints, pause and step, the variables by name (as JSON) |
 | `CanvasGraphicsDevice.cs` | §13 backend: records each frame as a flat command list the page replays |
 | `BrowserKeyboard.cs` | `IKeyboard` + `IKeyState` from DOM `keydown`/`keyup` |
 | `BrowserAudio.cs` | `IAudioDevice` + `IAudioQueue`: collects tones for the page |
 | `wwwroot/main.js` | the loop, canvas drawing (optional phosphor glow), keyboard, input, menus, shortcuts, themes, links |
-| `wwwroot/editor.js` | the CodeMirror editor: BASIC colouring, problems, runtime-error line, completion, go to definition |
+| `wwwroot/editor.js` | the CodeMirror editor: BASIC colouring, problems, runtime-error line, completion, go to definition, breakpoints, the paused line, values on hover |
 | `wwwroot/documents.js` | the tabs: examples, files (open, save, drop), changes, what's kept in the browser |
 | `wwwroot/audio.js` | sound: tones on a timeline, played as Web Audio square waves |
 | `wwwroot/style.css` | the layout and the themes |

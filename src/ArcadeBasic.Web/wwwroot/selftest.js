@@ -203,6 +203,73 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     return { state: audio.state, oscillators: started };
   });
 
+  await step('debugger', async () => {
+    documents.newProgram();
+    setText(['LET T = 0', '! add them up', 'FOR I = 1 TO 3', '  LET T = T + I', 'NEXT I', 'CALL SHOW(T)', 'END',
+             'SUB SHOW(X)', '  PRINT X', 'END SUB'].join('\n') + '\n');
+    await pause(700);                                  // checked: it knows where statements are
+    const at = n => view.state.doc.line(n).from;
+    const press = (key, shiftKey = false) =>
+      window.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, shiftKey, bubbles: true, cancelable: true }));
+    const pausedAt = async () => {                     // the next pause: its line and variables
+      for (let i = 0; i < 200 && !document.querySelector('.cm-pausedLine') && !$('stop').disabled; i++) await pause(10);
+      const line = document.querySelector('.cm-pausedLine');
+      if (!line) return 'ended';
+      const frames = [...document.querySelectorAll('#variables .frame')].map(f => {
+        const vars = [...f.querySelectorAll(':scope > table tr')].map(tr =>
+          `${tr.cells[0].textContent}=${tr.cells[1]?.textContent}${tr.className === 'changed' ? '*' : ''}`);
+        return `${f.querySelector('summary').textContent}: ${vars.join(' ')}`;
+      });
+      return { line: line.textContent.trim(), frames };
+    };
+    const result = {};
+
+    // F9 on the comment: the breakpoint goes on the next statement (line 3).
+    view.dispatch({ selection: { anchor: at(2) } });
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9', code: 'F9', bubbles: true, cancelable: true }));
+    // A click beside line 9 (in the SUB).
+    const gutter = document.querySelector('.cm-breakpoints').getBoundingClientRect();
+    const y = view.coordsAtPos(at(9)).top + 4;
+    document.elementFromPoint(gutter.left + gutter.width / 2, y)
+      ?.dispatchEvent(new MouseEvent('mousedown', { clientX: gutter.left + gutter.width / 2, clientY: y, button: 0, bubbles: true }));
+    result.breakpoints = editor.breakpointLines();
+    result.dots = document.querySelectorAll('.cm-bp').length;
+
+    press('F5');
+    result.first = await pausedAt();
+    result.panel = $('variables').hidden ? 'output' : 'variables';
+    result.runButton = $('run').textContent;
+    press('F10');
+    result.stepOver = await pausedAt();
+    press('F10');
+    result.stepOverAgain = await pausedAt();
+    press('F5');
+    result.continued = await pausedAt();
+    // Hold on to the breakpoints until the SUB.
+    for (let i = 0; i < 6 && result.continued?.line?.startsWith?.('FOR'); i++) { press('F5'); result.continued = await pausedAt(); }
+    while (result.continued !== 'ended' && !result.continued.line.startsWith('PRINT X') && Object.keys(result).length < 40) {
+      press('F5');
+      result.continued = await pausedAt();
+    }
+    // Point at X in the SUB.
+    const x = view.state.doc.line(9).from + view.state.doc.line(9).text.indexOf('X');
+    const where = view.coordsAtPos(x);
+    view.contentDOM.dispatchEvent(new MouseEvent('mousemove', { clientX: where.left + 2, clientY: where.top + 4, bubbles: true }));
+    await pause(500);
+    result.hover = document.querySelector('.cm-valueTip')?.textContent;
+    press('F11', true);                                 // step out
+    result.stepOut = await pausedAt();
+    press('F5');
+    result.end = await pausedAt();
+    result.output = $('output').textContent;
+    press('F11');                                       // nothing running: start, stopped at the first line
+    result.startPaused = await pausedAt();
+    press('F5', true);                                  // stop
+    await pause(50);
+    result.stoppedClean = !document.querySelector('.cm-pausedLine') && $('run').textContent === '▶ Run';
+    return result;
+  });
+
   await step('keptInBrowser', async () => {
     documents.persist();
     const session = JSON.parse(localStorage.getItem('arcade-basic.session'));

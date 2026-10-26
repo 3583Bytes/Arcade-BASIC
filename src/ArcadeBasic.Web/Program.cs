@@ -75,6 +75,7 @@ internal static partial class Playground
         Audio.Clear();
         s_last = default;
         s_vm = new BasicVm(compiled, s_output, s_input, Screen, Keyboard, Audio);
+        RememberScopes(compiled, info);
         return "";
     }
 
@@ -105,7 +106,7 @@ internal static partial class Playground
         {
             try
             {
-                BasicCompiler.Compile(program, info);
+                RememberStatementLines(BasicCompiler.Compile(program, info));
             }
             catch (BasicCompiler.UnsupportedFeatureException ex)
             {

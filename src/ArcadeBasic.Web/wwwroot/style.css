@@ -15,6 +15,7 @@
   --ed-bg: #14161a; --ed-text: #e6e6e6; --ed-gutter: #14161a; --ed-gutter-text: #5c6370;
   --ed-line: #1b1e24; --ed-sel: #2c3a55; --ed-cursor: #55ff55; --ed-match: #2f3b2f;
   --ed-error-line: rgba(255, 90, 90, .18);
+  --ed-paused-line: rgba(255, 204, 102, .16); --paused: #ffcc66; --bp: #e5484d;
   --syn-kw: #82aaff; --syn-fn: #4fd6be; --syn-str: #c3e88d; --syn-num: #ffc777;
   --syn-com: #6f7787; --syn-label: #8b93a3; --syn-op: #89ddff; --syn-var: #e6e6e6; --syn-punct: #a0a8b8;
   --syn-kw-weight: normal;
@@ -29,6 +30,7 @@
   --ed-bg: #ffffff; --ed-text: #1f2328; --ed-gutter: #f6f8fa; --ed-gutter-text: #8c959f;
   --ed-line: #f3f6f9; --ed-sel: #cde4ff; --ed-cursor: #1f2328; --ed-match: #d6f0dc;
   --ed-error-line: #ffe3e0;
+  --ed-paused-line: #fff3bf; --paused: #bf8700; --bp: #cf222e;
   --syn-kw: #0550ae; --syn-fn: #8250df; --syn-str: #116329; --syn-num: #953800;
   --syn-com: #6e7781; --syn-label: #8c959f; --syn-op: #cf222e; --syn-var: #1f2328; --syn-punct: #57606a;
   --syn-kw-weight: normal;
@@ -45,6 +47,7 @@
   --ed-bg: #0000aa; --ed-text: #aaaaaa; --ed-gutter: #0000aa; --ed-gutter-text: #5555ff;
   --ed-line: #0000c4; --ed-sel: #00aaaa; --ed-cursor: #ffffff; --ed-match: #0000ff;
   --ed-error-line: #aa0000;
+  --ed-paused-line: #00aaaa; --paused: #ffff55; --bp: #ff5555;
   --syn-kw: #ffffff; --syn-fn: #55ffff; --syn-str: #ffff55; --syn-num: #55ff55;
   --syn-com: #00aaaa; --syn-label: #ff55ff; --syn-op: #aaaaaa; --syn-var: #aaaaaa; --syn-punct: #aaaaaa;
   --syn-kw-weight: normal;
@@ -61,6 +64,7 @@
   --ed-bg: #40318d; --ed-text: #a99ff0; --ed-gutter: #40318d; --ed-gutter-text: #7869c4;
   --ed-line: #47389a; --ed-sel: #6c5eb5; --ed-cursor: #c9c2ff; --ed-match: #55479f;
   --ed-error-line: rgba(255, 110, 110, .3);
+  --ed-paused-line: rgba(237, 241, 113, .22); --paused: #edf171; --bp: #ff8a80;
   --syn-kw: #ffffff; --syn-fn: #9ae29b; --syn-str: #edf171; --syn-num: #6abfc6;
   --syn-com: #8a7fd6; --syn-label: #e0a0a0; --syn-op: #a99ff0; --syn-var: #a99ff0; --syn-punct: #a99ff0;
   --syn-kw-weight: normal;
@@ -77,6 +81,7 @@
   --ed-bg: #040704; --ed-text: #33ff66; --ed-gutter: #040704; --ed-gutter-text: #17702f;
   --ed-line: #0a160c; --ed-sel: rgba(51, 255, 102, .25); --ed-cursor: #8dffae; --ed-match: rgba(51, 255, 102, .14);
   --ed-error-line: rgba(212, 255, 77, .16);
+  --ed-paused-line: rgba(141, 255, 174, .16); --paused: #d4ff4d; --bp: #d4ff4d;
   --syn-kw: #a6ffc1; --syn-fn: #66ff8f; --syn-str: #d0ffdc; --syn-num: #66ff8f;
   --syn-com: #1f8f3d; --syn-label: #26b34c; --syn-op: #33ff66; --syn-var: #33ff66; --syn-punct: #26b34c;
   --syn-kw-weight: bold;
@@ -93,6 +98,7 @@
   --ed-bg: #0a0700; --ed-text: #ffb000; --ed-gutter: #0a0700; --ed-gutter-text: #7a5200;
   --ed-line: #161000; --ed-sel: rgba(255, 176, 0, .25); --ed-cursor: #ffd27a; --ed-match: rgba(255, 176, 0, .14);
   --ed-error-line: rgba(255, 230, 128, .16);
+  --ed-paused-line: rgba(255, 210, 122, .18); --paused: #ffe680; --bp: #ffe680;
   --syn-kw: #ffd27a; --syn-fn: #ffc240; --syn-str: #ffe2a8; --syn-num: #ffc240;
   --syn-com: #8f6200; --syn-label: #b77a00; --syn-op: #ffb000; --syn-var: #ffb000; --syn-punct: #b77a00;
   --syn-kw-weight: bold;
@@ -205,9 +211,33 @@ main {
 }
 #screen:focus { border-color: var(--accent); }
 #hint { color: var(--muted); margin: 0; font-size: 13px; }
-.outputHead { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 12px; }
-.outputHead button { background: transparent; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.outputHead { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.outputHead .spacer { flex: 1; }
+.outputHead button { background: transparent; border: 0; color: var(--muted); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 4px; }
 .outputHead button:hover { color: var(--text); }
+.outputHead .ptab[aria-selected="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); border-radius: 0; }
+
+/* The debugger: the toolbar's controls and the Variables panel */
+header .debug { display: flex; gap: 2px; }
+#variables {
+  min-height: 5em; flex: 1; overflow: auto; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: 13px/1.45 var(--code-font);
+}
+#variables .note { color: var(--muted); margin: 4px 2px; font-family: var(--ui-font); }
+#variables .frame + .frame { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 4px; }
+#variables summary { cursor: pointer; color: var(--muted); }
+#variables .frame > summary { color: var(--text); font-weight: 600; }
+#variables .frame > table { border-collapse: collapse; margin: 2px 0 2px 14px; }
+#variables .frame > table td { padding: 1px 14px 1px 0; vertical-align: top; }
+#variables .frame > table td:first-child { color: var(--syn-var); }
+#variables .frame > table tr.changed td { color: var(--paused); font-weight: 600; }
+#variables .unset { color: var(--muted); font-style: italic; }
+#variables .elements { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 4px 0 4px 12px; max-height: 260px; overflow: auto; }
+#variables .elements i { color: var(--muted); font-style: normal; }
+#variables .elements span { white-space: nowrap; }
+#variables table.grid { border-collapse: collapse; font-size: 12px; }
+#variables table.grid td { padding: 0 4px; text-align: right; border: 1px solid var(--border); }
+#variables table.grid tr:first-child td, #variables table.grid td:first-child { color: var(--muted); border-color: transparent; }
 #output {
   margin: 0; min-height: 5em; flex: 1; overflow: auto; background: var(--panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
@@ -265,6 +295,7 @@ body.dropping::after {
 }
 
 /* Phones and narrow windows: everything in one column, the page scrolls */
+[data-theme="qbasic"] #variables .frame > table tr.changed td { color: #ffff55; }
 @media (max-width: 900px) {
   body { display: block; overflow: auto; }
   main { display: flex; flex-direction: column; }

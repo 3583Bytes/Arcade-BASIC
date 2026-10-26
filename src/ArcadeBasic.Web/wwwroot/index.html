@@ -41,6 +41,12 @@
     <span class="sep"></span>
     <button class="tool primary" id="run" disabled>▶ Run</button>
     <button class="tool" id="stop" disabled>■ Stop</button>
+    <span class="debug" aria-label="Debugger">
+      <button class="tool" id="pause" disabled aria-label="Pause">⏸</button>
+      <button class="tool" id="stepOver" disabled>↷ Over</button>
+      <button class="tool" id="stepInto" disabled>↓ Into</button>
+      <button class="tool" id="stepOut" disabled>↑ Out</button>
+    </span>
     <span id="loading">loading .NET…</span>
     <div class="right">
       <label>Theme <select id="theme" aria-label="Theme"></select></label>
@@ -68,8 +74,14 @@
     <section id="runPane" aria-label="Program">
       <canvas id="screen" width="960" height="576" tabindex="0" aria-label="Program screen (click to give it the keyboard)"></canvas>
       <p id="hint">Press <b>Run</b> (<kbd>F5</kbd>), then click the screen so it gets your keys.</p>
-      <div class="outputHead"><span>Output</span><button id="clearOutput" type="button">Clear</button></div>
+      <div class="outputHead" role="tablist">
+        <button class="ptab" type="button" role="tab" data-panel="output" aria-selected="true">Output</button>
+        <button class="ptab" type="button" role="tab" data-panel="variables" aria-selected="false">Variables</button>
+        <span class="spacer"></span>
+        <button id="clearOutput" type="button">Clear</button>
+      </div>
       <pre id="output" aria-live="polite"></pre>
+      <div id="variables" hidden></div>
       <form id="inputRow"><input id="inputLine" autocomplete="off" aria-label="Program input"><button>Enter</button></form>
     </section>
   </main>
@@ -97,6 +109,9 @@
       <table>
         <tr><td><kbd>F5</kbd> or <kbd data-key="Mod+Enter"></kbd></td><td>Run the program</td></tr>
         <tr><td><kbd>Shift+F5</kbd></td><td>Stop it</td></tr>
+        <tr><td><kbd>F9</kbd> or click beside a line number</td><td>Breakpoint on or off</td></tr>
+        <tr><td><kbd>F10</kbd> / <kbd>F11</kbd> / <kbd>Shift+F11</kbd></td><td>Step over / into / out (with nothing running: start at the first line)</td></tr>
+        <tr><td><kbd>F5</kbd> / <kbd>F6</kbd></td><td>Continue / pause</td></tr>
         <tr><td><kbd data-key="Mod+S"></kbd> / <kbd data-key="Mod+Shift+S"></kbd></td><td>Save / Save as</td></tr>
         <tr><td><kbd data-key="Mod+O"></kbd></td><td>Open a file (or drop files on the page)</td></tr>
         <tr><td><kbd>Alt+N</kbd> / <kbd>Alt+W</kbd></td><td>New program / Close tab</td></tr>

@@ -33,6 +33,12 @@ public enum StepStatus
     /// on the graphics device's pointer (<see cref="Runtime.IPointer"/>); the frame being
     /// pointed at has been flushed. Resume once the device has a button press.</summary>
     NeedsPoint,
+
+    /// <summary>Stopped before a statement for a debugger: a breakpoint
+    /// (<see cref="BasicVm.Breakpoints"/>) or a <see cref="BasicVm.PauseAt"/>.
+    /// <see cref="BasicVm.CurrentLine"/> is its line and <see cref="BasicVm.CallStack"/>
+    /// shows the variables; the next <see cref="BasicVm.Step"/> runs it.</summary>
+    Paused,
 }
 
 /// <summary>The outcome of one <see cref="BasicVm.Step"/>.</summary>
@@ -53,6 +59,7 @@ public readonly record struct StepResult(StepStatus Status, double SleepSeconds 
     internal static readonly StepResult AwaitingAudio = new(StepStatus.AwaitingAudio);
     internal static readonly StepResult AudioQueueFull = new(StepStatus.AwaitingAudio, MaxQueuedTones: Runtime.AudioState.BackgroundCapacity);
     internal static readonly StepResult NeedsPoint = new(StepStatus.NeedsPoint);
+    internal static readonly StepResult Paused = new(StepStatus.Paused);
     internal static readonly StepResult Ended = new(StepStatus.Halted);
 
     internal static StepResult Sleep(double seconds) => new(StepStatus.Sleeping, SleepSeconds: seconds);

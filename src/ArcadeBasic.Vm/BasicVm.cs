@@ -130,6 +130,11 @@ public sealed class BasicVm
 
         /// <summary>GOSUB return PCs. GOSUB/RETURN never cross chunk boundaries.</summary>
         public Stack<int>? Gosubs;
+
+        /// <summary>The line of the statement this frame is on, and that statement's
+        /// LineNote — so a debugger can tell a new line from the next statement on the same one.</summary>
+        public int Line;
+        public int NotePc = -1;
     }
 
     public BasicVm(BcProgram program, TextWriter @out, TextReader @in,
@@ -229,6 +234,7 @@ public sealed class BasicVm
                         // Nothing to read yet (a line, or a pick): poll until it arrives.
                         Wait(InputPollInterval, cancel);
                         break;
+                    // Running, or Paused at a breakpoint with no debugger to show: carry on.
                 }
             }
         }
@@ -271,6 +277,7 @@ public sealed class BasicVm
         if (maxInstructions < 1) throw new ArgumentOutOfRangeException(nameof(maxInstructions));
         if (_halted) return _final;
         _budget = maxInstructions;
+        _debugging = _breakpoints.Count > 0 || _stepKind is not null || _resumeFrame is not null;
         try
         {
             while (true)
@@ -318,6 +325,89 @@ public sealed class BasicVm
     /// unhandled exception, the statement that raised it (the line
     /// <see cref="StepResult.Error"/> names). For an editor to point at.</summary>
     public int CurrentLine => _currentLine;
+
+    // -- Debugging --------------------------------------------------------------------
+
+    /// <summary>Source lines to stop at. Before running the first statement of a line in
+    /// the set, <see cref="Step"/> returns <see cref="StepStatus.Paused"/>. Change it
+    /// between steps.</summary>
+    public ISet<int> Breakpoints => _breakpoints;
+
+    private readonly HashSet<int> _breakpoints = [];
+    private bool _debugging;                  // any breakpoint, step or resume pending (set by Step)
+    private DebugStep? _stepKind;
+    private CallFrame? _stepFrame;
+    private int _stepDepth;
+    private CallFrame? _resumeFrame;          // paused before this statement: run it next time
+    private int _resumePc;
+    private Dictionary<Chunk, string>? _chunkNames;
+
+    /// <summary>Stop again soon (see <see cref="DebugStep"/>): from a pause, a step; while
+    /// running, a pause button. The next <see cref="Step"/> that gets there returns
+    /// <see cref="StepStatus.Paused"/>.</summary>
+    public void PauseAt(DebugStep step)
+    {
+        _stepKind = step;
+        _stepFrame = _frames.Count > 0 ? _frames.Peek() : null;
+        _stepDepth = Depth();
+    }
+
+    /// <summary>The calls in progress, innermost first, with their variables.</summary>
+    public IReadOnlyList<DebugFrame> CallStack()
+    {
+        if (_chunkNames is null)
+        {
+            _chunkNames = new(ReferenceEqualityComparer.Instance) { [_program.Main] = "" };
+            foreach (var s in _program.Subs) _chunkNames[s.Body] = "SUB " + s.Name;
+            foreach (var f in _program.Functions) _chunkNames[f.Body] = "FUNCTION " + f.Name + (f.IsString ? "$" : "");
+            foreach (var d in _program.Defs) _chunkNames[d.Body] = "DEF " + d.Name + (d.IsString ? "$" : "");
+        }
+        var frames = new List<DebugFrame>(_frames.Count);
+        foreach (var f in _frames)
+        {
+            // (The innermost frame may be paused before its statement: that's the current line.)
+            var line = frames.Count == 0 ? _currentLine : f.Line;
+            frames.Add(new DebugFrame(f.Chunk, _chunkNames.TryGetValue(f.Chunk, out var name) ? name : "", line, f.Locals));
+        }
+        return frames;
+    }
+
+    /// <summary>How deep in calls and GOSUBs the program is.</summary>
+    private int Depth()
+    {
+        var depth = 0;
+        foreach (var f in _frames) depth += 1 + (f.Gosubs?.Count ?? 0);
+        return depth;
+    }
+
+    /// <summary>At a statement's LineNote: should the program stop before it?</summary>
+    private bool ShouldPause(CallFrame cf, int notePc, int line)
+    {
+        if (ReferenceEquals(cf, _resumeFrame) && notePc == _resumePc)
+        {
+            _resumeFrame = null;              // the statement it stopped at: run it now
+            return false;
+        }
+        // A new line, rather than the next statement on the same one — or the same line
+        // again, by a jump back (a loop).
+        var newLine = line != cf.Line || notePc <= cf.NotePc;
+        var pause = newLine && _breakpoints.Contains(line);
+        if (!pause && _stepKind is { } kind)
+        {
+            pause = kind switch
+            {
+                DebugStep.Pause => true,
+                DebugStep.Into => newLine || !ReferenceEquals(cf, _stepFrame),
+                DebugStep.Over => (newLine || !ReferenceEquals(cf, _stepFrame)) && Depth() <= _stepDepth,
+                _ => Depth() < _stepDepth,    // Out
+            };
+        }
+        if (!pause) return false;
+        _stepKind = null;
+        _resumeFrame = cf;
+        _resumePc = notePc;
+        return true;
+    }
 
     private bool _started;
     private bool _halted;
@@ -982,8 +1072,17 @@ public sealed class BasicVm
 
                 case Opcode.LineNote:
                     {
-                        _currentLine = (int)ReadU32(code, ref pc);
+                        var notePc = pc - 1;
+                        var line = (int)ReadU32(code, ref pc);
                         var endOffset = ReadI32(code, ref pc);
+                        _currentLine = line;
+                        if (_debugging && ShouldPause(cf, notePc, line))
+                        {
+                            cf.Pc = notePc;           // run the statement on the next Step
+                            return StepResult.Paused;
+                        }
+                        cf.Line = line;
+                        cf.NotePc = notePc;
                         cf.StmtEndPc = pc + endOffset;
                         break;
                     }

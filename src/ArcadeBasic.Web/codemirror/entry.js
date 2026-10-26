@@ -1,9 +1,10 @@
 // The parts of CodeMirror 6 the playground's editor (wwwroot/editor.js) uses,
 // bundled into one module: wwwroot/lib/codemirror.js.
-export { EditorState, Compartment, StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
+export { EditorState, Compartment, StateEffect, StateField, RangeSet, RangeSetBuilder } from '@codemirror/state';
 export {
   EditorView, Decoration, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor,
+  gutter, GutterMarker, hoverTooltip,
 } from '@codemirror/view';
 export { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands';
 export {

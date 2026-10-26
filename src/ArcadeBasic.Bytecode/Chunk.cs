@@ -14,6 +14,11 @@ public sealed class Chunk
     private readonly List<string> _strings = [];
 
     public int FrameSize { get; set; }
+
+    /// <summary>The source line of each statement, in code order — for a debugger to know
+    /// where a breakpoint can stop. The compiler records them; a deserialized chunk has none.</summary>
+    public List<int> StatementLines { get; } = [];
+
     public int CodeLength => _code.Count;
     public IReadOnlyList<byte> Code => _code;
     public IReadOnlyList<BigDecimal> Numbers => _numbers;

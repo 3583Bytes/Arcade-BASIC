@@ -726,7 +726,9 @@ public sealed class BasicCompiler
     private int EmitLineNote(Stmt stmt)
     {
         var pc = _current.Emit(Opcode.LineNote);
-        _current.EmitU32((uint)stmt.Span.StartPosition.LineCol.Line);
+        var line = stmt.Span.StartPosition.LineCol.Line;
+        _current.StatementLines.Add(line);
+        _current.EmitU32((uint)line);
         _current.EmitI32(0); // stmtEndOffset placeholder
         return pc;
     }
