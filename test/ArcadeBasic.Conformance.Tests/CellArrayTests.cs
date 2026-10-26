@@ -47,11 +47,11 @@ public class CellArrayTests
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
-        var interpOut = new StringWriter();
+        var interpOut = new StringWriter { NewLine = "\n" };   // the same on every OS
         var interpDevice = device();
         new BasicInterpreter(program, info, interpOut, TextReader.Null, default, interpDevice).Run();
 
-        var vmOut = new StringWriter();
+        var vmOut = new StringWriter { NewLine = "\n" };
         var vmDevice = device();
         new BasicVm(BasicCompiler.Compile(program, info), vmOut, TextReader.Null, vmDevice).Run();
 
@@ -140,7 +140,7 @@ public class CellArrayTests
             Area 0
             AREA 0,0 1,0.5
             Area 7
-            """, drawing);
+            """.ReplaceLineEndings("\n"), drawing);   // (a Windows checkout gives this file CRLF line endings)
     }
 
     [Fact]

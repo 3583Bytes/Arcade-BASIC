@@ -113,7 +113,8 @@ public class Maze3dTests
     /// applied to its source first.</summary>
     private static BasicVm Start(Screen screen, params (string Old, string New)[] edits)
     {
-        var source = File.ReadAllText(Path.Combine(ExamplesDir(), "maze3d.bas"));
+        // (A Windows checkout gives the example CRLF line endings; the edits are LF.)
+        var source = File.ReadAllText(Path.Combine(ExamplesDir(), "maze3d.bas")).ReplaceLineEndings("\n");
         foreach (var (old, @new) in edits)
         {
             Assert.Contains(old, source);
