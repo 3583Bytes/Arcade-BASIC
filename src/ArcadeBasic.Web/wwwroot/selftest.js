@@ -332,6 +332,92 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     return result;
   });
 
+  await step('colours', async () => {
+    documents.newProgram();
+    setText('SET LINE COLOR 2\nSET COLOR MIX (40) 0.10, 0.50, 0.90\nSET AREA COLOR 40\n');
+    await pause(150);
+    const swatches = () => [...view.contentDOM.querySelectorAll('.cm-swatch')];
+    const result = { swatches: swatches().map(s => getComputedStyle(s).backgroundColor) };
+    // Colour 2 → pick 9 from the palette.
+    swatches()[0].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await pause(50);
+    result.paletteOpen = $('paletteDialog').open;
+    result.paletteCells = $('paletteGrid').children.length;
+    result.paletteSelected = $('paletteGrid').querySelector('.selected')?.dataset.index;
+    $('paletteGrid').children[9].click();
+    $('paletteUse').click();
+    await pause(50);
+    result.line1 = view.state.doc.line(1).text;
+    // The mix's swatch → the colour picker → red.
+    swatches()[1].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    const picker = document.querySelector('.swatchPicker');
+    picker.value = '#ff0000';
+    picker.dispatchEvent(new Event('input'));
+    await pause(50);
+    result.line2 = view.state.doc.line(2).text;
+    result.mixSwatchNow = getComputedStyle(swatches()[2]).backgroundColor;   // colour 40 follows the mix
+    // Tools → Colours…, then insert a SET COLOR MIX for colour 200.
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    document.querySelector('[data-action="palette"]').click();
+    await pause(50);
+    result.toolsSource = $('paletteSource').textContent.slice(0, 40);
+    $('paletteGrid').children[200].click();
+    $('paletteInsert').click();
+    result.inserted = view.state.doc.toString().split('\n').find(l => l.includes('(200)'));
+    // maze3d's colour DATA: a swatch per colour.
+    documents.openExample('maze3d.bas');
+    editor.goToLine(92);
+    await pause(150);
+    const line92 = [...view.contentDOM.querySelectorAll('.cm-line')].find(l => l.textContent.startsWith('DATA 0.10, 0.10, 0.16'));
+    result.dataSwatches = line92 ? line92.querySelectorAll('.cm-swatch').length : 'no line';
+    return result;
+  });
+
+  await step('tunes', async () => {
+    documents.newProgram();
+    setText('PLAY "T240 L8 CDEC"\nPLAY "MB T255 L32 N" & STR$(5)\nEND ! PLAY "C" here is in a comment\n');
+    await pause(150);
+    const result = { buttons: view.contentDOM.querySelectorAll('.cm-tune').length };
+    let started = 0;
+    const start = OscillatorNode.prototype.start;
+    OscillatorNode.prototype.start = function (...args) { started++; return start.apply(this, args); };
+    view.contentDOM.querySelector('.cm-tune button').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await pause(200);
+    result.previewOscillators = started;
+    OscillatorNode.prototype.start = start;
+    // ♫: the tune editor.
+    view.contentDOM.querySelectorAll('.cm-tune button')[1].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await pause(100);
+    result.open = $('tuneDialog').open;
+    result.text = $('tuneText').value;
+    result.summary = $('tuneLength').textContent;
+    const keys = [...$('tunePiano').children];
+    keys.find(k => k.title === 'G4').click();                     // L8 in force, new notes quarters: G4
+    $('tuneDialog').focus();
+    $('tuneDialog').dispatchEvent(new KeyboardEvent('keydown', { key: 'k', bubbles: true, cancelable: true }));   // C5
+    $('tuneRest').click();
+    $('tuneTempo').value = '120';
+    $('tuneTempo').dispatchEvent(new Event('change'));
+    result.edited = $('tuneText').value;
+    result.editedSummary = $('tuneLength').textContent;
+    $('tuneText').value = 'T240 X';
+    $('tuneText').dispatchEvent(new Event('input'));
+    result.error = $('tuneError').textContent;
+    $('tuneText').value = result.edited;
+    $('tuneText').dispatchEvent(new Event('input'));
+    $('tuneApply').click();
+    await pause(50);
+    result.line1 = view.state.doc.line(1).text;
+    // Tools → Insert a tune.
+    view.dispatch({ selection: { anchor: view.state.doc.line(3).from } });
+    document.querySelector('[data-action="tune"]').click();
+    await pause(100);
+    result.newTune = $('tuneDialog').open && $('tuneText').value;
+    $('tuneApply').click();
+    result.line3 = view.state.doc.line(3).text;
+    return result;
+  });
+
   await step('keptInBrowser', async () => {
     documents.persist();
     const session = JSON.parse(localStorage.getItem('arcade-basic.session'));

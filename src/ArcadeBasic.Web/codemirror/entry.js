@@ -4,7 +4,7 @@ export { EditorState, Compartment, StateEffect, StateField, RangeSet, RangeSetBu
 export {
   EditorView, Decoration, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
   highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor,
-  gutter, GutterMarker, hoverTooltip, WidgetType,
+  gutter, GutterMarker, hoverTooltip, WidgetType, ViewPlugin,
 } from '@codemirror/view';
 export { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands';
 export {

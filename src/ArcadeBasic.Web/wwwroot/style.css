@@ -317,6 +317,38 @@ dialog.picture .buttons button.primary { border-color: var(--accent); color: var
 dialog.picture .buttons { align-items: center; }
 dialog.picture .buttons .spacer { flex: 1; }
 
+/* Colours in the code, and the palette */
+.swatchPicker { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+dialog.palette { max-width: min(640px, calc(100vw - 32px)); }
+.paletteGrid { display: grid; grid-template-columns: repeat(16, 22px); grid-auto-rows: 22px; gap: 2px; margin-bottom: 12px; justify-content: center; }
+.paletteGrid button { border: 1px solid rgba(128, 128, 128, .35); border-radius: 3px; padding: 0; cursor: pointer; }
+.paletteGrid button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.paletteChosen { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font: 13px var(--code-font); }
+.paletteChosen #paletteChosen { width: 40px; height: 26px; border-radius: 5px; border: 1px solid var(--border); }
+dialog .buttons .spacer { flex: 1; }
+
+/* The tune editor */
+dialog.tune { width: min(820px, calc(100vw - 32px)); max-width: none; }
+#tuneText { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: 14px/1.4 var(--code-font); resize: vertical; }
+.tuneError { color: var(--danger); min-height: 1.2em; margin: 4px 0 6px; font-size: 12px; }
+#tuneRoll { display: block; width: 100%; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.tuneControls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
+.tuneControls .spacer { flex: 1; }
+.tuneControls .muted { color: var(--muted); }
+.tuneControls button, .tuneLengths button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer;
+}
+.tuneLengths { display: inline-flex; gap: 3px; }
+.tuneLengths button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.tuneControls input[type="number"] { width: 64px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+.piano { position: relative; height: 92px; margin-top: 10px; user-select: none; }
+.piano button { position: absolute; top: 0; border-radius: 0 0 5px 5px; cursor: pointer; padding: 0; font: 9px var(--ui-font); }
+.piano .white { height: 92px; background: #f4f4f0; border: 1px solid #888; color: #666; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; }
+.piano .black { height: 56px; background: #222; border: 1px solid #000; z-index: 1; }
+.piano .white:active { background: var(--paused); }
+.piano .black:active { background: #555; }
+.tuneHelp { font-size: 12px; margin: 10px 0 14px; }
+
 /* A file dragged over the page */
 body.dropping::after {
   content: "Drop .bas files to open them"; position: fixed; inset: 12px; z-index: 50; display: grid; place-items: center;

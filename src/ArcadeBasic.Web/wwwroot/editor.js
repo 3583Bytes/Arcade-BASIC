@@ -15,6 +15,8 @@ import {
   closeBrackets, closeBracketsKeymap, linter, lintGutter, lintKeymap, openLintPanel, nextDiagnostic, forceLinting,
 } from './lib/codemirror.js';
 import { pictureLens } from './pictures.js';
+import { colourSwatches } from './colours.js';
+import { tuneButtons } from './tunes.js';
 
 // The engine's reserved words and supplied functions, upper-case (setWords).
 const reserved = new Set(), builtins = new Set();
@@ -115,6 +117,16 @@ const theme = EditorView.theme({
     borderBottom: '5px solid transparent', borderLeft: '8px solid var(--paused)',
   },
   '.cm-valueTip': { padding: '3px 8px', fontFamily: 'var(--code-font)', whiteSpace: 'pre' },
+  '.cm-swatch': {
+    display: 'inline-block', width: '0.8em', height: '0.8em', margin: '0 3px 0 1px', verticalAlign: '-0.05em',
+    borderRadius: '2px', border: '1px solid rgba(128, 128, 128, .6)', cursor: 'pointer',
+  },
+  '.cm-tune': { display: 'inline-flex', gap: '2px', marginLeft: '6px', verticalAlign: 'baseline' },
+  '.cm-tune button': {
+    font: '11px var(--ui-font)', lineHeight: '1.2', color: 'var(--accent)', background: 'transparent',
+    border: '1px solid var(--border)', borderRadius: '4px', padding: '0 4px', cursor: 'pointer',
+  },
+  '.cm-tune button:hover': { borderColor: 'var(--accent)' },
   '.cm-pictureLens': { display: 'flex', gap: '8px', alignItems: 'baseline', padding: '2px 0 1px', fontFamily: 'var(--ui-font)', fontSize: '12px', color: 'var(--muted)' },
   '.cm-pictureLens button': {
     font: 'inherit', color: 'var(--accent)', background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px',
@@ -320,8 +332,10 @@ export function createEditor(parent, hooks) {
   }, { delay: 350 });
 
   const lenses = pictureLens((view, line) => hooks.onEditPicture?.(view, line));
+  const swatches = colourSwatches((view, options) => hooks.onPickColour?.(view, options));
+  const tunes = tuneButtons((view, where) => hooks.onEditTune?.(view, where));
   const extensions = () => [
-    breakpoints, paused, breakpointGutter, values, lenses,
+    breakpoints, paused, breakpointGutter, values, lenses, swatches, tunes,
     lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
     EditorState.allowMultipleSelections.of(true), indentOnInput(), bracketMatching(), closeBrackets(),
     autocompletion({ override: [complete], icons: false }), rectangularSelection(), crosshairCursor(),

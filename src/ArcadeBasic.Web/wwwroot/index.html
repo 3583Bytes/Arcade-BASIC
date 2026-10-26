@@ -33,9 +33,17 @@
         <button data-action="saveAs" role="menuitem">Save as… <span class="key" data-key="Mod+Shift+S"></span></button>
         <hr>
         <button data-action="share" role="menuitem">Copy a link to this program</button>
-        <button data-action="picture" role="menuitem">Insert a new picture…</button>
         <hr>
         <button data-action="close" role="menuitem">Close tab <span class="key" data-key="Alt+W"></span></button>
+      </div>
+    </div>
+    <div class="menu">
+      <button class="tool" id="toolsMenuButton" aria-haspopup="menu" aria-expanded="false">Tools</button>
+      <div class="menu-list" id="toolsMenu" role="menu">
+        <button data-action="palette" role="menuitem">Colours…</button>
+        <hr>
+        <button data-action="picture" role="menuitem">Insert a new picture…</button>
+        <button data-action="tune" role="menuitem">Insert a tune…</button>
       </div>
     </div>
     <select id="examples" aria-label="Open an example"></select>
@@ -134,6 +142,56 @@
         this browser and in the files you save. Nothing is sent anywhere.</p>
       <p>The editor is <a href="https://codemirror.net">CodeMirror</a>.</p>
       <div class="buttons"><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- The 256 colours (colours.js). -->
+  <dialog id="paletteDialog" class="palette" aria-labelledby="paletteHeading">
+    <form method="dialog">
+      <h2 id="paletteHeading">Colours</h2>
+      <p id="paletteSource"></p>
+      <div class="paletteGrid" id="paletteGrid"></div>
+      <div class="paletteChosen"><span id="paletteChosen"></span><span id="paletteAbout"></span></div>
+      <div class="buttons">
+        <button type="button" id="paletteInsert" title="Write SET COLOR MIX for this colour at the cursor, to change it from there">Insert SET COLOR MIX</button>
+        <span class="spacer"></span>
+        <button>Close</button>
+        <button type="button" id="paletteUse" class="primary"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- The tune editor (tunes.js). -->
+  <dialog id="tuneDialog" class="tune" aria-labelledby="tuneTitle">
+    <form method="dialog">
+      <h2 id="tuneTitle">Tune</h2>
+      <textarea id="tuneText" rows="2" spellcheck="false" aria-label="The PLAY string"></textarea>
+      <p class="tuneError" id="tuneError"></p>
+      <canvas id="tuneRoll" aria-label="The notes: click one to find it in the string"></canvas>
+      <div class="tuneControls">
+        <button type="button" id="tunePlay" title="Play it all (Space)">▶ Play</button>
+        <button type="button" id="tuneStop">■ Stop</button>
+        <span id="tuneLength" class="muted"></span>
+        <span class="spacer"></span>
+        <label>Tempo <input type="number" id="tuneTempo" min="32" max="255" step="1"></label>
+      </div>
+      <div class="tuneControls">
+        <span>New notes:</span>
+        <span class="tuneLengths" id="tuneLengths"></span>
+        <label><input type="checkbox" id="tuneDotted"> dotted</label>
+        <button type="button" id="tuneRest" title="A rest of that length">Rest</button>
+        <span class="spacer"></span>
+        <span>Octaves <button type="button" id="tuneOctDown" title="Lower (Z)">−</button> <b id="tuneOctave"></b> <button type="button" id="tuneOctUp" title="Higher (X)">+</button></span>
+      </div>
+      <div class="piano" id="tunePiano"></div>
+      <p class="tuneHelp">Click the piano, or play it on the keyboard (A W S E D F T G Y H U J K), to add notes where the
+        cursor is in the string; Space plays it. Notes are the string's Music Macro Language: A–G with # or -, a
+        length (4 a quarter, 8 an eighth …), O octave, &lt; &gt; down or up an octave, P a rest, T tempo, L default length.</p>
+      <div class="buttons">
+        <span class="spacer"></span>
+        <button type="button" id="tuneCancel">Cancel</button>
+        <button type="button" id="tuneApply" class="primary">Apply to the code</button>
+      </div>
     </form>
   </dialog>
 

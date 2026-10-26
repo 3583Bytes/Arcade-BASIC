@@ -17,9 +17,10 @@ export function createAudio() {
   let muted = false;
   let end = 0;               // when the last tone given ends (ms, page time)
   const ends = [];           // when each tone not finished yet ends
+  let previewOut = null;     // a tune being previewed in the editor (separate from the program's)
 
-  function tone(frequency, startMs, seconds) {
-    if (!out || context.state !== 'running' || seconds <= 0) return;
+  function tone(frequency, startMs, seconds, destination = out) {
+    if (!destination || context.state !== 'running' || seconds <= 0) return;
     const at = context.currentTime + Math.max(0, (startMs - performance.now()) / 1000);
     const ramp = Math.min(RAMP, seconds / 2);
     const oscillator = context.createOscillator();
@@ -30,7 +31,7 @@ export function createAudio() {
     envelope.gain.linearRampToValueAtTime(LEVEL, at + ramp);
     envelope.gain.setValueAtTime(LEVEL, at + seconds - ramp);
     envelope.gain.linearRampToValueAtTime(0, at + seconds);
-    oscillator.connect(envelope).connect(out);
+    oscillator.connect(envelope).connect(destination);
     oscillator.start(at);
     oscillator.stop(at + seconds);
   }
@@ -73,6 +74,29 @@ export function createAudio() {
         ends.push(t);
       }
       end = t;
+    },
+
+    /** Hear some tones now, apart from any program (the editor's ▶): they play even with
+     *  the program's sound off. Resolves to when they start and end (page time, ms). */
+    async preview(tones) {
+      this.unlock();
+      if (!context) return { start: 0, end: 0 };
+      if (context.state === 'suspended') await context.resume().catch(() => {});
+      previewOut?.disconnect();
+      previewOut = context.createGain();
+      previewOut.connect(context.destination);
+      const start = performance.now() + 30;
+      let t = start;
+      for (let i = 0; i + 2 < tones.length; i += 3) {
+        if (tones[i] > 0) tone(tones[i], t, tones[i + 1], previewOut);
+        t += (tones[i + 1] + tones[i + 2]) * 1000;
+      }
+      return { start, end: t };
+    },
+
+    stopPreview() {
+      previewOut?.disconnect();
+      previewOut = null;
     },
 
     /** Milliseconds until everything given has played. */

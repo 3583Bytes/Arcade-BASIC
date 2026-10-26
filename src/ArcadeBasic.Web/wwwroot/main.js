@@ -10,6 +10,8 @@ import { createEditor } from './editor.js';
 import { createDocuments } from './documents.js';
 import { createAudio, QUEUE } from './audio.js';
 import { openPictureEditor, insertPicture } from './pictures.js';
+import { setDefaultPalette, openPalette } from './colours.js';
+import { setTuneEngine, openTuneEditor, insertTune } from './tunes.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
@@ -64,6 +66,12 @@ const editor = createEditor($('editor'), {
   onProblems: showProblems,
   onEditPicture(view, line) {
     openPictureEditor(view, line, { key: documents.active?.name ?? '', ask });
+  },
+  onPickColour(view, { index, onPick }) {
+    openPalette({ current: programColours, index, onPick, insert: insertLine });
+  },
+  onEditTune(view, where) {
+    openTuneEditor(view, where, { ask });
   },
   onBreakpoints(lines) {
     if (run && run.doc === documents.active) P.SetBreakpoints(lines);   // takes effect at once
@@ -173,6 +181,7 @@ function start(text, onHalt, doc = null, stopAtFirst = false) {
     return false;
   }
   audio.reset();
+  paletteSeen = false;
   if (doc) P.SetBreakpoints(editor.breakpointLines(doc === documents.active ? editor.state : doc.state));
   if (stopAtFirst) P.PauseAt(PAUSE);
   lastVariables = new Map();
@@ -558,8 +567,23 @@ function drawFrame(cmds, texts, cells = []) {
   }
 }
 
+/** The running program's colours ('#rrggbb' × 256) once it has drawn, else null. */
+let paletteSeen = false;
+const programColours = () => run && paletteSeen
+  ? palette.map(c => '#' + c.match(/\d+/g).map(v => (+v).toString(16).padStart(2, '0')).join(''))
+  : null;
+
+/** A line of code above the cursor's (the palette's "Insert SET COLOR MIX"). */
+function insertLine(text) {
+  const view = editor.view, line = view.state.doc.lineAt(view.state.selection.main.head);
+  const indent = /^\s*/.exec(line.text)[0];
+  view.dispatch({ changes: { from: line.from, insert: indent + text + '\n' }, selection: { anchor: line.from + indent.length + text.length } });
+  view.focus();
+}
+
 /** The colours a PALETTE command carries: 256 ARGB values from cmds[at]. */
 function setPalette(cmds, at) {
+  paletteSeen = true;
   palette = [];
   for (let k = 0; k < 256; k++) {
     const c = cmds[at + k] >>> 0, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
@@ -727,6 +751,8 @@ const actions = {
   saveAs: () => documents.save(documents.active, true),
   share: shareLink,
   picture: () => { if (documents.active) insertPicture(editor.view, { key: documents.active.name, ask }); },
+  tune: () => { if (documents.active && P) insertTune(editor.view, { ask }); },
+  palette: () => openPalette({ current: programColours, insert: insertLine }),
   close: () => documents.close(),
   shortcuts: () => $('shortcutsDialog').showModal(),
   about: () => $('aboutDialog').showModal(),
@@ -908,6 +934,14 @@ editor.setChecker(text => {
     from: spans[3 * i], to: spans[3 * i + 1], severity: ['info', 'warning', 'error'][spans[3 * i + 2]], message,
   }));
 });
+
+setDefaultPalette(P.DefaultPalette());
+setTuneEngine({
+  tones: mml => ({ tones: P.PlayTones(mml), error: P.PlayError() }),
+  preview: tones => audio.preview(tones),
+  stop: () => audio.stopPreview(),
+});
+editor.view.dispatch({});                               // (draw the colour swatches now there's a palette)
 
 // The examples, by the @category on their first line.
 const examples = $('examples');

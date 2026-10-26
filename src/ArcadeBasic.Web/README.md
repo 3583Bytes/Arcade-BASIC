@@ -47,7 +47,21 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   triples from 0 to 1 (maze3d's `SET COLOR MIX` values), the digits 0, 1, 2 … are
   those colours and editing them rewrites that line; otherwise the editor picks
   colours (digits dark to light, `.` and space see-through) and remembers any you
-  change. *File → Insert a new picture* starts one.
+  change. *Tools → Insert a new picture* starts one.
+- **Colours you can see**: a swatch beside each `SET LINE|AREA|TEXT|POINT COLOR n`
+  (colour *n* as the program starts, or as a literal `SET COLOR MIX (n)` in it
+  makes it) opens the 256-colour palette to pick another number; one beside each
+  literal `SET COLOR MIX (n) r, g, b`, and each red-green-blue triple of a
+  picture's colour `DATA`, opens a colour picker that rewrites the numbers.
+  *Tools → Colours…* shows the palette — the running program's, or the starting
+  one — and can insert a `SET COLOR MIX` for any colour.
+- **A tune editor**: beside each `PLAY "…"` (a whole string, not in a comment),
+  ▶ plays it and ♫ edits it: its notes on a piano roll (click one to find it in
+  the string), a two-octave piano to add notes at the cursor (or play the keyboard,
+  A W S E D F T G Y H U J K), note lengths, dots, rests and tempo, and the string
+  itself, kept in step. The notes come from the engine's own reading of the string
+  (`Playground.PlayTones`), so what you hear is what `PLAY` plays, and a mistake
+  shows the engine's message. *Tools → Insert a tune* starts one.
 - **Sound**: `SOUND`, `BEEP` and `PLAY` play through Web Audio as a square wave,
   like the PC speaker (`wwwroot/audio.js`); foreground music holds the program up
   until it's played and background (`MB`) music doesn't, up to GW-BASIC's 32 tones.
@@ -101,7 +115,8 @@ tabs, Save (catching the download), line endings, links, sound timing and Web
 Audio (oscillators started, with the test profile allowing autoplay), and the
 debugger (breakpoints, stepping, the Variables tab, values on hover), and the
 pixel editor (painting maze3d's stone texture, recolouring it, one undo; a new
-picture) — and reports each step.
+picture), the colour swatches and palette, and the tune editor (hearing a tune,
+the piano, the keyboard, rests, tempo, an error, applying) — and reports each step.
 Run `?selftest=page` again in the same browser profile to see the tabs come back.
 
 ## The editor bundle
@@ -130,5 +145,8 @@ npm ci && npm run build
 | `wwwroot/documents.js` | the tabs: examples, files (open, save, drop), changes, what's kept in the browser |
 | `wwwroot/audio.js` | sound: tones on a timeline, played as Web Audio square waves |
 | `wwwroot/pictures.js` | pictures in `DATA`: finding them, their labels, their colours, the pixel editor |
+| `wwwroot/colours.js` | colour swatches in the code, and the palette dialog |
+| `wwwroot/tunes.js` | ▶ and ♫ beside `PLAY` strings, and the tune editor |
+| `Playground.Tools.cs` | the tools' exports: a `PLAY` string's tones, the starting palette |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |
