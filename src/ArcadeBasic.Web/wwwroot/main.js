@@ -9,6 +9,7 @@ import { dotnet } from './_framework/dotnet.js';
 import { createEditor } from './editor.js';
 import { createDocuments } from './documents.js';
 import { createAudio, QUEUE } from './audio.js';
+import { openPictureEditor, insertPicture } from './pictures.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
@@ -61,6 +62,9 @@ const editor = createEditor($('editor'), {
     if (update.selectionSet || update.docChanged) showCursor();
   },
   onProblems: showProblems,
+  onEditPicture(view, line) {
+    openPictureEditor(view, line, { key: documents.active?.name ?? '', ask });
+  },
   onBreakpoints(lines) {
     if (run && run.doc === documents.active) P.SetBreakpoints(lines);   // takes effect at once
     documents.persist();
@@ -722,6 +726,7 @@ const actions = {
   save: () => documents.save(),
   saveAs: () => documents.save(documents.active, true),
   share: shareLink,
+  picture: () => { if (documents.active) insertPicture(editor.view, { key: documents.active.name, ask }); },
   close: () => documents.close(),
   shortcuts: () => $('shortcutsDialog').showModal(),
   about: () => $('aboutDialog').showModal(),

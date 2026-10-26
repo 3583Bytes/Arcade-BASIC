@@ -33,6 +33,7 @@
         <button data-action="saveAs" role="menuitem">Save as… <span class="key" data-key="Mod+Shift+S"></span></button>
         <hr>
         <button data-action="share" role="menuitem">Copy a link to this program</button>
+        <button data-action="picture" role="menuitem">Insert a new picture…</button>
         <hr>
         <button data-action="close" role="menuitem">Close tab <span class="key" data-key="Alt+W"></span></button>
       </div>
@@ -133,6 +134,51 @@
         this browser and in the files you save. Nothing is sent anywhere.</p>
       <p>The editor is <a href="https://codemirror.net">CodeMirror</a>.</p>
       <div class="buttons"><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- The pixel editor for pictures in DATA (pictures.js). -->
+  <dialog id="pictureDialog" class="picture" aria-labelledby="pictureTitle">
+    <form method="dialog">
+      <h2 id="pictureTitle"></h2>
+      <div class="pictureBody">
+        <div class="pictureCanvas"><canvas id="pictureCanvas" tabindex="0" aria-label="The picture: click and drag to draw"></canvas></div>
+        <div class="pictureSide">
+          <div class="pictureTools" role="toolbar" aria-label="Tools">
+            <button type="button" id="picturePen" title="Draw (B)">✎ Draw</button>
+            <button type="button" id="pictureFill" title="Fill an area (G)">▧ Fill</button>
+            <button type="button" id="picturePick" title="Pick a character from the picture (I; or right-click, or Alt+click)">⌖ Pick</button>
+            <button type="button" id="pictureMirror" title="Draw both halves at once, mirrored (M)">⇋ Mirror</button>
+          </div>
+          <div class="pictureColours" id="pictureColours" aria-label="Characters"></div>
+          <div class="pictureInk">
+            <label><input type="color" id="pictureInk"> <span id="pictureInkLabel"></span></label>
+            <button type="button" id="pictureAdd" title="Draw with another character">+ Character</button>
+          </div>
+          <p class="pictureNote" id="pictureSource"></p>
+          <div class="pictureTools" aria-label="Move and turn">
+            <button type="button" id="pictureFlipX" title="Flip left to right">⇆</button>
+            <button type="button" id="pictureFlipY" title="Flip top to bottom">⇅</button>
+            <button type="button" id="pictureRotate" title="Turn a quarter clockwise">⟳</button>
+            <button type="button" id="pictureLeft" title="Shift left (wrapping round)">←</button>
+            <button type="button" id="pictureUp" title="Shift up">↑</button>
+            <button type="button" id="pictureDown" title="Shift down">↓</button>
+            <button type="button" id="pictureRight" title="Shift right">→</button>
+            <button type="button" id="pictureClear" title="Fill all of it with the selected character">Clear</button>
+          </div>
+          <div class="picturePreviews">
+            <figure><canvas id="pictureActual"></canvas><figcaption>×2</figcaption></figure>
+            <figure><canvas id="pictureTiled"></canvas><figcaption>tiled</figcaption></figure>
+          </div>
+        </div>
+      </div>
+      <div class="buttons">
+        <button type="button" id="pictureUndo" title="Undo (Ctrl+Z)">↶ Undo</button>
+        <button type="button" id="pictureRedo" title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
+        <span class="spacer"></span>
+        <button type="button" id="pictureCancel">Cancel</button>
+        <button type="button" id="pictureApply" class="primary">Apply to the code</button>
+      </div>
     </form>
   </dialog>
 

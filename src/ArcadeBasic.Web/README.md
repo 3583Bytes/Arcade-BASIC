@@ -37,6 +37,17 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   out (Shift+F11), continue (F5) or pause a running program (F6); F10/F11 with
   nothing running starts it stopped at the first line. While a program runs, the
   Variables tab updates twice a second. Breakpoints are kept with the program.
+- **A pixel editor for pictures in the code**: a block of `DATA` lines that are
+  each one quoted string, all the same length, is a picture — a character per
+  pixel, the way maze3d keeps its map, textures and sprites. Each gets an
+  *Edit picture* label; the editor draws, fills, picks, mirrors, flips, turns and
+  shifts, with undo, and previews it at size and tiled (does a texture repeat
+  cleanly?). *Apply* writes the strings back as one change. Its colours: when the
+  picture's comment name (`! stone`) also labels a `DATA` line of red, green, blue
+  triples from 0 to 1 (maze3d's `SET COLOR MIX` values), the digits 0, 1, 2 … are
+  those colours and editing them rewrites that line; otherwise the editor picks
+  colours (digits dark to light, `.` and space see-through) and remembers any you
+  change. *File → Insert a new picture* starts one.
 - **Sound**: `SOUND`, `BEEP` and `PLAY` play through Web Audio as a square wave,
   like the PC speaker (`wwwroot/audio.js`); foreground music holds the program up
   until it's played and background (`MB`) music doesn't, up to GW-BASIC's 32 tones.
@@ -88,8 +99,9 @@ the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
 tabs, Save (catching the download), line endings, links, sound timing and Web
 Audio (oscillators started, with the test profile allowing autoplay), and the
-debugger (breakpoints, stepping, the Variables tab, values on hover) — and reports
-each step.
+debugger (breakpoints, stepping, the Variables tab, values on hover), and the
+pixel editor (painting maze3d's stone texture, recolouring it, one undo; a new
+picture) — and reports each step.
 Run `?selftest=page` again in the same browser profile to see the tabs come back.
 
 ## The editor bundle
@@ -117,5 +129,6 @@ npm ci && npm run build
 | `wwwroot/editor.js` | the CodeMirror editor: BASIC colouring, problems, runtime-error line, completion, go to definition, breakpoints, the paused line, values on hover |
 | `wwwroot/documents.js` | the tabs: examples, files (open, save, drop), changes, what's kept in the browser |
 | `wwwroot/audio.js` | sound: tones on a timeline, played as Web Audio square waves |
+| `wwwroot/pictures.js` | pictures in `DATA`: finding them, their labels, their colours, the pixel editor |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

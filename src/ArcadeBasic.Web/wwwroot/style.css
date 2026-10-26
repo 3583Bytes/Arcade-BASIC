@@ -287,6 +287,36 @@ dialog table { border-collapse: collapse; width: 100%; margin-bottom: 14px; }
 dialog td { padding: 3px 8px 3px 0; vertical-align: top; }
 dialog td:first-child { white-space: nowrap; }
 
+/* The pixel editor */
+dialog.picture { max-width: min(980px, calc(100vw - 32px)); }
+.pictureBody { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 14px; }
+.pictureCanvas canvas { display: block; cursor: crosshair; touch-action: none; border: 1px solid var(--border); image-rendering: pixelated; }
+.pictureSide { display: flex; flex-direction: column; gap: 10px; min-width: 260px; max-width: 340px; }
+.pictureTools { display: flex; flex-wrap: wrap; gap: 4px; }
+.pictureTools button, .pictureInk button, dialog.picture .buttons button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; cursor: pointer;
+}
+.pictureTools button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.pictureTools button:disabled, dialog.picture .buttons button:disabled { opacity: .4; cursor: default; }
+.pictureColours { display: flex; flex-wrap: wrap; gap: 4px; }
+.pictureColours .swatch {
+  display: flex; align-items: center; gap: 5px; padding: 3px 7px 3px 3px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--text); cursor: pointer; font: 13px var(--code-font);
+}
+.pictureColours .swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pictureColours .chip { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(128, 128, 128, .5); }
+.pictureColours .chip.clear { background: repeating-conic-gradient(#9a9a9a 0 25%, #d0d0d0 0 50%) 50% / 8px 8px; }
+.pictureInk { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.pictureInk label { display: flex; align-items: center; gap: 6px; }
+.pictureInk input[type="color"] { width: 34px; height: 24px; padding: 0; border: 1px solid var(--border); background: none; }
+.pictureNote { margin: 0; font-size: 12px; }
+.picturePreviews { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.picturePreviews figure { margin: 0; text-align: center; font-size: 11px; color: var(--muted); }
+.picturePreviews canvas { display: block; image-rendering: pixelated; border: 1px solid var(--border); }
+dialog.picture .buttons button.primary { border-color: var(--accent); color: var(--accent); }
+dialog.picture .buttons { align-items: center; }
+dialog.picture .buttons .spacer { flex: 1; }
+
 /* A file dragged over the page */
 body.dropping::after {
   content: "Drop .bas files to open them"; position: fixed; inset: 12px; z-index: 50; display: grid; place-items: center;

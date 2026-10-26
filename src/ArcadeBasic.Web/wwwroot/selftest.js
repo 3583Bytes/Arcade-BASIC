@@ -2,6 +2,8 @@
 // /results (for the local test server). Headless Firefox has no File System Access
 // API, so this covers Open and Save's fallbacks: a downloaded file, here caught
 // before it reaches the disk.
+import { findPictures } from './pictures.js';
+
 export async function ideSelftest({ editor, documents, pack, openAddress, $, audio }) {
   const pause = (ms = 300) => new Promise(r => setTimeout(r, ms));
   const view = editor.view;
@@ -267,6 +269,66 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     press('F5', true);                                  // stop
     await pause(50);
     result.stoppedClean = !document.querySelector('.cm-pausedLine') && $('run').textContent === '▶ Run';
+    return result;
+  });
+
+  await step('pictureEditor', async () => {
+    documents.openExample('maze3d.bas');
+    const result = { pictures: findPictures(view.state.doc).map(p => `${p.name || '(unnamed)'} ${p.width}x${p.height} @${p.firstLine}`) };
+    const stone = findPictures(view.state.doc).find(p => p.name === 'stone');
+    const colourLine = view.state.doc.lineAt(view.state.doc.toString().indexOf('DATA 0.10, 0.10, 0.16')).number;
+    result.before = { row: view.state.doc.line(stone.firstLine).text, colours: view.state.doc.line(colourLine).text };
+    editor.goToLine(stone.firstLine);
+    await pause(150);
+    const lens = [...document.querySelectorAll('.cm-pictureLens')].find(l => l.textContent.includes('stone'));
+    lens?.querySelector('button').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await pause(150);
+    const dialog = $('pictureDialog');
+    result.open = dialog.open;
+    result.title = $('pictureTitle').textContent;
+    result.source = $('pictureSource').textContent;
+    result.swatches = [...document.querySelectorAll('#pictureColours .swatch')].map(s =>
+      `${s.textContent}=${s.querySelector('.chip').style.background || 'clear'}`);
+    // Paint the top-left pixel with "3", then fill the 0 at (4, 0)'s area... with "3" too.
+    [...document.querySelectorAll('#pictureColours .swatch')].find(s => s.textContent === '3').click();
+    const canvas = $('pictureCanvas'), r = canvas.getBoundingClientRect(), z = r.width / stone.width;
+    const at = (x, y) => ({ clientX: r.left + (x + 0.5) * z, clientY: r.top + (y + 0.5) * z, button: 0, buttons: 1, pointerId: 1, bubbles: true });
+    canvas.dispatchEvent(new PointerEvent('pointerdown', at(0, 0)));
+    canvas.dispatchEvent(new PointerEvent('pointermove', at(2, 0)));     // a stroke across three pixels
+    canvas.dispatchEvent(new PointerEvent('pointerup', at(2, 0)));
+    // Colour 0 becomes red.
+    [...document.querySelectorAll('#pictureColours .swatch')].find(s => s.textContent === '0').click();
+    $('pictureInk').click();
+    $('pictureInk').value = '#ff0000';
+    $('pictureInk').dispatchEvent(new Event('input'));
+    $('pictureUndo').click();                                            // undo the colour ...
+    $('pictureRedo').click();                                            // ... and redo it
+    $('pictureApply').click();
+    await pause(50);
+    result.closed = !dialog.open;
+    result.after = { row: view.state.doc.line(stone.firstLine).text, colours: view.state.doc.line(colourLine).text };
+    // One undo in the editor takes it all back.
+    const mac = /Mac/.test(navigator.platform);
+    view.focus();
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true }));
+    result.undone = view.state.doc.line(stone.firstLine).text === result.before.row && view.state.doc.line(colourLine).text === result.before.colours;
+
+    // A new picture from the File menu: 8 x 4, draw a row of 1s with Fill, apply.
+    documents.newProgram();
+    setText('PRINT "pictures"\n');
+    view.dispatch({ selection: { anchor: 0 } });
+    document.querySelector('[data-action="picture"]').click();
+    await answer('insert', 'ship 8 x 4');
+    await pause(100);
+    result.newTitle = $('pictureTitle').textContent;
+    result.newSwatches = [...document.querySelectorAll('#pictureColours .swatch')].map(s => s.textContent);
+    [...document.querySelectorAll('#pictureColours .swatch')].find(s => s.textContent === '1').click();
+    $('pictureFill').click();
+    const c2 = $('pictureCanvas').getBoundingClientRect(), z2 = c2.width / 8;
+    $('pictureCanvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: c2.left + z2 / 2, clientY: c2.top + z2 / 2, button: 0, buttons: 1, pointerId: 2, bubbles: true }));
+    $('pictureApply').click();
+    await pause(50);
+    result.newText = view.state.doc.toString();
     return result;
   });
 

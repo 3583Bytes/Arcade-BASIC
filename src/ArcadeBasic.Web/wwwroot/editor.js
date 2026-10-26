@@ -14,6 +14,7 @@ import {
   tags, search, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap,
   closeBrackets, closeBracketsKeymap, linter, lintGutter, lintKeymap, openLintPanel, nextDiagnostic, forceLinting,
 } from './lib/codemirror.js';
+import { pictureLens } from './pictures.js';
 
 // The engine's reserved words and supplied functions, upper-case (setWords).
 const reserved = new Set(), builtins = new Set();
@@ -114,6 +115,12 @@ const theme = EditorView.theme({
     borderBottom: '5px solid transparent', borderLeft: '8px solid var(--paused)',
   },
   '.cm-valueTip': { padding: '3px 8px', fontFamily: 'var(--code-font)', whiteSpace: 'pre' },
+  '.cm-pictureLens': { display: 'flex', gap: '8px', alignItems: 'baseline', padding: '2px 0 1px', fontFamily: 'var(--ui-font)', fontSize: '12px', color: 'var(--muted)' },
+  '.cm-pictureLens button': {
+    font: 'inherit', color: 'var(--accent)', background: 'transparent', border: '1px solid var(--border)', borderRadius: '4px',
+    padding: '0 6px', cursor: 'pointer',
+  },
+  '.cm-pictureLens button:hover': { borderColor: 'var(--accent)' },
 });
 
 // The line a program stopped on with an error, until the next run.
@@ -312,8 +319,9 @@ export function createEditor(parent, hooks) {
     return found;
   }, { delay: 350 });
 
+  const lenses = pictureLens((view, line) => hooks.onEditPicture?.(view, line));
   const extensions = () => [
-    breakpoints, paused, breakpointGutter, values,
+    breakpoints, paused, breakpointGutter, values, lenses,
     lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
     EditorState.allowMultipleSelections.of(true), indentOnInput(), bracketMatching(), closeBrackets(),
     autocompletion({ override: [complete], icons: false }), rectangularSelection(), crosshairCursor(),
