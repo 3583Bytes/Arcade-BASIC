@@ -257,7 +257,7 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
   coordinates with `GraphicsState.ToProblem`. The IDE's Graphics tab and the browser
   canvas implement it; elsewhere `LOCATE POINT` reads typed coordinates.
 - **`ICellArrayDevice`, `IColorMixDevice`** — optional too: a device that draws
-  `MAT GRAPH CELLS` itself (the browser uploads each frame's cells as one image and
+  `MAT GRAPH CELLS` itself, leaving cells coloured -1 see-through (the browser uploads each frame's cells as one image and
   scales pieces of it; the terminals light block quadrants; raster and SVG fill
   pixels or rectangles) and one whose colours `SET COLOR MIX` changes (each keeps a
   `GfxPalette`: 256 colours, approximated to 16 or 256 on terminals). Without

@@ -36,6 +36,10 @@ public class RasterGraphicsDeviceTests
         d.DrawCells(all, 1, 1, [3], new GfxRect(0, 0.4, 0, 1));   // only the left part shows
         Assert.Equal(BrightGreen, At(d, 1, 3));
         Assert.Equal(Black, At(d, 3, 3));
+
+        d.DrawCells(all, 2, 1, [-1, 4], all);                     // -1 is see-through
+        Assert.Equal(BrightGreen, At(d, 1, 3));
+        Assert.Equal(BrightBlue, At(d, 3, 3));
     }
 
     [Fact]

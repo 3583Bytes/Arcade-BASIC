@@ -172,8 +172,9 @@ public sealed class CellSurface
     /// <summary>MAT GRAPH CELLS: a grid of coloured cells filling <paramref name="rect"/>
     /// (colours row-major from the top-left), drawn only inside <paramref name="visible"/>.
     /// It's an image, so it covers what was there: each block quadrant it reaches takes
-    /// the cell under the quadrant's middle — colour 0, the background, leaves it dark —
-    /// and as a character shows one colour, it's the one most of those quadrants have.</summary>
+    /// the cell under the quadrant's middle — colour 0, the background, leaves it dark;
+    /// -1, see-through, leaves it as it was — and as a character shows one colour, it's
+    /// the one most of those quadrants have.</summary>
     public void Cells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
     {
         visible = Intersect(visible, rect);
@@ -198,8 +199,8 @@ public sealed class CellSurface
                     }
                     var cx = Math.Clamp((int)((x - rect.Left) / width * columns), 0, columns - 1);
                     var cy = Math.Clamp((int)((rect.Top - y) / height * rows), 0, rows - 1);
-                    quadrant[q] = colors[cy * columns + cx];
-                    reached = true;
+                    quadrant[q] = colors[cy * columns + cx];   // -1, see-through: left as it is
+                    reached |= quadrant[q] >= 0;
                 }
                 if (!reached) continue;
 

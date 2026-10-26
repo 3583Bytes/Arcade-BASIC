@@ -206,13 +206,17 @@ function setPalette(cmds, at) {
 }
 
 /** Put a frame's cell atlas (width, height, then colour indices row by row) into an
- *  image, in one upload, for drawImage to scale pieces of. */
+ *  image, in one upload, for drawImage to scale pieces of. Colour -1 is see-through
+ *  (a transparent pixel), so a cell array can be a sprite. */
 const atlasCanvas = document.createElement('canvas'), atlasCtx = atlasCanvas.getContext('2d');
 function uploadAtlas(cells) {
   const w = cells[0], h = cells[1];
   if (atlasCanvas.width !== w || atlasCanvas.height !== h) { atlasCanvas.width = w; atlasCanvas.height = h; }
   const image = atlasCtx.createImageData(w, h), pixels = new Uint32Array(image.data.buffer);
-  for (let k = 0; k < w * h; k++) pixels[k] = paletteAbgr[cells[2 + k]] ?? paletteAbgr[1];
+  for (let k = 0; k < w * h; k++) {
+    const c = cells[2 + k];
+    pixels[k] = c < 0 ? 0 : paletteAbgr[c] ?? paletteAbgr[1];
+  }
   atlasCtx.putImageData(image, 0, 0);
   return atlasCanvas;
 }

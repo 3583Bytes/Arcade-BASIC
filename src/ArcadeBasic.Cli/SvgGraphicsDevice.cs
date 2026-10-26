@@ -98,7 +98,7 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColo
                 while (end < columns && colors[r * columns + end] == color) end++;
                 var left = Math.Max(rect.Left + c * cw, visible.Left);
                 var right = Math.Min(rect.Left + end * cw, visible.Right);
-                if (left < right)
+                if (left < right && color >= 0)   // -1: see-through
                 {
                     var (x, y) = Map(new GfxPoint(left, top));
                     _body.Append(FormattableString.Invariant(

@@ -74,8 +74,9 @@ public interface ICellArrayDevice
 {
     /// <summary>Fill <paramref name="rect"/> (unit square, origin bottom-left) with
     /// <paramref name="columns"/> × <paramref name="rows"/> equal cells. Colours are
-    /// row-major starting from the top-left cell; draw only the part inside
-    /// <paramref name="visible"/>, which lies within <paramref name="rect"/>.</summary>
+    /// row-major starting from the top-left cell, and -1 means see-through: leave what's
+    /// there. Draw only the part inside <paramref name="visible"/>, which lies within
+    /// <paramref name="rect"/>.</summary>
     void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible);
 }
 

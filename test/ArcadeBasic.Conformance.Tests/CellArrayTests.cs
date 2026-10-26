@@ -105,7 +105,7 @@ public class CellArrayTests
     }
 
     [Fact]
-    public void ElementsAreRoundedAndColoursOutOfRangeAreTheDefault()
+    public void ElementsAreRoundedAndColoursOutOfRangeAreSeeThrough()
     {
         var (_, drawing) = Both("""
             DIM A(0 TO 3, 0 TO 0)
@@ -115,7 +115,7 @@ public class CellArrayTests
             LET A(3, 0) = 300
             MAT GRAPH CELLS, IN 0, 0; 1, 1: A
             """);
-        Assert.Contains("4x1 VISIBLE 0.0000,0.0000 1.0000,1.0000: 3 3 1 1", drawing);
+        Assert.Contains("4x1 VISIBLE 0.0000,0.0000 1.0000,1.0000: 3 3 -1 -1", drawing);
     }
 
     [Fact]
@@ -141,6 +141,21 @@ public class CellArrayTests
             AREA 0,0 1,0.5
             Area 7
             """, drawing);
+    }
+
+    [Fact]
+    public void SeeThroughCellsGetNoRectangle()
+    {
+        var (_, drawing) = Both("""
+            DIM A(0 TO 2, 0 TO 0)
+            LET A(0, 0) = 2
+            LET A(1, 0) = -1
+            LET A(2, 0) = 2
+            SET WINDOW 0, 3, 0, 1
+            MAT GRAPH CELLS, IN 0, 0; 3, 1: A
+            """, () => new AreasOnly(), d => string.Join("\n", d.Log));
+        // Three cells across the screen: the middle one, -1, gets nothing.
+        Assert.Equal("Area 2\nAREA 0,0 0.33,1\nAREA 0.67,0 1,1\nArea 1", drawing);
     }
 
     [Fact]

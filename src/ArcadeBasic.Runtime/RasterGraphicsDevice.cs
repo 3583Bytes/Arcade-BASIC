@@ -114,7 +114,8 @@ public sealed class RasterGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IC
             for (var px = Math.Max(0, px0); px <= Math.Min(_w - 1, px1); px++)
             {
                 var cx = Math.Clamp((int)(((double)px / (_w - 1) - rect.Left) / width * columns), 0, columns - 1);
-                _pixels[py * _w + px] = Color(colors[cy * columns + cx]);
+                var color = colors[cy * columns + cx];
+                if (color >= 0) _pixels[py * _w + px] = Color(color);   // -1: see-through
             }
         }
     }

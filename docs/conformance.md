@@ -298,7 +298,9 @@ recolour what's already on screen; colour 0 can't change a terminal's background
 The 16-colour IDE shows every colour as the nearest of its 16, the console the
 nearest of its 256; the SVG backend keeps its print palette (paper white) for
 colours 0–15 until they're mixed. A cell colour outside 0–255 (exception 11085,
-nonfatal) is drawn as colour 1; `SET COLOR MIX` with an index outside the device's
+nonfatal — the standard leaves the default to the implementation) leaves its cell
+undrawn, so a cell array with `-1` in it is a sprite with see-through parts;
+`SET COLOR MIX` with an index outside the device's
 colours (11085, nonfatal) is ignored, and an intensity outside 0–1 (11088, nonfatal)
 is taken to the nearer end. `ASK COLOR MIX … STATUS s` reports 11086 for an index
 out of range (and zeros); every index has a colour from the start, so 11087 never

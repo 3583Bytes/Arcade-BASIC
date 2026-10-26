@@ -1024,7 +1024,8 @@ from a loop (coordinate expressions may reference variables) — see
 of a two-dimensional array — an image, a sprite, a texture, a whole frame of
 pixels. The first subscript runs across and the second up or down; the element
 with the lowest subscripts goes at the first corner, the highest at the second.
-Each element's rounded value is its colour.
+Each element's rounded value is its colour; a colour that doesn't exist, such as
+`-1`, leaves that cell undrawn — see-through, for sprites.
 
 ```basic
 OPTION BASE 1
@@ -1040,8 +1041,8 @@ There are 256 colours, 0–255 (`ASK MAX COLOR`): 0 is the background (black), 1
 white, 2–15 the bright and dark primaries, and 16–255 the xterm 256-colour palette
 until `SET COLOR MIX` changes them. Terminals show each as the nearest colour they
 have. Both are ANSI Full BASIC (§13.3.4.4, §13.2); `CELLS` isn't a reserved word.
-See [`examples/maze3d.bas`](../examples/maze3d.bas) — textured walls, one
-texture column per screen column.
+See [`examples/maze3d.bas`](../examples/maze3d.bas) — textured walls (one texture
+column per screen column), floor and ceiling, and sprites with see-through parts.
 
 ### Mouse: `LOCATE POINT` / `GET POINT`, `GET MOUSE`
 

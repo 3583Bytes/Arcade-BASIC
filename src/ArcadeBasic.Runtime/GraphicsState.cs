@@ -187,7 +187,9 @@ public sealed class GraphicsState
     /// equal cell per element of the two-dimensional <paramref name="cells"/>, coloured
     /// by the element's rounded value. The first subscript runs horizontally and the
     /// second vertically; the element with the lowest subscripts sits at
-    /// <paramref name="p1"/> and the highest at <paramref name="p2"/>.
+    /// <paramref name="p1"/> and the highest at <paramref name="p2"/>. A colour the
+    /// device doesn't have (exception 11085, nonfatal — -1, say) leaves its cell
+    /// undrawn, so the array can be a sprite with see-through parts.
     /// </summary>
     public void EmitCells(GfxPoint p1, GfxPoint p2, NumericArrayValue cells, IGraphicsDevice dev)
     {
@@ -224,7 +226,7 @@ public sealed class GraphicsState
             {
                 var i = flipX ? nx - 1 - c : c;
                 var k = cells.IsNative ? ToIndex(cells.GetNative(i * ny + j)) : ToIndex(cells[i * ny + j]);
-                colors[r * nx + c] = k < 0 || k > max ? 1 : k;   // 11085 (nonfatal): the default colour
+                colors[r * nx + c] = k < 0 || k > max ? -1 : k;   // 11085 (nonfatal): left undrawn
             }
         }
 
@@ -233,7 +235,8 @@ public sealed class GraphicsState
     }
 
     /// <summary>Cells for a device that can only fill areas: one rectangle per run of
-    /// same-coloured cells in a row, then the AREA COLOR put back.</summary>
+    /// same-coloured cells in a row (none for see-through ones), then the AREA COLOR
+    /// put back.</summary>
     private void FillCells(GfxRect rect, int nx, int ny, int[] colors, GfxRect visible, IGraphicsDevice dev)
     {
         var cw = (rect.Right - rect.Left) / nx;
@@ -251,7 +254,7 @@ public sealed class GraphicsState
                 while (end < nx && colors[r * nx + end] == color) end++;
                 var x0 = Math.Max(rect.Left + c * cw, visible.Left);
                 var x1 = Math.Min(rect.Left + end * cw, visible.Right);
-                if (x0 < x1)
+                if (x0 < x1 && color >= 0)
                 {
                     if (color != current) dev.SetColor(GfxColorTarget.Area, current = color);
                     dev.FillArea([new GfxPoint(x0, y0), new GfxPoint(x1, y0), new GfxPoint(x1, y1), new GfxPoint(x0, y1)]);

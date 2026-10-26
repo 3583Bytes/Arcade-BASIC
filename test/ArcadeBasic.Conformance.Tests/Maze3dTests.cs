@@ -21,12 +21,15 @@ public class Maze3dTests
         private readonly List<(int Color, GfxPoint[] Polygon)> _areas = [];
         private readonly List<(GfxRect Rect, int[] Colors)> _strips = [];
         private readonly List<(GfxRect Rect, int Columns, int Rows, int[] Colors)> _planes = [];
+        private readonly List<(GfxRect Rect, int[] Colors)> _sprites = [];
         private readonly List<string> _texts = [];
         private int _areaColor = 1;
         public List<(int Color, GfxPoint[] Polygon)> Areas { get; private set; } = [];
         public List<(GfxRect Rect, int[] Colors)> Strips { get; private set; } = [];
         /// <summary>The floor and the ceiling: one cell per dot, below and above eye level.</summary>
         public List<(GfxRect Rect, int Columns, int Rows, int[] Colors)> Planes { get; private set; } = [];
+        /// <summary>Sprite columns: texture columns with see-through (-1) cells.</summary>
+        public List<(GfxRect Rect, int[] Colors)> Sprites { get; private set; } = [];
         public List<string> Texts { get; private set; } = [];
         public readonly HashSet<string> Held = [];
         public readonly Queue<string> Typed = new();
@@ -36,6 +39,7 @@ public class Maze3dTests
             _areas.Clear();
             _strips.Clear();
             _planes.Clear();
+            _sprites.Clear();
             _texts.Clear();
         }
 
@@ -44,8 +48,9 @@ public class Maze3dTests
 
         public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
         {
-            if ((columns, rows) == (1, 16)) _strips.Add((rect, colors));   // a wall: one texture column
-            else _planes.Add((rect, columns, rows, colors));
+            if ((columns, rows) != (1, 16)) _planes.Add((rect, columns, rows, colors));
+            else if (colors.Contains(-1)) _sprites.Add((rect, colors));   // a sprite's column
+            else _strips.Add((rect, colors));                             // a wall's: one texture column
         }
 
         public void Flush()
@@ -53,6 +58,7 @@ public class Maze3dTests
             Areas = [.. _areas];
             Strips = [.. _strips];
             Planes = [.. _planes];
+            Sprites = [.. _sprites];
             Texts = [.. _texts];
         }
 
@@ -226,11 +232,28 @@ public class Maze3dTests
     }
 
     [Fact]
-    public void WalkingIntoTheGreenDoorEscapes()
+    public void TheDoorIsLockedWithoutTheKey()
     {
-        // Start beside the door (row 14, column 15), facing it.
+        // Start beside the door (row 14, column 15), facing it, without the key.
         var screen = new Screen();
         var vm = Start(screen, ("LET PX = 1.5\nLET PY = 1.5", "LET PX = 13.5\nLET PY = 14.5"));
+        NextFrame(vm, screen);
+        Assert.Contains("find the key", screen.Texts);
+
+        screen.Held.Add("w");
+        for (var i = 0; i < 25; i++) NextFrame(vm, screen);
+        Assert.Contains("The door is locked: find the key", screen.Texts);
+        Assert.DoesNotContain("YOU ESCAPED!", screen.Texts);
+    }
+
+    [Fact]
+    public void WithTheKeyTheGreenDoorIsTheWayOut()
+    {
+        // Start beside the door (row 14, column 15), facing it, with the key.
+        var screen = new Screen();
+        var vm = Start(screen,
+            ("LET PX = 1.5\nLET PY = 1.5", "LET PX = 13.5\nLET PY = 14.5"),
+            ("LET HASKEY = 0", "LET HASKEY = 1"));
         NextFrame(vm, screen);
         Assert.Equal((4, false), screen.CentreTexture());   // the door, ahead
 
@@ -241,6 +264,42 @@ public class Maze3dTests
         screen.Held.Clear();
         screen.Typed.Enqueue("q");
         Assert.Equal(StepStatus.Halted, NextFrame(vm, screen));
+    }
+
+    [Fact]
+    public void ObjectsBehindWallsArentDrawn()
+    {
+        // From the start the key and every gem are behind walls.
+        var screen = new Screen();
+        var vm = Start(screen);
+        NextFrame(vm, screen);
+        Assert.Empty(screen.Sprites);
+    }
+
+    [Fact]
+    public void AGemAheadIsDrawnAndWalkingOverItAddsTime()
+    {
+        // Put the first gem two tiles ahead, down the starting corridor.
+        var screen = new Screen();
+        var vm = Start(screen, ("DATA 2, 3, 3", "DATA 2, 3, 1"));
+        NextFrame(vm, screen);
+
+        // A sprite in the middle of the view: a few screen columns, each a texture
+        // column of the gem's colours (80-83 lit) with see-through cells, standing on
+        // the floor and half a tile tall — so its top is at eye level, half a tile up.
+        var sprite = screen.Sprites;
+        Assert.InRange(sprite.Count, 10, 40);
+        Assert.All(sprite, s => Assert.InRange(s.Rect.Left, 0.3, 0.7));
+        Assert.All(sprite.SelectMany(s => s.Colors), c => Assert.True(c == -1 || c is >= 80 and <= 83, $"colour {c}"));
+        Assert.All(sprite, s => Assert.True(s.Rect.Bottom < 0.3 && Math.Abs(s.Rect.Top - 0.5) < 1e-9));
+        Assert.Contains("GEMS 0   MAZE 3D", screen.Texts);
+
+        screen.Held.Add("w");                          // 2 tiles at 0.12 a frame
+        for (var i = 0; i < 20; i++) NextFrame(vm, screen);
+        Assert.Contains("GEMS 1   MAZE 3D", screen.Texts);
+        Assert.Contains("A gem: +10 seconds", screen.Texts);
+        Assert.Contains("TIME 100", screen.Texts);     // 90 + 10, under a second in
+        Assert.Empty(screen.Sprites);                  // picked up: gone
     }
 
     [Fact]

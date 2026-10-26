@@ -120,6 +120,18 @@ public class CellSurfaceTests
     }
 
     [Fact]
+    public void SeeThroughCellsLeaveWhatsThere()
+    {
+        var s = Surface();
+        s.Area([P(0, 0), P(10, 0), P(10, 5), P(0, 5)], 2);
+        s.Cells(R(0, 1, 4, 5), 2, 2, [-1, 5, -1, 5], R(0, 10, 0, 5));   // a sprite: left half see-through
+        Assert.Equal('█', s.Glyph(0, 0));                              // the left half still filled
+        Assert.Equal(5, s[0, 0].Color);                                // (one colour: the sprite's)
+        s.Cells(R(1, 2, 4, 5), 1, 1, [-1], R(0, 10, 0, 5));             // all see-through: nothing changes
+        Assert.Equal(2, s[1, 0].Color);
+    }
+
+    [Fact]
     public void CellsAreCutToWhatsVisible()
     {
         var s = Surface();

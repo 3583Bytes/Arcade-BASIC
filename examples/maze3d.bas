@@ -1,5 +1,6 @@
 ! maze3d.bas — a first-person 3D maze in the style of Wolfenstein 3D: find the    @category Games
-! green door before the time runs out. The view is ray cast: for each column of
+! key, then the green door, before the time runs out; each gem you pick up adds
+! ten seconds. The view is ray cast: for each column of
 ! the screen a ray steps across the map grid (the DDA algorithm) until it hits a
 ! wall, and the distance sets how tall that column's slice of wall is. The walls
 ! are textured: where the ray hit along the wall picks a column of a 16 x 16
@@ -9,7 +10,11 @@
 ! screen below eye level looks at the floor a known distance away, so following
 ! the column's ray that far finds the spot — and its texel — that dot shows. Only
 ! the rows the wall leaves visible are worked out; they're drawn as two cell
-! arrays, and the walls over them. SET COLOR MIX gives the textures their own
+! arrays, and the walls over them. The key and the gems are sprites: pictures
+! stood upright on the floor, scaled by distance like the walls, drawn a column at
+! a time — only where they're nearer than that column's wall — farthest first,
+! with see-through parts (cells coloured -1, which MAT GRAPH CELLS leaves undrawn).
+! SET COLOR MIX gives the textures their own
 ! colours, with darker copies for walls facing north/south and anything far
 ! away. In the browser playground a dot is 6 pixels; in a terminal, half a
 ! character (block elements, 2 x 2 per cell, one colour per character), so the
@@ -64,8 +69,9 @@ FOR R = 0 TO MH - 1
 NEXT R
 
 ! ---- textures: 16 x 16, one digit per texel (0 the darkest .. 3) --------------
-! Seven of them: five for walls, the floor, the ceiling. Each is kept twice, lit
-! and shaded: TEX(2t, x, y) and TEX(2t + 1, x, y) are colour indices.
+! Nine of them: five for walls, the floor, the ceiling, and two sprites (the key
+! and a gem, where . is see-through: -1). Each is kept twice, lit and shaded:
+! TEX(2t, x, y) and TEX(2t + 1, x, y) are colour indices.
 LET TW = 16                        ! texels across and down
 LET SHADE = 0.6                    ! how much darker shaded surfaces are
 DIM TSLOT(9)                       ! each wall type's texture (its lit copy)
@@ -75,10 +81,10 @@ LET TSLOT(3) = 4                   ! wood
 LET TSLOT(4) = 6                   ! tiles
 LET TSLOT(9) = 8                   ! the door
 LET FLOORTEX = 10                  ! the floor; the ceiling is FLOORTEX + 2
-DIM TEX(13, 15, 15)
+DIM TEX(17, 15, 15)
 DIM STRIP(0, 15)                   ! a wall column being drawn: 1 across, 16 down
 ! Each texture's four colours (red, green, blue, 0-1). Texture t's colour c is
-! 16 + 8t + c lit and 20 + 8t + c shaded: colours 16-71.
+! 16 + 8t + c lit and 20 + 8t + c shaded: colours 16-87.
 ! stone
 DATA 0.10, 0.10, 0.16, 0.32, 0.36, 0.52, 0.46, 0.50, 0.66, 0.24, 0.27, 0.40
 ! brick
@@ -93,7 +99,11 @@ DATA 0.04, 0.22, 0.06, 0.12, 0.52, 0.18, 0.20, 0.68, 0.26, 0.95, 0.85, 0.30
 DATA 0.16, 0.15, 0.13, 0.40, 0.37, 0.32, 0.48, 0.45, 0.39, 0.30, 0.28, 0.24
 ! ceiling
 DATA 0.08, 0.06, 0.04, 0.30, 0.22, 0.14, 0.36, 0.27, 0.17, 0.22, 0.16, 0.10
-FOR TT = 0 TO 6
+! key
+DATA 0.35, 0.22, 0.02, 0.85, 0.62, 0.10, 1.00, 0.85, 0.35, 1.00, 1.00, 0.80
+! gem
+DATA 0.05, 0.15, 0.35, 0.15, 0.45, 0.85, 0.40, 0.80, 1.00, 0.90, 1.00, 1.00
+FOR TT = 0 TO 8
   FOR C = 0 TO 3
     READ CR, CG, CB
     SET COLOR MIX (16 + 8 * TT + C) CR, CG, CB
@@ -219,16 +229,80 @@ DATA "2222202222222222"
 DATA "2222203222222322"
 DATA "2222202222222222"
 DATA "0000000000000000"
-FOR TT = 0 TO 6
+! key (. is see-through)
+DATA "................"
+DATA "......0000......"
+DATA ".....012210....."
+DATA "....01200210...."
+DATA "....0100.010...."
+DATA "....01200210...."
+DATA ".....012210....."
+DATA "......0110......"
+DATA ".......01......."
+DATA ".......010......"
+DATA ".......0120....."
+DATA ".......01......."
+DATA ".......0120....."
+DATA ".......0110....."
+DATA ".......000......"
+DATA "................"
+! gem (. is see-through)
+DATA "................"
+DATA "................"
+DATA "................"
+DATA "................"
+DATA "................"
+DATA "......0000......"
+DATA ".....013310....."
+DATA "....01233210...."
+DATA "...0122222210..."
+DATA "...0000000000..."
+DATA "....01111110...."
+DATA ".....011110....."
+DATA "......0110......"
+DATA ".......00......."
+DATA "................"
+DATA "................"
+FOR TT = 0 TO 8
   FOR Y = 0 TO TW - 1
     READ ROW$
     FOR X = 0 TO TW - 1
-      LET C = VAL(MID$(ROW$, X + 1, 1))
-      LET TEX(2 * TT, X, Y) = 16 + 8 * TT + C
-      LET TEX(2 * TT + 1, X, Y) = 20 + 8 * TT + C
+      IF MID$(ROW$, X + 1, 1) = "." THEN
+        LET TEX(2 * TT, X, Y) = -1
+        LET TEX(2 * TT + 1, X, Y) = -1
+      ELSE
+        LET C = VAL(MID$(ROW$, X + 1, 1))
+        LET TEX(2 * TT, X, Y) = 16 + 8 * TT + C
+        LET TEX(2 * TT + 1, X, Y) = 20 + 8 * TT + C
+      END IF
     NEXT X
   NEXT Y
 NEXT TT
+
+! ---- objects: the key and the gems, standing on the floor ------------------------
+! (kind, column, row): kind 1 the key, 2 a gem, in the middle of that map tile.
+LET NOBJ = 5
+DIM OKIND(5)
+DIM OX(5)
+DIM OY(5)
+DIM OGOT(5)                        ! 1 once picked up
+DIM ODEP(5)                        ! this frame: how far in front of you, how far across
+DIM OACR(5)
+DIM OORD(5)                        ! the ones in front, farthest first
+DIM OSLOT(2)                       ! each kind's sprite
+LET OSLOT(1) = 14
+LET OSLOT(2) = 16
+LET OSIZE = 0.5                    ! a sprite's height (and width), in tiles
+DATA 1, 7, 8
+DATA 2, 3, 3
+DATA 2, 13, 5
+DATA 2, 6, 13
+DATA 2, 14, 9
+FOR I = 1 TO NOBJ
+  READ OKIND(I), Q, R
+  LET OX(I) = Q + 0.5
+  LET OY(I) = R + 0.5
+NEXT I
 
 ! ---- the floor and ceiling, a dot at a time --------------------------------------
 ! FLR(x, r) is the floor's colour r dots below eye level in screen column x, CEI the
@@ -239,9 +313,10 @@ DIM FLR(0, 0)
 DIM CEI(0, 0)
 DIM FDIST(159)                     ! how far away the floor is, r dots below eye level
 DIM FSLOT(159)                     ! and which copy of its texture (shaded far away)
-DIM CTT(319)                       ! per column: the wall's texture, its column, its height
-DIM CTX(319)
+DIM CTT(319)                       ! per column: the wall's texture, its column, its height,
+DIM CTX(319)                       ! and its distance (what's nearer is in front of it)
 DIM CLH(319)
+DIM CPD(319)
 
 ! ---- minimap colours: lit (east/west faces, near) and shaded (north/south, far) --
 DIM BRIGHT(9)
@@ -260,6 +335,7 @@ LET DARK(9) = 10
 ! ---- tunables ----------------------------------------------------------------
 LET FPS = 25                       ! frames per second (SLEEP 1 / FPS)
 LET LIMIT = 90                     ! seconds to find the door
+LET GEMTIME = 10                   ! seconds each gem adds
 LET SPEED = 0.12                   ! tiles walked per frame while W/S is held
 LET TURN = 0.08                    ! radians turned per frame while A/D is held
 LET BODY = 0.25                    ! how close you can get to a wall, in tiles
@@ -277,6 +353,18 @@ LET PLY = 0
 LET FC = 0                         ! frames played (the clock)
 LET TLEFT = LIMIT                  ! seconds left
 LET STATE = 0                      ! 0 playing, 1 escaped, 2 out of time
+LET HASKEY = 0                     ! 1 once you have the key
+LET GEMS = 0                       ! gems picked up
+LET BONUS = 0                      ! seconds they've added
+LET NOTE$ = ""                     ! a message on the bottom row, for NOTEFC more frames
+LET NOTEFC = 0
+LET DET = 1                        ! drawing objects: the camera's determinant, how many
+LET NV = 0                         ! are in front, and each one's size and place
+LET SZ = 0
+LET SC = 0
+LET SB = 0
+LET X0 = 0
+LET X1 = 0
 LET QUIT = 0
 LET AGAIN = 0
 LET ANYKEY = 0                     ! 1 once any key is seen — proves a keyboard is present
@@ -405,6 +493,7 @@ FOR X = 0 TO NR - 1
   LET CTT(X) = TT
   LET CTX(X) = TX
   LET CLH(X) = LH
+  LET CPD(X) = PD
   ! The rows below the wall's foot (and above its top): the ray reaches the floor
   ! FDIST(R) away at (PX, PY) + FDIST(R) * (RX, RY), in some tile; where in the tile
   ! is the texel.
@@ -435,11 +524,72 @@ FOR X = 0 TO NR - 1
   LET LH = CLH(X)
   MAT GRAPH CELLS, IN XL, VC + LH / 2; XL + CW, VC - LH / 2: STRIP
 NEXT X
+GOSUB 1300                         ! the key and the gems
 SET VIEWPORT 0, 1, 0, 1            ! the whole screen again
 SET WINDOW 0, W, 0, H
 IF SHOWMAP = 1 THEN GOSUB 1500
 GOSUB 1600                         ! the HUD
 IF STATE <> 0 THEN GOSUB 1800      ! the end message
+RETURN
+
+! ======================================================================
+! 1300  OBJECTS — the key and the gems still lying about, as sprites. Each one's
+!        place seen from the camera — A along the view direction (its distance,
+!        like a wall's), B across along the camera plane — solves
+!        (OX - PX, OY - PY) = A * (DX, DY) + B * (PLX, PLY). Its size on screen is
+!        a wall's at that distance times OSIZE; it stands on the floor there.
+! ======================================================================
+1300 REM ---- objects ----
+LET DET = DX * PLY - PLX * DY
+LET NV = 0
+FOR I = 1 TO NOBJ
+  IF OGOT(I) = 0 THEN
+    LET RX = OX(I) - PX
+    LET RY = OY(I) - PY
+    LET A = (RX * PLY - PLX * RY) / DET
+    IF A > 0.2 THEN                  ! in front of you (and not inside you)
+      LET NV = NV + 1
+      LET OORD(NV) = I
+      LET ODEP(I) = A
+      LET OACR(I) = (DX * RY - DY * RX) / DET
+    END IF
+  END IF
+NEXT I
+! Farthest first, so nearer ones cover them (an insertion sort: there are few).
+FOR J = 2 TO NV
+  LET I = OORD(J)
+  LET K = J - 1
+  DO WHILE K >= 1
+    IF ODEP(OORD(K)) >= ODEP(I) THEN EXIT DO
+    LET OORD(K + 1) = OORD(K)
+    LET K = K - 1
+  LOOP
+  LET OORD(K + 1) = I
+NEXT J
+FOR J = 1 TO NV
+  LET I = OORD(J)
+  LET A = ODEP(I)
+  LET SZ = OSIZE * PROJ / A          ! its height and width, in dots
+  LET SC = (OACR(I) / A + 1) * W / 2 ! its middle, across the screen
+  LET SB = VC - 0.5 * PROJ / A       ! the floor under it
+  LET X0 = INT((SC - SZ / 2) / CW)   ! the screen columns it covers
+  LET X1 = INT((SC + SZ / 2) / CW)
+  IF X0 < 0 THEN LET X0 = 0
+  IF X1 > NR - 1 THEN LET X1 = NR - 1
+  LET TT = OSLOT(OKIND(I))
+  IF A > FAR THEN LET TT = TT + 1    ! the shaded copy
+  FOR X = X0 TO X1
+    IF A < CPD(X) THEN               ! nearer than this column's wall
+      LET TX = INT(((X + 0.5) * CW - (SC - SZ / 2)) / SZ * TW)
+      IF TX >= 0 AND TX < TW THEN
+        FOR K = 0 TO TW - 1
+          LET STRIP(0, K) = TEX(TT, TX, K)
+        NEXT K
+        MAT GRAPH CELLS, IN X * CW, SB + SZ; X * CW + CW, SB: STRIP
+      END IF
+    END IF
+  NEXT X
+NEXT J
 RETURN
 
 ! ======================================================================
@@ -488,10 +638,19 @@ SET WINDOW 0, COLS, 0, ROWS        ! one unit per character cell
 IF TLEFT <= 15 THEN SET TEXT COLOR 2 ELSE SET TEXT COLOR 7
 GRAPH TEXT, AT 1, ROWS - 1: "TIME " & LTRIM$(STR$(TLEFT))
 SET TEXT COLOR 1
-GRAPH TEXT, AT 10, ROWS - 1: "find the green door"
+IF HASKEY = 1 THEN
+  GRAPH TEXT, AT 10, ROWS - 1: "KEY - now find the green door"
+ELSE
+  GRAPH TEXT, AT 10, ROWS - 1: "find the key"
+END IF
 SET TEXT COLOR 6
-GRAPH TEXT, AT COLS - 8, ROWS - 1: "MAZE 3D"
-GRAPH TEXT, AT 1, 0.2: MSG$
+GRAPH TEXT, AT COLS - 18, ROWS - 1: "GEMS " & LTRIM$(STR$(GEMS)) & "   MAZE 3D"
+IF NOTEFC > 0 THEN
+  SET TEXT COLOR 7
+  GRAPH TEXT, AT 1, 0.2: NOTE$
+ELSE
+  GRAPH TEXT, AT 1, 0.2: MSG$
+END IF
 RETURN
 
 ! ======================================================================
@@ -550,7 +709,7 @@ IF STATE = 1 THEN
   SET TEXT COLOR 3
   GRAPH TEXT, AT BX0 + 2, RC + 1: "YOU ESCAPED!"
   SET TEXT COLOR 1
-  GRAPH TEXT, AT BX0 + 2, RC: "in " & LTRIM$(STR$(INT(FC / FPS))) & " seconds"
+  GRAPH TEXT, AT BX0 + 2, RC: "in " & LTRIM$(STR$(INT(FC / FPS))) & " s, with " & LTRIM$(STR$(GEMS)) & " gems"
 ELSE
   SET TEXT COLOR 2
   GRAPH TEXT, AT BX0 + 2, RC + 1: "OUT OF TIME"
@@ -602,20 +761,48 @@ IF ROT <> 0 THEN
 END IF
 IF FWD <> 0 THEN
   ! Try x and y separately, so walking into a wall at an angle slides along it.
-  ! Walking into the green door is the way out.
+  ! Walking into the green door is the way out — once you have the key.
   LET NX = PX + DX * SPEED * FWD
   LET NY = PY + DY * SPEED * FWD
   LET T = M(INT(PY), INT(NX + BODY * SGN(NX - PX)))
   IF T = 0 THEN LET PX = NX
-  IF T = 9 THEN LET STATE = 1
+  IF T = 9 THEN GOSUB 3500
   LET T = M(INT(NY + BODY * SGN(NY - PY)), INT(PX))
   IF T = 0 THEN LET PY = NY
-  IF T = 9 THEN LET STATE = 1
+  IF T = 9 THEN GOSUB 3500
+  ! Walking over an object picks it up.
+  FOR I = 1 TO NOBJ
+    IF OGOT(I) = 0 AND (OX(I) - PX) ^ 2 + (OY(I) - PY) ^ 2 < 0.25 THEN
+      LET OGOT(I) = 1
+      IF OKIND(I) = 1 THEN
+        LET HASKEY = 1
+        LET NOTE$ = "You found the key!"
+      ELSE
+        LET GEMS = GEMS + 1
+        LET BONUS = BONUS + GEMTIME
+        LET NOTE$ = "A gem: +" & LTRIM$(STR$(GEMTIME)) & " seconds"
+      END IF
+      LET NOTEFC = 2 * FPS
+    END IF
+  NEXT I
 END IF
-LET TLEFT = LIMIT - INT(FC / FPS)
+IF NOTEFC > 0 THEN LET NOTEFC = NOTEFC - 1
+LET TLEFT = LIMIT + BONUS - INT(FC / FPS)
 IF STATE = 0 AND TLEFT <= 0 THEN
   LET TLEFT = 0
   LET STATE = 2
+END IF
+RETURN
+
+! ======================================================================
+! 3500  THE DOOR — you walked into it.
+! ======================================================================
+3500 REM ---- door ----
+IF HASKEY = 1 THEN
+  LET STATE = 1
+ELSE
+  LET NOTE$ = "The door is locked: find the key"
+  LET NOTEFC = 2 * FPS
 END IF
 RETURN
 
@@ -634,6 +821,11 @@ LET TLEFT = LIMIT
 LET STATE = 0
 LET QUIT = 0
 LET SHOWMAP = 1
+LET HASKEY = 0
+LET GEMS = 0
+LET BONUS = 0
+LET NOTEFC = 0
+MAT OGOT = ZER
 MAT SEEN = ZER
 LET SR0 = INT(PY)                  ! (just your own tile, so far)
 LET SR1 = SR0
