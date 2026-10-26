@@ -31,6 +31,11 @@ public sealed class Analyzer
     public const string ErrGraphics = "FB0310";
     public const string ErrArithmeticConflict = "FB0311";
 
+    /// <summary>The supplied functions and constants (SIN, CHR$, PI, …), upper-case — for
+    /// editors to highlight and complete.</summary>
+    public static IReadOnlyList<string> BuiltinNames { get; } =
+        Builtins.All().Select(s => s.IsString ? s.Name + "$" : s.Name).Distinct().ToArray();
+
     private readonly DiagnosticBag _diags;
     private readonly Dictionary<Expr, ResolvedRef> _resolutions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Expr, BasicType> _types = new(ReferenceEqualityComparer.Instance);

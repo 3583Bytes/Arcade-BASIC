@@ -16,6 +16,8 @@
          wasm-tools workload (dotnet workload install wasm-tools). A plain build still
          runs interpreted, for a quick edit-and-run loop. -->
     <RunAOTCompilation>true</RunAOTCompilation>
+    <!-- codemirror/ builds wwwroot/lib/codemirror.js with npm; none of it is part of the app. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);codemirror/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

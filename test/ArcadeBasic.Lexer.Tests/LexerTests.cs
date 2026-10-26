@@ -336,4 +336,14 @@ public class LexerTests
         diags.HasErrors.Should().BeTrue();
         diags.All[0].Code.Should().Be(BasicLexer.ErrUnexpectedChar);
     }
+
+    [Fact]
+    public void ReservedWordsAreTheWordsThatLexAsKeywords()
+    {
+        // Editors colour and complete from this list.
+        BasicLexer.ReservedWords.Should().Contain(["PRINT", "GOSUB", "REM", "MOD"]);
+        foreach (var word in BasicLexer.ReservedWords)
+            Kinds(word.ToLowerInvariant())[0].ToString().Should().StartWith("Kw", because: $"{word} is reserved");
+        BasicLexer.ReservedWords.Should().NotContain("CELLS", "it's a keyword only after MAT GRAPH");
+    }
 }

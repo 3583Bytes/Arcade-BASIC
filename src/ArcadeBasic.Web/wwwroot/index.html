@@ -1,76 +1,126 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="midnight">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arcade BASIC Playground</title>
-  <meta name="description" content="Write and run classic BASIC in your browser: a Full BASIC (ANSI/ECMA-116) engine compiled to WebAssembly, with graphics, arcade games, and a first-person 3D maze written in BASIC.">
+  <title>Arcade BASIC</title>
+  <meta name="description" content="Write and run classic BASIC in your browser: a Full BASIC (ANSI/ECMA-116) engine compiled to WebAssembly, with an editor, graphics, arcade games, and a first-person 3D maze written in BASIC.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Arcade BASIC Playground">
-  <meta property="og:description" content="Classic BASIC in your browser — edit the programs and run them: arcade games, a kanban board, and a textured 3D maze, all written in BASIC.">
+  <meta property="og:title" content="Arcade BASIC">
+  <meta property="og:description" content="Classic BASIC in your browser — write programs, open and save your files, and run arcade games, a kanban board, and a textured 3D maze, all written in BASIC.">
   <meta property="og:image" content="https://3583bytes.github.io/Arcade-BASIC/preview.png">
   <meta name="twitter:card" content="summary_large_image">
-  <style>
-    :root {
-      --bg: #101114; --panel: #181a1f; --text: #e6e6e6; --muted: #9aa0a6;
-      --accent: #55ff55; --border: #2a2d34;
-      color-scheme: dark;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
-    header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); }
-    header h1 { font-size: 16px; margin: 0 12px 0 0; letter-spacing: .5px; }
-    header h1 span { color: var(--accent); }
-    select, button { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font: inherit; }
-    button { cursor: pointer; }
-    button.primary { border-color: var(--accent); color: var(--accent); }
-    label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
-    main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 960px); gap: 16px; padding: 16px; }
-    @media (max-width: 1100px) { main { grid-template-columns: minmax(0, 1fr); } }
-    textarea { width: 100%; height: 100%; min-height: 540px; resize: vertical; background: var(--panel); color: var(--text);
-               border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: 13px/1.45 ui-monospace, Menlo, monospace; tab-size: 2; }
-    #screen { width: 100%; aspect-ratio: 5 / 3; background: #000; border: 1px solid var(--border); border-radius: 8px; display: block; outline: none; touch-action: none; }
-    #screen:focus { border-color: var(--accent); }
-    #output { margin: 10px 0 0; min-height: 4em; max-height: 220px; overflow: auto; background: var(--panel); border: 1px solid var(--border);
-              border-radius: 8px; padding: 8px 10px; font: 13px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
-    #inputRow { display: none; margin-top: 6px; gap: 6px; }
-    #inputRow input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 5px 8px; font: 13px ui-monospace, Menlo, monospace; }
-    #stats { color: var(--muted); font: 12px ui-monospace, Menlo, monospace; margin-top: 8px; }
-    #loading { color: var(--muted); }
-    header nav { margin-left: auto; display: flex; gap: 14px; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    #hint { color: var(--muted); margin: 8px 0 0; }
-    footer { color: var(--muted); padding: 0 16px 16px; font-size: 13px; }
-  </style>
+  <script>
+    // The theme before anything is drawn (no flash of the wrong colours): the one
+    // picked last time, else light or dark like the system.
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem('arcade-basic.theme') ||
+        (matchMedia('(prefers-color-scheme: light)').matches ? 'daylight' : 'midnight');
+    } catch { /* no storage: the default */ }
+  </script>
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <header>
-    <h1>Arcade <span>BASIC</span> playground</h1>
-    <select id="examples" aria-label="Example program"></select>
-    <button id="run" class="primary" disabled>Run</button>
-    <button id="stop" disabled>Stop</button>
-    <label><input type="checkbox" id="glow"> phosphor glow</label>
+    <h1>Arcade <span>BASIC</span></h1>
+    <div class="menu">
+      <button class="tool" id="fileMenuButton" aria-haspopup="menu" aria-expanded="false">File</button>
+      <div class="menu-list" id="fileMenu" role="menu">
+        <button data-action="new" role="menuitem">New program <span class="key" data-key="Alt+N"></span></button>
+        <button data-action="open" role="menuitem">Open… <span class="key" data-key="Mod+O"></span></button>
+        <hr>
+        <button data-action="save" role="menuitem">Save <span class="key" data-key="Mod+S"></span></button>
+        <button data-action="saveAs" role="menuitem">Save as… <span class="key" data-key="Mod+Shift+S"></span></button>
+        <hr>
+        <button data-action="share" role="menuitem">Copy a link to this program</button>
+        <hr>
+        <button data-action="close" role="menuitem">Close tab <span class="key" data-key="Alt+W"></span></button>
+      </div>
+    </div>
+    <select id="examples" aria-label="Open an example"></select>
+    <span class="sep"></span>
+    <button class="tool primary" id="run" disabled>▶ Run</button>
+    <button class="tool" id="stop" disabled>■ Stop</button>
     <span id="loading">loading .NET…</span>
-    <nav>
-      <a href="https://github.com/3583Bytes/Arcade-BASIC">GitHub</a>
-      <a href="https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/keywords.md">Language reference</a>
-    </nav>
+    <div class="right">
+      <label>Theme <select id="theme" aria-label="Theme"></select></label>
+      <label title="Draw the program's screen with a CRT-style glow"><input type="checkbox" id="glow"> Glow</label>
+      <div class="menu">
+        <button class="tool" id="helpMenuButton" aria-haspopup="menu" aria-expanded="false">Help</button>
+        <div class="menu-list" id="helpMenu" role="menu" style="left: auto; right: 0">
+          <button data-action="shortcuts" role="menuitem">Keyboard shortcuts</button>
+          <button data-href="https://github.com/3583Bytes/Arcade-BASIC/blob/main/docs/keywords.md" role="menuitem">Language reference</button>
+          <button data-href="https://github.com/3583Bytes/Arcade-BASIC" role="menuitem">Arcade BASIC on GitHub</button>
+          <hr>
+          <button data-action="about" role="menuitem">About</button>
+        </div>
+      </div>
+    </div>
   </header>
+
   <main>
-    <textarea id="source" spellcheck="false" aria-label="BASIC source"></textarea>
-    <section>
+    <section id="editorPane" aria-label="Editor">
+      <div id="tabs"></div>
+      <div id="editor"></div>
+    </section>
+    <div id="divider" role="separator" aria-orientation="vertical" aria-label="Resize the editor" tabindex="0"></div>
+    <section id="runPane" aria-label="Program">
       <canvas id="screen" width="960" height="576" tabindex="0" aria-label="Program screen (click to give it the keyboard)"></canvas>
-      <p id="hint">Pick a program, press <b>Run</b>, then click the screen so it gets your keys. Edit the source on the left and run it again.</p>
+      <p id="hint">Press <b>Run</b> (<kbd>F5</kbd>), then click the screen so it gets your keys.</p>
+      <div class="outputHead"><span>Output</span><button id="clearOutput" type="button">Clear</button></div>
       <pre id="output" aria-live="polite"></pre>
       <form id="inputRow"><input id="inputLine" autocomplete="off" aria-label="Program input"><button>Enter</button></form>
-      <div id="stats"></div>
     </section>
   </main>
+
   <footer>
-    Arcade BASIC is a Full BASIC (ANSI X3.113 / ECMA-116) interpreter and bytecode VM written in C#;
-    here it runs in your browser, compiled to WebAssembly. Nothing is sent anywhere.
+    <span id="cursorPos"></span>
+    <button id="problems" type="button" title="Show the problems (F8 goes to the next one)"></button>
+    <span id="fileInfo"></span>
+    <span id="stats"></span>
   </footer>
+
+  <!-- Questions: a title, a message, maybe a name to type, and buttons (main.js ask()). -->
+  <dialog id="dialog">
+    <form method="dialog">
+      <h2></h2>
+      <p></p>
+      <input type="text" spellcheck="false" autocomplete="off">
+      <div class="buttons"></div>
+    </form>
+  </dialog>
+
+  <dialog id="shortcutsDialog">
+    <form method="dialog">
+      <h2>Keyboard shortcuts</h2>
+      <table>
+        <tr><td><kbd>F5</kbd> or <kbd data-key="Mod+Enter"></kbd></td><td>Run the program</td></tr>
+        <tr><td><kbd>Shift+F5</kbd></td><td>Stop it</td></tr>
+        <tr><td><kbd data-key="Mod+S"></kbd> / <kbd data-key="Mod+Shift+S"></kbd></td><td>Save / Save as</td></tr>
+        <tr><td><kbd data-key="Mod+O"></kbd></td><td>Open a file (or drop files on the page)</td></tr>
+        <tr><td><kbd>Alt+N</kbd> / <kbd>Alt+W</kbd></td><td>New program / Close tab</td></tr>
+        <tr><td><kbd>F8</kbd></td><td>Go to the next problem</td></tr>
+        <tr><td><kbd>F12</kbd> or <kbd data-key="Mod"></kbd>+click</td><td>Go to a line number, SUB or FUNCTION</td></tr>
+        <tr><td><kbd data-key="Mod+F"></kbd></td><td>Find and replace</td></tr>
+        <tr><td><kbd data-key="Mod+/"></kbd></td><td>Comment lines in or out</td></tr>
+        <tr><td><kbd data-key="Mod+Space"></kbd></td><td>Suggest keywords and names</td></tr>
+      </table>
+      <div class="buttons"><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="aboutDialog">
+    <form method="dialog">
+      <h2>Arcade BASIC</h2>
+      <p>A Full BASIC (ANSI X3.113 / ECMA-116) interpreter and bytecode VM written in C#; here it runs
+        in your browser, compiled to WebAssembly. Your programs stay on your computer: they're kept in
+        this browser and in the files you save. Nothing is sent anywhere.</p>
+      <p>The editor is <a href="https://codemirror.net">CodeMirror</a>.</p>
+      <div class="buttons"><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <input type="file" id="fileInput" accept=".bas,.txt,text/plain" multiple hidden>
   <script type="module" src="./main.js"></script>
 </body>
 </html>

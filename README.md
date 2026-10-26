@@ -10,7 +10,7 @@ A fun and modern re-implementation of **Full BASIC** including an interpreter, c
 
 Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity game, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
 
-**[▶ Play in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: pick a program (a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…), read and edit its BASIC, and run it.
+**[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, open and save your own `.bas` files, six themes (QBasic blue and Commodore 64 among them), and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
 
 [![A first-person 3D maze written in Arcade BASIC, running in the browser](src/ArcadeBasic.Web/wwwroot/preview.png)](https://3583bytes.github.io/Arcade-BASIC/)
 

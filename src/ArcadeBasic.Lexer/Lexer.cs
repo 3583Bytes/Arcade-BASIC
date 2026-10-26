@@ -14,6 +14,9 @@ public sealed class BasicLexer
     public const string ErrMalformedNumber = "FB0102";
     public const string ErrUnexpectedChar = "FB0103";
 
+    /// <summary>The reserved words, upper-case — for editors to highlight and complete.</summary>
+    public static IReadOnlyCollection<string> ReservedWords => Keywords.Names;
+
     private readonly SourceFile _file;
     private readonly string _text;
     private readonly DiagnosticBag _diags;

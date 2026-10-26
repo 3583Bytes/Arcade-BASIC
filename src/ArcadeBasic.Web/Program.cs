@@ -76,6 +76,56 @@ internal static partial class Playground
         return "";
     }
 
+    private static string[] s_checkMessages = [];
+
+    /// <summary>Check <paramref name="source"/> without running it, for the editor's error
+    /// marks: (from, to, severity) per problem, as character offsets, severity 0 a note,
+    /// 1 a warning, 2 an error. <see cref="CheckMessages"/> has their texts.</summary>
+    [JSExport]
+    [return: JSMarshalAs<JSType.Array<JSType.Number>>]
+    internal static double[] Check(string source)
+    {
+        var file = new SourceFile("program.bas", source);
+        var diags = new DiagnosticBag();
+        var tokens = new BasicLexer(file, diags).Lex();
+        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var info = diags.HasErrors ? null : Analyzer.Analyze(program, diags);
+        var problems = new List<double>();
+        var messages = new List<string>();
+        foreach (var d in diags.All)
+        {
+            problems.Add(d.Span.Start);
+            problems.Add(d.Span.End);
+            problems.Add((int)d.Severity);
+            messages.Add(d.Hint is null ? $"{d.Message} [{d.Code}]" : $"{d.Message} [{d.Code}]\n{d.Hint}");
+        }
+        if (info is not null && !diags.HasErrors)
+        {
+            try
+            {
+                BasicCompiler.Compile(program, info);
+            }
+            catch (BasicCompiler.UnsupportedFeatureException ex)
+            {
+                problems.AddRange([0, 0, (int)DiagnosticSeverity.Error]);
+                messages.Add(ex.Message);
+            }
+        }
+        s_checkMessages = [.. messages];
+        return [.. problems];
+    }
+
+    /// <summary>The texts of the problems the last <see cref="Check"/> found.</summary>
+    [JSExport]
+    [return: JSMarshalAs<JSType.Array<JSType.String>>]
+    internal static string[] CheckMessages() => s_checkMessages;
+
+    /// <summary>The words the editor colours and completes: the reserved words, then
+    /// (after an empty string) the supplied functions and constants.</summary>
+    [JSExport]
+    [return: JSMarshalAs<JSType.Array<JSType.String>>]
+    internal static string[] Words() => [.. BasicLexer.ReservedWords, "", .. Analyzer.BuiltinNames];
+
     /// <summary>Run up to <paramref name="budget"/> instructions; returns the <see cref="StepStatus"/>.</summary>
     [JSExport]
     internal static int Step(int budget)
@@ -95,6 +145,10 @@ internal static partial class Playground
 
     [JSExport]
     internal static string Error() => s_last.Error ?? "";
+
+    /// <summary>The source line the program is on — after an <see cref="Error"/>, the line that raised it.</summary>
+    [JSExport]
+    internal static int CurrentLine() => s_vm?.CurrentLine ?? 0;
 
     [JSExport]
     internal static double Instructions() => s_vm?.InstructionsExecuted ?? 0;

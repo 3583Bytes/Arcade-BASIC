@@ -1,0 +1,20 @@
+{
+  "name": "arcade-basic-codemirror",
+  "private": true,
+  "description": "Builds wwwroot/lib/codemirror.js, the one-file CodeMirror 6 bundle the playground's editor imports. The bundle is committed, so publishing the playground needs no npm; run `npm ci && npm run build` here after changing entry.js or the versions.",
+  "license": "MIT",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --format=esm --minify --target=es2020 --outfile=../wwwroot/lib/codemirror.js --banner:js=\"/* CodeMirror 6 (https://codemirror.net), MIT licence: see codemirror.LICENSE.txt. Built from src/ArcadeBasic.Web/codemirror. */\" && node -e \"require('fs').copyFileSync('node_modules/@codemirror/view/LICENSE', '../wwwroot/lib/codemirror.LICENSE.txt')\""
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/highlight": "1.2.5",
+    "esbuild": "0.28.2"
+  }
+}

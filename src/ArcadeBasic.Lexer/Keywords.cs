@@ -8,6 +8,8 @@ internal static class Keywords
 {
     private static readonly Dictionary<string, TokenKind> _table = BuildTable();
 
+    public static IReadOnlyCollection<string> Names => _table.Keys;
+
     public static bool TryLookup(ReadOnlySpan<char> identifier, out TokenKind kind)
     {
         // Case-insensitive lookup. We avoid allocating a lower-case copy for the

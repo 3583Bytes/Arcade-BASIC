@@ -22,6 +22,15 @@ public class AnalyzerTests
     private static IReadOnlyList<Diagnostic> ErrorsFor(DiagnosticBag bag, string code) =>
         bag.All.Where(d => d.Code == code).ToList();
 
+    [Fact]
+    public void BuiltinNamesAreTheSuppliedFunctionsAndConstants()
+    {
+        // Editors colour and complete from this list; string functions carry their $.
+        Analyzer.BuiltinNames.Should().Contain(["SIN", "CHR$", "INKEY$", "KEYDOWN", "PI", "MAXNUM"]);
+        Analyzer.BuiltinNames.Should().OnlyHaveUniqueItems();
+        Analyzer.BuiltinNames.Should().NotContain("CHR");
+    }
+
     // -- Graphics: cell arrays ---------------------------------------------
 
     [Fact]

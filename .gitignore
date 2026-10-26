@@ -33,6 +33,9 @@ coverage/
 *.coverage
 *.coveragexml
 
+## npm (src/ArcadeBasic.Web/codemirror builds the editor bundle, which is committed)
+node_modules/
+
 ## NuGet
 *.nupkg
 *.snupkg

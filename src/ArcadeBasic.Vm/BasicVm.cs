@@ -306,6 +306,11 @@ public sealed class BasicVm
     /// host's speed readout or CPU meter.</summary>
     public long InstructionsExecuted { get; private set; }
 
+    /// <summary>The source line (1-based) of the statement running — once halted by an
+    /// unhandled exception, the statement that raised it (the line
+    /// <see cref="StepResult.Error"/> names). For an editor to point at.</summary>
+    public int CurrentLine => _currentLine;
+
     private bool _started;
     private bool _halted;
     private StepResult _final;

@@ -1,14 +1,23 @@
-// Arcade BASIC playground. The .NET side (Program.cs) compiles a program
-// and steps the bytecode VM; this page owns the loop: each animation frame it runs
-// the VM for a slice of time, waits out SLEEPs, draws the newest frame on the
-// canvas, and feeds the keyboard back. ?bench=1 runs the measurements and posts
-// them to /results (for the local test server).
+// Arcade BASIC in the browser: an editor (editor.js) with a tab per program
+// (documents.js), and the program's screen. The .NET side (Program.cs) checks and
+// compiles programs and steps the bytecode VM; this page owns the loop: each
+// animation frame it runs the VM for a slice of time, waits out SLEEPs, draws the
+// newest frame on the canvas, and feeds the keyboard back. ?bench=1 runs the
+// measurements and ?selftest=… drive the page; both post what they saw to
+// /results (for the local test server).
 import { dotnet } from './_framework/dotnet.js';
+import { createEditor } from './editor.js';
+import { createDocuments } from './documents.js';
 
-const { getAssemblyExports, getConfig, runMain } = await dotnet.create();
-const P = (await getAssemblyExports(getConfig().mainAssemblyName)).Playground;
-await runMain();
-const readyMs = performance.now();
+// .NET starts loading straight away; the editor works meanwhile.
+const loadingNet = (async () => {
+  const { getAssemblyExports, getConfig, runMain } = await dotnet.create();
+  const exports = await getAssemblyExports(getConfig().mainAssemblyName);
+  await runMain();
+  return exports.Playground;
+})();
+let P = null;       // the .NET side, once loaded
+let readyMs = 0;
 
 // StepStatus values (src/ArcadeBasic.Vm/StepResult.cs)
 const RUNNING = 0, SLEEPING = 1, NEEDS_INPUT = 2, AWAITING_AUDIO = 3, HALTED = 4, NEEDS_POINT = 5;
@@ -26,18 +35,128 @@ const DASHES = { 2: [12, 6], 3: [3, 5] };
 
 const $ = id => document.getElementById(id);
 const canvas = $('screen'), ctx = canvas.getContext('2d');
-const source = $('source'), output = $('output'), stats = $('stats');
+const output = $('output'), stats = $('stats');
 const inputRow = $('inputRow'), inputLine = $('inputLine');
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+const store = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* no storage */ } },
+};
 
 let run = null;   // the running program's loop state
 let lastTexts = [];   // the last drawn frame's text: [{ x, y, text }] in unit coordinates
 
-function start(text, onHalt) {
+// -- The editor and its tabs ------------------------------------------------------
+
+const editor = createEditor($('editor'), {
+  onUpdate(update) {
+    documents.update(update);
+    if (update.selectionSet || update.docChanged) showCursor();
+  },
+  onProblems: showProblems,
+});
+const documents = createDocuments({
+  editor, tabs: $('tabs'), ask, notify, onShow: shown,
+  exampleSource: name => P.ExampleSource(name).replace(/\r\n?/g, '\n'),
+});
+
+/** A different program is showing, or the one showing was saved or changed. */
+function shown(doc) {
+  document.title = `${doc.dirty ? '● ' : ''}${doc.name} — Arcade BASIC`;
+  showFileInfo();
+  showCursor();
+  // The address names an example (…/#breakout), so a link can open it.
+  const hash = doc.kind === 'example' ? '#' + doc.name.replace(/\.bas$/, '') : '';
+  if (location.hash !== hash) history.replaceState(null, '', location.pathname + location.search + hash);
+}
+
+function showCursor() {
+  const state = editor.state, head = state.selection.main.head, line = state.doc.lineAt(head);
+  $('cursorPos').textContent = `Ln ${line.number}, Col ${head - line.from + 1}`;
+}
+
+function showFileInfo() {
+  $('fileInfo').textContent = documents.active ? documents.describe(documents.active) : '';
+}
+
+let noticeTimer = 0;
+/** A short message in the status line (then back to describing the program). */
+function notify(text) {
+  $('fileInfo').textContent = text;
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(showFileInfo, 4000);
+}
+
+function showProblems(found) {
+  const errors = found.filter(d => d.severity === 'error').length;
+  const warnings = found.filter(d => d.severity === 'warning').length;
+  const button = $('problems');
+  if (!errors && !warnings) { button.textContent = '✓ No problems'; return; }
+  const part = (n, cls, icon, word) => {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = `${icon} ${n} ${word}${n === 1 ? '' : 's'}`;
+    return span;
+  };
+  button.replaceChildren(...[errors && part(errors, 'errors', '✖', 'error'), warnings && part(warnings, 'warnings', '⚠', 'warning')]
+    .filter(Boolean).flatMap((s, i) => i ? [' ', s] : [s]));
+}
+$('problems').addEventListener('click', () => editor.openProblems());
+
+// -- Questions ------------------------------------------------------------------------
+
+const dialog = $('dialog');
+/** Ask in a dialog: resolves to the chosen button's value (or, with input, the text
+ *  typed), or null for Cancel / Escape. */
+function ask({ title, message = '', input = null, buttons }) {
+  return new Promise(resolve => {
+    dialog.querySelector('h2').textContent = title;
+    const text = dialog.querySelector('p');
+    text.textContent = message;
+    text.hidden = !message;
+    const field = dialog.querySelector('input');
+    field.hidden = input == null;
+    field.value = input ?? '';
+    const row = dialog.querySelector('.buttons');
+    row.replaceChildren(...buttons.map(b => {
+      const button = document.createElement('button');
+      button.textContent = b.label;
+      button.value = b.value ?? '';
+      if (b.kind) button.className = b.kind;
+      return button;
+    }));
+    const primary = buttons.find(b => b.kind === 'primary')?.value ?? '';
+    field.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); dialog.close(primary); } };
+    dialog.returnValue = '';
+    dialog.onclose = () => {
+      const value = dialog.returnValue;
+      resolve(!value ? null : input != null ? field.value.trim() || null : value);
+    };
+    dialog.showModal();
+    if (input != null) { field.focus(); field.select(); } else row.querySelector('.primary')?.focus();
+  });
+}
+
+// -- Running a program -------------------------------------------------------------------
+
+function runActive() {
+  const doc = documents.active;
+  if (!P || !doc) return;
+  start(editor.state.doc.toString(), null, doc);
+}
+
+function start(text, onHalt, doc = null) {
   stop();
-  output.textContent = '';
+  output.replaceChildren();
+  editor.clearRuntimeError();
   const diagnostics = P.Load(text);
-  if (diagnostics) { output.textContent = diagnostics; return false; }
-  run = { sleepingUntil: 0, waiting: false, waitingPoint: false, began: performance.now(), ticks: 0, frames: 0, vmMs: 0, onHalt };
+  if (diagnostics) {
+    appendOutput(diagnostics, 'error');
+    if (doc) editor.goToFirstProblem();
+    return false;
+  }
+  run = { sleepingUntil: 0, waiting: false, waitingPoint: false, began: performance.now(), ticks: 0, frames: 0, vmMs: 0, onHalt, doc };
+  documents.setRunning(doc);
   $('stop').disabled = false;
   canvas.focus();
   requestAnimationFrame(tick);
@@ -45,7 +164,7 @@ function start(text, onHalt) {
 }
 
 function stop() {
-  if (run) P.Stop();
+  if (run) { P.Stop(); documents.setRunning(null); }
   run = null;
   $('stop').disabled = true;
   inputRow.style.display = 'none';
@@ -84,12 +203,17 @@ function tick() {
   appendOutput(P.TakeOutput());
   const frame = P.TakeFrame();
   if (frame.length) { drawFrame(frame, P.FrameText(), P.FrameCells()); r.frames++; }
-  showStats(r);
+  showStats(r, halted);
   if (halted) {
     const error = P.Error();
-    if (error) appendOutput('\n' + error + '\n');
+    const line = error ? P.CurrentLine() : 0;
+    if (error) appendOutput('\n' + error + '\n', 'error');
     r.instructions = P.Instructions();
     stop();
+    if (error && r.doc && documents.all.includes(r.doc)) {   // point at the line that failed
+      if (documents.active !== r.doc) documents.show(r.doc);
+      editor.showRuntimeError(line);
+    }
     r.onHalt?.(r);
     return;
   }
@@ -234,9 +358,17 @@ function marker(x, y, style, dpr) {
   }
 }
 
-function appendOutput(text) {
+function appendOutput(text, cls = '') {
   if (!text) return;
-  output.textContent += text;
+  const last = output.lastChild;
+  if (!cls && last?.nodeType === Node.TEXT_NODE) last.appendData(text);
+  else if (!cls) output.append(text);
+  else {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = text;
+    output.append(span);
+  }
   output.scrollTop = output.scrollHeight;
 }
 
@@ -255,26 +387,32 @@ inputRow.addEventListener('submit', e => {
   run.waiting = false;
   canvas.focus();
 });
+$('clearOutput').addEventListener('click', () => output.replaceChildren());
 
 let lastStats = 0;
-function showStats(r, force = false) {
+function showStats(r, finished = false) {
   const now = performance.now();
-  if (!force && now - lastStats < 500) return;
+  if (!finished && now - lastStats < 500) return;
   lastStats = now;
   const secs = (now - r.began) / 1000;
-  const mips = P.Instructions() / Math.max(secs, 1e-3) / 1e6;
-  stats.textContent = `${(r.frames / secs).toFixed(1)} frames/s · VM ${(r.vmMs / Math.max(r.ticks, 1)).toFixed(2)} ms per animation frame · ` +
-                      `${mips.toFixed(2)} M instructions/s · ready in ${(readyMs / 1000).toFixed(2)} s`;
+  const instructions = P.Instructions();
+  if (finished) {
+    stats.textContent = `Ran ${secs < 10 ? secs.toFixed(2) : secs.toFixed(1)} s · ${instructions.toLocaleString()} instructions`;
+    return;
+  }
+  stats.textContent = `${(r.frames / secs).toFixed(1)} frames/s · VM ${(r.vmMs / Math.max(r.ticks, 1)).toFixed(2)} ms per frame · ` +
+                      `${(instructions / Math.max(secs, 1e-3) / 1e6).toFixed(2)} M instructions/s`;
 }
 
-// Keys go to the program only while the canvas has focus (so typing in the editor doesn't).
+// Keys go to the program only while the canvas has focus (so typing in the editor
+// doesn't); the page's own shortcuts (F5, Ctrl+S, …) are taken before it sees them.
 canvas.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   P.KeyDown(e.code, e.key, e.repeat);
   e.preventDefault();
 });
 canvas.addEventListener('keyup', e => { P.KeyUp(e.code); });
-canvas.addEventListener('blur', () => P.ReleaseKeys());
+canvas.addEventListener('blur', () => P?.ReleaseKeys());
 
 // The pointer, in the canvas's unit square (origin bottom-left), for GET MOUSE and
 // LOCATE POINT. Capturing it keeps a drag's moves and release coming even if the
@@ -285,56 +423,265 @@ const unitPoint = e => {
   const py = (e.clientY - r.top - canvas.clientTop) * canvas.height / canvas.clientHeight;
   return [(px - inset) / w, 1 - (py - inset) / h];
 };
-canvas.addEventListener('pointermove', e => P.PointerMove(...unitPoint(e)));
+canvas.addEventListener('pointermove', e => P?.PointerMove(...unitPoint(e)));
 canvas.addEventListener('pointerdown', e => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || !P) return;
   try { canvas.setPointerCapture(e.pointerId); } catch { /* not a live pointer (synthetic) */ }
   canvas.focus();
   P.PointerDown(...unitPoint(e));
   e.preventDefault();
   if (run?.waitingPoint) { run.waitingPoint = false; canvas.style.cursor = ''; }
 });
-canvas.addEventListener('pointerup', e => { if (e.button === 0) P.PointerUp(...unitPoint(e)); });
-canvas.addEventListener('pointercancel', () => P.PointerCancel());
-canvas.addEventListener('lostpointercapture', () => P.PointerCancel());
+canvas.addEventListener('pointerup', e => { if (e.button === 0) P?.PointerUp(...unitPoint(e)); });
+canvas.addEventListener('pointercancel', () => P?.PointerCancel());
+canvas.addEventListener('lostpointercapture', () => P?.PointerCancel());
 
-// Example picker
-$('glow').addEventListener('change', () => { if (lastFrame) drawFrame(...lastFrame); });
+const glowBox = $('glow');
+glowBox.checked = store.get('arcade-basic.glow') === '1';
+glowBox.addEventListener('change', () => {
+  store.set('arcade-basic.glow', glowBox.checked ? '1' : '0');
+  if (lastFrame) drawFrame(...lastFrame);
+});
 fitCanvas();
 
-// The page's address names the example (…/#breakout), so a link can open any of
-// them; with none it starts on the 3D maze.
-const examples = $('examples');
-for (const name of P.Examples()) examples.add(new Option(name.replace(/\.bas$/, ''), name));
-const named = () => {
-  const name = decodeURIComponent(location.hash.slice(1)).toLowerCase();
-  return name && P.Examples().find(n => n.toLowerCase() === name || n.toLowerCase() === name + '.bas');
+// -- The page's controls ------------------------------------------------------------------
+
+// Shortcut labels as this computer writes them (⌘S on a Mac, Ctrl+S elsewhere).
+for (const el of document.querySelectorAll('[data-key]')) {
+  const key = el.dataset.key;
+  el.textContent = isMac
+    ? key.replace(/^Mod$/, '⌘').replace('Mod+', '⌘').replace('Shift+', '⇧').replace('Alt+', '⌥')
+    : key.replace('Mod', 'Ctrl');
+}
+$('run').title = `Run (F5 or ${isMac ? '⌘' : 'Ctrl+'}Enter)`;
+$('stop').title = 'Stop (Shift+F5)';
+
+const THEMES = { midnight: 'Midnight', daylight: 'Daylight', qbasic: 'QBasic blue', commodore: 'Commodore 64', green: 'Green screen', amber: 'Amber' };
+const themes = $('theme');
+for (const [id, name] of Object.entries(THEMES)) themes.add(new Option(name, id));
+if (!(document.documentElement.dataset.theme in THEMES)) document.documentElement.dataset.theme = 'midnight';
+themes.value = document.documentElement.dataset.theme;
+themes.addEventListener('change', () => {
+  document.documentElement.dataset.theme = themes.value;
+  store.set('arcade-basic.theme', themes.value);
+});
+
+const actions = {
+  new: () => documents.newProgram(),
+  open: () => documents.openFiles(),
+  save: () => documents.save(),
+  saveAs: () => documents.save(documents.active, true),
+  share: shareLink,
+  close: () => documents.close(),
+  shortcuts: () => $('shortcutsDialog').showModal(),
+  about: () => $('aboutDialog').showModal(),
 };
-examples.value = named() || 'maze3d.bas';
-const loadExample = () => { source.value = P.ExampleSource(examples.value); };
-examples.addEventListener('change', () => {
-  stop();
-  loadExample();
-  history.replaceState(null, '', '#' + examples.value.replace(/\.bas$/, ''));
+if (!('CompressionStream' in window)) document.querySelector('[data-action="share"]').disabled = true;
+
+// The File and Help menus.
+const menus = [...document.querySelectorAll('.menu')].map(menu => {
+  const button = menu.querySelector('.tool'), list = menu.querySelector('.menu-list');
+  const items = () => [...list.querySelectorAll('button:not(:disabled)')];
+  const close = () => { list.classList.remove('open'); button.setAttribute('aria-expanded', 'false'); };
+  button.addEventListener('click', () => {
+    const open = !list.classList.contains('open');
+    menus.forEach(m => m.close());
+    if (!open) return;
+    list.classList.add('open');
+    button.setAttribute('aria-expanded', 'true');
+    items()[0]?.focus();
+  });
+  list.addEventListener('click', e => {
+    const item = e.target.closest('button');
+    if (!item) return;
+    close();
+    if (item.dataset.href) window.open(item.dataset.href, '_blank', 'noopener');
+    else actions[item.dataset.action]?.();
+  });
+  list.addEventListener('keydown', e => {
+    const all = items(), i = all.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') all[(i + 1) % all.length]?.focus();
+    else if (e.key === 'ArrowUp') all[(i - 1 + all.length) % all.length]?.focus();
+    else if (e.key === 'Escape') { close(); button.focus(); }
+    else return;
+    e.preventDefault();
+  });
+  return { menu, close };
 });
-window.addEventListener('hashchange', () => {
-  const name = named();
-  if (name && name !== examples.value) { stop(); examples.value = name; loadExample(); }
-});
-loadExample();
-$('run').addEventListener('click', () => start(source.value));
+document.addEventListener('pointerdown', e => menus.forEach(m => { if (!m.menu.contains(e.target)) m.close(); }));
+
+$('run').addEventListener('click', runActive);
 $('stop').addEventListener('click', stop);
+
+// The keyboard shortcuts, wherever the focus is.
+window.addEventListener('keydown', e => {
+  const mod = isMac ? e.metaKey : e.ctrlKey;
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  let action = null;
+  if (key === 'F5' && !mod) action = e.shiftKey ? stop : runActive;
+  else if (mod && key === 'Enter') action = runActive;
+  else if (mod && !e.altKey && key === 's') action = e.shiftKey ? actions.saveAs : actions.save;
+  else if (mod && !e.altKey && !e.shiftKey && key === 'o') action = actions.open;
+  else if (e.altKey && !mod && e.code === 'KeyN') action = actions.new;
+  else if (e.altKey && !mod && e.code === 'KeyW') action = actions.close;
+  if (!action || document.querySelector('dialog[open]')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  action();
+}, true);
+
+// Files dropped anywhere on the page open in tabs (not into the editor's text).
+let dragDepth = 0;
+const carriesFiles = e => e.dataTransfer?.types.includes('Files');
+window.addEventListener('dragenter', e => {
+  if (!carriesFiles(e)) return;
+  dragDepth++;
+  document.body.classList.add('dropping');
+});
+window.addEventListener('dragleave', e => {
+  if (carriesFiles(e) && --dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dropping'); }
+});
+window.addEventListener('dragover', e => { if (carriesFiles(e)) e.preventDefault(); }, true);
+window.addEventListener('drop', e => {
+  if (!carriesFiles(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  dragDepth = 0;
+  document.body.classList.remove('dropping');
+  documents.openDropped(e.dataTransfer);
+}, true);
+
+// The divider between the editor and the screen.
+const mainArea = document.querySelector('main'), divider = $('divider');
+const setSplit = f => {
+  f = Math.min(0.8, Math.max(0.2, f));
+  mainArea.style.gridTemplateColumns = `minmax(280px, ${f}fr) 6px minmax(300px, ${1 - f}fr)`;
+  return f;
+};
+let split = setSplit(Number(store.get('arcade-basic.split')) || 0.5);
+divider.addEventListener('pointerdown', e => {
+  divider.setPointerCapture(e.pointerId);
+  divider.classList.add('dragging');
+  const move = ev => {
+    const r = mainArea.getBoundingClientRect();
+    split = setSplit((ev.clientX - r.left) / r.width);
+  };
+  divider.addEventListener('pointermove', move);
+  divider.addEventListener('lostpointercapture', () => {
+    divider.classList.remove('dragging');
+    divider.removeEventListener('pointermove', move);
+    store.set('arcade-basic.split', String(split));
+  }, { once: true });
+});
+divider.addEventListener('keydown', e => {
+  const step = e.key === 'ArrowLeft' ? -0.02 : e.key === 'ArrowRight' ? 0.02 : 0;
+  if (!step) return;
+  split = setSplit(split + step);
+  store.set('arcade-basic.split', String(split));
+  e.preventDefault();
+});
+
+// -- Links to programs ---------------------------------------------------------------------
+// …/#breakout opens an example; …/#code=… carries a whole program, compressed.
+
+async function shareLink() {
+  if (!documents.active) return;
+  const link = `${location.origin}${location.pathname}#code=${await pack(editor.state.doc.toString())}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    notify('Link copied: whoever opens it gets this program');
+  } catch {
+    await ask({ title: 'A link to this program', message: 'Copy it from here:', input: link, buttons: [{ label: 'Close', value: 'ok', kind: 'primary' }] });
+  }
+}
+
+async function pack(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function unpack(code) {
+  const binary = atob(code.replace(/-/g, '+').replace(/_/g, '/'));
+  const stream = new Blob([Uint8Array.from(binary, c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Response(stream).text();
+}
+
+/** Open what an address names; false if it names nothing. */
+async function openAddress(hash) {
+  if (hash.startsWith('#code=')) {
+    try {
+      documents.openShared(await unpack(hash.slice(6)));
+      return true;
+    } catch {
+      notify('The program in that link couldn\'t be read');
+      return false;
+    }
+  }
+  const name = decodeURIComponent(hash.slice(1)).toLowerCase();
+  const example = name && P.Examples().find(n => n.toLowerCase() === name || n.toLowerCase() === name + '.bas');
+  if (!example) return false;
+  documents.openExample(example);
+  return true;
+}
+
+// -- Starting up -------------------------------------------------------------------------------
+
+window.arcadeBasic = { editor, documents, run: runActive };   // for the browser console (and screenshots)
+
+const startHash = location.hash;
+const restored = documents.restore();    // what was open last time, before .NET is even here
+
+P = await loadingNet;
+readyMs = performance.now();
+
+const words = P.Words(), gap = words.indexOf('');
+documents.refresh(editor.setWords(words.slice(0, gap), words.slice(gap + 1)));
+editor.setChecker(text => {
+  const spans = P.Check(text), messages = P.CheckMessages();
+  return messages.map((message, i) => ({
+    from: spans[3 * i], to: spans[3 * i + 1], severity: ['info', 'warning', 'error'][spans[3 * i + 2]], message,
+  }));
+});
+
+// The examples, by the @category on their first line.
+const examples = $('examples');
+examples.add(new Option('Examples…', ''));
+const groups = new Map([['Games', []], ['Graphics', []], ['Basics', []]]);
+for (const name of P.Examples()) {
+  const group = /@category\s+(\w+)/.exec(P.ExampleSource(name).split('\n', 1)[0])?.[1] ?? 'Basics';
+  if (!groups.has(group)) groups.set(group, []);
+  groups.get(group).push(name);
+}
+for (const [group, names] of groups) {
+  if (!names.length) continue;
+  const optgroup = document.createElement('optgroup');
+  optgroup.label = group;
+  for (const name of names) optgroup.append(new Option(name.replace(/\.bas$/, ''), name));
+  examples.append(optgroup);
+}
+examples.addEventListener('change', () => {
+  if (examples.value) documents.openExample(examples.value);
+  examples.value = '';
+  editor.focus();
+});
+
+if (!(await openAddress(startHash)) && !restored) documents.openExample('maze3d.bas');
+window.addEventListener('hashchange', () => openAddress(location.hash));
 $('run').disabled = false;
 $('loading').textContent = '';
 
-// -- ?bench=1: measure, then POST the numbers to /results --------------------
+// -- ?bench=1 and the self-tests -----------------------------------------------------------------
 const params = new URLSearchParams(location.search);
 if (params.has('bench')) bench();
 if (params.get('selftest') === 'kanban') kanbanSelftest();
-// ?selftest=page: report which example the address opened (for checking deep links).
+if (params.get('selftest') === 'ide') import('./selftest.js').then(m => m.ideSelftest({ P, editor, documents, ask, start, stop, pack, openAddress, $ }));
+// ?selftest=page: report which program the address opened and what's in the tabs.
 if (params.get('selftest') === 'page')
-  fetch('/results', { method: 'POST', body: JSON.stringify({ example: examples.value, hash: location.hash,
-    firstLine: source.value.split('\n')[0], examples: P.Examples().length }) });
+  fetch('/results', { method: 'POST', body: JSON.stringify({ example: documents.active?.name, hash: location.hash,
+    firstLine: editor.state.doc.line(1).text, examples: P.Examples().length, tabs: documents.all.map(d => d.name) }) });
 
 // ?selftest=kanban: drag card #5 onto Done with real DOM pointer events, type Q, report.
 async function kanbanSelftest() {
@@ -354,9 +701,8 @@ async function kanbanSelftest() {
   };
   const result = {};
   try {
-    examples.value = 'kanban.bas';
-    loadExample();
-    start(source.value);
+    documents.openExample('kanban.bas');
+    start(editor.state.doc.toString());
     await pause();
     result.mouseMode = lastTexts.some(t => t.text.includes('type a command'));
     if (params.has('snapshot')) {                  // hover over card #6 first

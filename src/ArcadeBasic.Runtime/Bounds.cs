@@ -37,7 +37,8 @@ public sealed record class Bounds(int[] Lower, int[] Upper)
             var s = subscripts[i];
             if (s < Lower[i] || s > Upper[i])
             {
-                throw new ArgumentOutOfRangeException(nameof(subscripts),
+                // No parameter name: it would be appended to the message BASIC shows.
+                throw new ArgumentOutOfRangeException(paramName: null,
                     $"subscript {s} out of range [{Lower[i]}..{Upper[i]}] for dimension {i + 1}");
             }
             idx = idx * (Upper[i] - Lower[i] + 1) + (s - Lower[i]);

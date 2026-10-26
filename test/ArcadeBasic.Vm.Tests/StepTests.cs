@@ -128,6 +128,16 @@ public class StepTests
     }
 
     [Fact]
+    public void CurrentLineIsTheLineThatRaisedTheUnhandledException()
+    {
+        // (What an editor highlights.) The message is BASIC's own, with no .NET parameter name.
+        var vm = Vm("PRINT 1\nDIM A(5)\nLET A(6) = 1\nPRINT 2\n", Output());
+        vm.Step(10_000).Error.Should().Be(
+            "unhandled exception type 1002 at line 3: array subscript: subscript 6 out of range [1..5] for dimension 1");
+        vm.CurrentLine.Should().Be(3);
+    }
+
+    [Fact]
     public void ForegroundAudioPausesAfterEmittingAndBackgroundDoesNot()
     {
         var output = Output();
