@@ -8,7 +8,7 @@
 
 A fun and modern re-implementation of **Full BASIC** including an interpreter, compiler, and IDE Based on (ISO/IEC 10279:1991, ANSI X3.113-1987) and ECMA-116 for Graphics module implementation.
 
-Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity game, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
+Run classic BASIC programs, write new ones, embed BASIC in your .NET app, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
 
 **[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, programs in several files (`LIBRARY`), an outline and folding for long ones, a debugger (breakpoints, stepping, the variables as they change), a pixel editor for the sprites and textures kept in `DATA`, colour swatches and a palette, a tune editor for `PLAY`, open and save your own `.bas` files, six themes (QBasic blue and Commodore 64 among them), sound, and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
 
@@ -17,10 +17,6 @@ Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity ga
 ## Why? 
 
 Because Why Not.  For fun mostly.  
-
-| Terminal IDE (`arcade-basic-ide`) | Unity in-game IDE |
-|---|---|
-| ![Arcade BASIC TUI IDE — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicIDEScreenshot.png) | ![Arcade BASIC Unity sample — startrek.bas loaded with the About dialog open](screenshots/ArcadeBasicUnityIDEScreenshot.png) |
 
 ## In one minute
 
@@ -52,7 +48,7 @@ Hello, Arcade BASIC!
   squared: 1 -> 1 ...
 ```
 
-Or embed it in your C# / Unity / Xamarin app:
+Or embed it in your C# app:
 
 ```csharp
 using ArcadeBasic;
@@ -64,12 +60,11 @@ Console.WriteLine(output);   //  42
 ## What you can do with it
 
 - **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
-- **Write real-time games.** `INKEY$` (non-blocking keyboard), `KEYDOWN` (held keys) and `SLEEP` (frame delay) drive a game loop, and `OPTION ARITHMETIC NATIVE` swaps exact decimal arithmetic for hardware doubles — 2–8× faster on math-heavy code; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) on the Braille console — in the IDE, the CLI, or a standalone binary. (These are Microsoft-BASIC and Arcade BASIC extensions, flagged as such in the docs.)
-- **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping. Render to SVG (`arcade-basic run examples/graphics.bas --svg out.svg`), live in **any terminal** (the CLI and standalone binaries draw with a Braille + ANSI backend), or on the **Graphics tab** in the IDE; a Unity backend is in progress.
-- **Make sound.** `SOUND`, `BEEP`, and `PLAY` (Music Macro Language) — the GW-BASIC/QuickBASIC audio verbs, flagged as Microsoft-dialect extensions in the docs. Plays in **real time** on an interactive terminal (Windows/macOS/Linux), in the browser, and in Unity (the in-game IDE sample), and renders to a WAV file with `arcade-basic run examples/music.bas --wav out.wav`. Foreground (`MF`) and background (`MB`) music both work. See [docs/audio-extension.md](docs/audio-extension.md).
-- **Edit and run BASIC in a TUI IDE.** `arcade-basic-ide` opens a full-screen Terminal.Gui editor with line numbers, syntax classification, a problems pane, and one-key Run/Stop. See [Try the IDE](#try-the-ide).
+- **Write real-time games.** `INKEY$` (non-blocking keyboard), `KEYDOWN` (held keys) and `SLEEP` (frame delay) drive a game loop, and `OPTION ARITHMETIC NATIVE` swaps exact decimal arithmetic for hardware doubles — 2–8× faster on math-heavy code; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) in the browser, in a terminal with the CLI, or as a standalone binary. (These are Microsoft-BASIC and Arcade BASIC extensions, flagged as such in the docs.)
+- **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping. Render to SVG (`arcade-basic run examples/graphics.bas --svg out.svg`), live in **any terminal** (the CLI and standalone binaries draw with a Braille + ANSI backend), or on the canvas in the browser IDE.
+- **Make sound.** `SOUND`, `BEEP`, and `PLAY` (Music Macro Language) — the GW-BASIC/QuickBASIC audio verbs, flagged as Microsoft-dialect extensions in the docs. Plays in **real time** on an interactive terminal (Windows/macOS/Linux), and in the browser, and renders to a WAV file with `arcade-basic run examples/music.bas --wav out.wav`. Foreground (`MF`) and background (`MB`) music both work. See [docs/audio-extension.md](docs/audio-extension.md).
 - **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
-- **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into Unity (Mono and IL2CPP), Xamarin, .NET Framework, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.
+- **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into .NET Framework, Xamarin, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.
 - **Learn how a language gets implemented.** Clean separation of lexer → parser → semantic analyzer → tree-walking interpreter and bytecode VM, all in one C# solution with extensive tests.
 
 ## Three ways to run a program
@@ -84,30 +79,7 @@ All three execute the same surface of the language: arrays, MAT operations (tran
 
 ## Try the IDE
 
-**Arcade BASIC IDE** is a full-screen terminal IDE: a source pane with a line-number gutter, an output pane with a bottom input line for `INPUT`, a **Graphics tab** (a Braille-cell canvas) with its own input line for interactive graphics programs, examples bundled into the **File ▸ Examples** menu, and one-key Run/Stop.
-
-```sh
-# From source:
-dotnet run --project src/ArcadeBasic.Ide                       # empty buffer
-dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
-
-# From a published binary (no .NET required):
-arcade-basic-ide examples/startrek.bas
-```
-
-| Key    | Action                                                |
-| ------ | ----------------------------------------------------- |
-| F5     | Run the current source                                |
-| F6     | Compile-check (syntax/type only, no execution)        |
-| F7     | Build a standalone native binary from the current source |
-| Esc    | Stop a running program                                |
-| Ctrl-N | New buffer                                            |
-| Ctrl-O | Open a `.bas` file                                    |
-| Ctrl-S | Save                                                  |
-| Ctrl-L | Clear the output pane                                 |
-| Ctrl-Q | Quit                                                  |
-
-Tagged releases ship the IDE as a self-contained single-file binary for `linux-x64`, `osx-arm64`, `osx-x64`, and `win-x64`. The .NET runtime is bundled inside the executable. See [`src/ArcadeBasic.Ide/README.md`](src/ArcadeBasic.Ide/README.md) for implementation notes.
+The IDE runs in the browser — **[open it](https://3583bytes.github.io/Arcade-BASIC/)**, nothing to install. To build and run it yourself, see [`src/ArcadeBasic.Web/README.md`](src/ArcadeBasic.Web/README.md).
 
 ## Try the REPL
 
@@ -163,9 +135,9 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 See [`examples/README.md`](examples/README.md) for the full list with a tree-walker vs VM compatibility matrix.
 
-## Embedding in .NET, Unity, Xamarin
+## Embedding in .NET
 
-The library projects (lexer through VM) multi-target **`net10.0`** *and* **`netstandard2.1`**, so they drop into anything from a modern ASP.NET host to a Unity game. The smallest possible embed:
+The library projects (lexer through VM) multi-target **`net10.0`** *and* **`netstandard2.1`**, so they drop into anything from a modern ASP.NET host to a .NET Framework app. The smallest possible embed:
 
 ```csharp
 using ArcadeBasic;
@@ -173,8 +145,6 @@ using ArcadeBasic;
 var result = BasicEngine.Run("LET X = 6 * 7 \n PRINT X", out string output);
 Console.WriteLine(output);  //  42
 ```
-
-For Unity, the [`unity/`](unity/) folder is a ready-to-use UPM package — `package.json`, `ArcadeBasic.asmdef`, and an **Arcade BASIC IDE** sample. The sample is a single MonoBehaviour (`ArcadeBasicCodeEditor`) that builds its entire UI at runtime — menu bar (File / Run / Help), syntax-highlighted source pane with line gutter and scrollbar, scrollable output transcript with sticky-bottom auto-scroll, persistent INPUT bar, Problems pane, and Build Standalone command. Install via UPM git URL or unzip a tagged release ZIP into your project's `Packages/` folder. See [`unity/README.md`](unity/README.md).
 
 ## Quick build from source
 
@@ -185,7 +155,7 @@ git clone https://github.com/3583Bytes/Arcade-BASIC.git arcade-basic
 cd arcade-basic
 
 dotnet build                                                    # debug build
-dotnet test                                                     # all tests (~380, all green)
+dotnet test                                                     # all tests (about 800)
 dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
 
 # Produce an AOT-compiled standalone CLI for the current platform
@@ -194,7 +164,7 @@ dotnet publish src/ArcadeBasic.Cli -c Release -r osx-arm64
 # → src/ArcadeBasic.Cli/bin/Release/net10.0/<rid>/publish/arcade-basic
 ```
 
-Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are attached to each tagged GitHub release — both `arcade-basic` (the CLI) and `arcade-basic-ide` (the IDE), plus the Unity package zip. No .NET install needed on the target machine.
+Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are attached to each tagged GitHub release: `arcade-basic`, the CLI. No .NET install needed on the target machine.
 
 ## CLI reference
 
@@ -222,7 +192,7 @@ arcade-basic analyze examples/factorial.bas
 ## Documentation
 
 - [**Keywords**](docs/keywords.md) — every reserved word with a description and a commented example. Start here if you're learning the language.
-- [**Building from source**](docs/building.md) — per-platform prerequisites, RIDs, and publish commands for the CLI, the IDE, and standalone binaries.
+- [**Building from source**](docs/building.md) — per-platform prerequisites, RIDs, and publish commands for the CLI and standalone binaries.
 - [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures, target-framework strategy.
 - [**Standalone builds**](docs/standalone-builds.md) — how `arcade-basic build` turns a `.bas` into a single self-contained executable (it's a self-extracting bytecode VM, not a native-codegen pipeline; this doc explains the anatomy of the resulting binary and why the design was chosen).
 - [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
@@ -256,7 +226,7 @@ A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assemb
 | `ArcadeBasic.Compiler` | AST → bytecode lowering |
 | `ArcadeBasic.Vm` | stack-based bytecode VM |
 | `ArcadeBasic.Cli` | command dispatcher + self-extracting AOT stub |
-| `ArcadeBasic.Ide` | full-screen Terminal.Gui editor + runner |
+| `ArcadeBasic.Web` | the browser IDE (WebAssembly, on the VM) |
 
 The interpreter and the VM share the same `Value` hierarchy, `BigDecimal` numerics, `MatOps` math kernels (LU-decomposition inverse, transpose, …), picture-string formatter, and channel table — so any program runs identically on both engines. The full architecture writeup lives in [`docs/architecture.md`](docs/architecture.md).
 

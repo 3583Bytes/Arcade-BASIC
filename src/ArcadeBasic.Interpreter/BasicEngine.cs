@@ -11,7 +11,7 @@ using ArcadeBasic.Sema;
 namespace ArcadeBasic;
 
 /// <summary>
-/// One-call embedding entry point for hosts (Unity, web playgrounds, custom
+/// One-call embedding entry point for hosts (games, tools, custom
 /// scripting consoles, etc.) that don't want to wire the Lexer → Parser →
 /// Sema → Interpreter pipeline themselves.
 ///

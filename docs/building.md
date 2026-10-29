@@ -3,8 +3,10 @@
 This guide covers building everything yourself on Linux, macOS, and Windows:
 
 - the **CLI** (`arcade-basic`) — a native, self-contained executable (NativeAOT),
-- the **IDE** (`arcade-basic-ide`) — a self-contained single-file terminal app,
 - a **standalone `.bas` binary** — your program bundled into a runnable executable.
+
+The IDE runs in the browser; to build and serve it yourself, see
+[`src/ArcadeBasic.Web/README.md`](../src/ArcadeBasic.Web/README.md).
 
 Pre-built binaries for every platform are attached to each
 [tagged release](https://github.com/3583Bytes/Arcade-BASIC/releases); build
@@ -36,7 +38,7 @@ dotnet --list-sdks      # should list a 10.0.x SDK
 ### Native toolchain (only for the AOT CLI / standalone binaries)
 
 NativeAOT invokes the platform's C toolchain to link the final binary. You
-**don't** need this to run from source, run tests, or publish the IDE — only to
+**don't** need this to run from source or run tests — only to
 build the CLI (`arcade-basic`) or a standalone `.bas` binary.
 
 | Platform | Install |
@@ -70,8 +72,7 @@ Apple-Silicon Mac: `dotnet publish ... -r osx-arm64`.
 > **Cross-compilation:** NativeAOT can **not** cross-compile to a different OS
 > (build Linux binaries on Linux, etc.). For a different *architecture* on the
 > same OS, build on a matching-arch machine — e.g. the release pipeline builds
-> `osx-arm64` on an Apple-Silicon runner. The self-contained IDE publish is more
-> forgiving but is still best built per RID.
+> `osx-arm64` on an Apple-Silicon runner.
 >
 > **`osx-x64` (Intel Mac)** is a valid RID you can still build locally, but it is
 > **no longer produced by the release pipeline** — download a release only for
@@ -88,13 +89,6 @@ cd arcade-basic
 dotnet build -c Release           # warnings are errors in Release
 dotnet test  -c Release           # full test suite
 dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
-```
-
-Run the IDE straight from source:
-
-```sh
-dotnet run --project src/ArcadeBasic.Ide                       # empty buffer
-dotnet run --project src/ArcadeBasic.Ide -- examples/hello.bas # open a file
 ```
 
 ---
@@ -138,102 +132,11 @@ Smoke-test:
 
 ---
 
-## 5. Build the IDE (`arcade-basic-ide`, self-contained single file)
-
-The IDE is **not** AOT-compiled (Terminal.Gui relies on reflection), so it ships
-as a self-contained single-file binary with the .NET runtime bundled inside. No
-native toolchain required.
-
-> **Want F7 (Build standalone) to work?** Publishing the IDE alone is not enough —
-> see [Make standalone builds (F7) work](#make-standalone-builds-f7-work--bundle-the-cli)
-> below for the combined recipe.
-
-`--runtime <RID>` is the target platform (see §2) — replace `<RID>` with your
-own, e.g. `win-x64`, `osx-arm64`, or `linux-x64`. Because the publish is
-`--self-contained`, that RID decides which platform's .NET runtime gets bundled
-into the single file, so the result runs on that target with no .NET installed.
-
-```sh
-dotnet publish src/ArcadeBasic.Ide \
-  --configuration Release \
-  --runtime <RID> \
-  --self-contained \
-  -p:PublishSingleFile=true \
-  -p:IncludeNativeLibrariesForSelfExtract=true \
-  --output publish/ide
-```
-
-Windows (single line):
-
-```powershell
-dotnet publish src/ArcadeBasic.Ide --configuration Release --runtime win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/ide
-```
-
-Result: `publish/ide/arcade-basic-ide` (~64 MB). It's a terminal (TUI) app — run
-it inside a terminal:
-
-```sh
-./publish/ide/arcade-basic-ide examples/startrek.bas
-```
-
-### Make standalone builds (F7) work — bundle the CLI
-
-A published IDE **on its own cannot build standalone `.bas` binaries**. The IDE's
-**Build standalone** (F7) shells out to a native `arcade-basic` (the AOT CLI from
-§4) to use as the stub; if it can't find one it reports *"Could not find an
-`arcade-basic` AOT binary"*. F7 looks **next to `arcade-basic-ide` first**, then
-on your `PATH` — so the simplest fully-working setup is to publish **both into the
-same folder**:
-
-```sh
-# 1. native CLI (the F7 stub) — needs the C++ toolchain (§1)
-dotnet publish src/ArcadeBasic.Cli -c Release -r <RID> -o publish/ide
-# 2. the IDE, into the SAME folder
-dotnet publish src/ArcadeBasic.Ide -c Release -r <RID> --self-contained \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/ide
-```
-
-Windows (single line each):
-
-```powershell
-dotnet publish src/ArcadeBasic.Cli --configuration Release --runtime win-x64 --output publish/ide
-dotnet publish src/ArcadeBasic.Ide --configuration Release --runtime win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output publish/ide
-```
-
-Result — both binaries side by side, so F7 works with no further setup
-(`.exe` suffix on Windows only):
-
-```
-publish/ide/arcade-basic        # AOT CLI — the F7 build stub
-publish/ide/arcade-basic-ide    # the IDE
-```
-
-Optionally add the folder to your `PATH` so you can launch from anywhere (and F7
-works regardless of the launch directory). Windows (permanent, user-level — open
-a new terminal afterward):
-
-```powershell
-$ideDir = "C:\path\to\arcade-basic\publish\ide"
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($userPath -notlike "*$ideDir*") { [Environment]::SetEnvironmentVariable("Path", "$userPath;$ideDir", "User") }
-```
-
-macOS/Linux: copy `arcade-basic` to a `PATH` directory (e.g. `/usr/local/bin`) or
-add `publish/ide` to `PATH` in your shell profile. See §6 for the full stub-lookup
-details.
-
-See [`../src/ArcadeBasic.Ide/README.md`](../src/ArcadeBasic.Ide/README.md) for
-implementation notes.
-
----
-
-## 6. Build a standalone `.bas` binary
+## 5. Build a standalone `.bas` binary
 
 `arcade-basic build` bundles your compiled program onto the end of an AOT CLI
 binary, producing one self-contained executable (see
 [standalone-builds.md](standalone-builds.md) for the anatomy).
-
-### From the CLI
 
 ```sh
 ./publish/cli/arcade-basic build examples/hello.bas -o hello
@@ -243,49 +146,24 @@ binary, producing one self-contained executable (see
 > **Graphics programs run standalone too.** A §13 graphics program (e.g.
 > `examples/kanban.bas`) renders in the terminal when run via `arcade-basic
 > run`/`vm` or as a standalone binary — the CLI draws with a Braille + ANSI
-> backend (the same picture the IDE shows, written straight to the terminal).
+> backend.
 > It activates only on an interactive terminal; piped/redirected output falls
 > back to no rendering (use `--svg <file>` for headless output). Needs a
 > terminal with Braille-glyph and ANSI/VT support (Windows Terminal, modern
 > macOS/Linux terminals).
 
-### From the IDE (F7)
-
-The IDE itself isn't AOT'd, so it can't bundle *itself*. It needs a native
-`arcade-basic` (the AOT CLI from §4) to use as the stub, and looks for it:
-
-1. **next to the `arcade-basic-ide` binary**, then
-2. **on your `PATH`**.
-
-If F7 reports *"Could not find an `arcade-basic` AOT binary"*, build the CLI (§4)
-and make it findable — either copy it next to the IDE:
-
-```sh
-cp publish/cli/arcade-basic publish/ide/        # beside arcade-basic-ide
-```
-
-or put it on your `PATH` once (works for every IDE instance):
-
-```sh
-cp publish/cli/arcade-basic /usr/local/bin/     # macOS/Linux
-```
-
-When you run the IDE via `dotnet run`, the "IDE binary" is the build apphost
-under `src/ArcadeBasic.Ide/bin/<Config>/net10.0/`, so the `PATH` approach is the
-simplest in that case.
-
 ---
 
-## 7. Platform notes
+## 6. Platform notes
 
 ### macOS — distributing to other machines
 
-Self-contained and standalone binaries are **unsigned and un-notarized**. They
+The CLI and standalone binaries are **unsigned and un-notarized**. They
 run fine where you built them, but a Mac that *downloads* one (browser, email,
 AirDrop) will quarantine it and refuse to open it. The recipient clears it with:
 
 ```sh
-xattr -dr com.apple.quarantine ./arcade-basic-ide
+xattr -dr com.apple.quarantine ./hello
 ```
 
 For real distribution, `codesign` and notarize the binary.
@@ -309,6 +187,4 @@ If AOT linking fails, the usual cause is a missing `clang` or `zlib` dev package
 | Debug build | `dotnet build -c Release` | per-project `bin/` | no |
 | Tests | `dotnet test -c Release` | — | no |
 | CLI (AOT) | `dotnet publish src/ArcadeBasic.Cli -c Release -r <RID> -o publish/cli` | `publish/cli/arcade-basic` | **yes** |
-| IDE (single file) | `dotnet publish src/ArcadeBasic.Ide -c Release -r <RID> --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/ide` | `publish/ide/arcade-basic-ide` | no |
-| **Working IDE + F7** | publish the **CLI and IDE into the same `-o` folder** (see §5) | `publish/ide/{arcade-basic, arcade-basic-ide}` | **yes** (CLI step) |
 | Standalone `.bas` | `arcade-basic build foo.bas -o foo` | `foo` | **yes** (uses the AOT CLI) |

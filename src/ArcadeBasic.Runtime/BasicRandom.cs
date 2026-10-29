@@ -11,7 +11,7 @@ namespace ArcadeBasic.Runtime;
 /// tests, or replaying a game.
 ///
 /// The generator is SplitMix64, written out here rather than <see cref="Random"/>
-/// so .NET, Unity (Mono/IL2CPP) and WebAssembly all produce the same numbers.
+/// so .NET and WebAssembly produce the same numbers.
 /// </summary>
 public sealed class BasicRandom
 {

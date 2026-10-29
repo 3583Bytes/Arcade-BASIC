@@ -6,7 +6,7 @@ public readonly record struct PointerEvent(bool Pressed, GfxPoint At);
 
 /// <summary>
 /// Optional companion to <see cref="IGraphicsDevice"/> for a surface the user can point
-/// at — a browser canvas, the IDE's Graphics tab. Graphic input (<c>LOCATE POINT</c>,
+/// at, like the browser's canvas. Graphic input (<c>LOCATE POINT</c>,
 /// <c>GET POINT</c>) and <c>GET MOUSE</c> read it; a device without it has no pointer.
 /// Implementations used from a program's background thread must be thread-safe.
 /// </summary>

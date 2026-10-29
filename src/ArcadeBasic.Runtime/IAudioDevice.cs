@@ -6,8 +6,8 @@ namespace ArcadeBasic.Runtime;
 /// device-independent core (<see cref="AudioState"/>) does all the musical work —
 /// MML parsing, tempo/length/articulation timing, pitch computation — and hands
 /// the backend a stream of already-resolved <see cref="ToneEvent"/>s. Backends
-/// turn those into sound (PCM samples for a WAV file, a real-time audio sink, a
-/// Unity AudioClip) or, for tests, a transcript.
+/// turn those into sound (PCM samples for a WAV file, a real-time audio sink, Web
+/// Audio in the browser) or, for tests, a transcript.
 ///
 /// Implementations must stay netstandard2.1- and IL2CPP-safe: no reflection, no
 /// dynamic codegen, only simple value types across the boundary.

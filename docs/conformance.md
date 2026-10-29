@@ -17,7 +17,7 @@ The spec uses "shall" for normative requirements and "should" for recommendation
 | File I/O (BYTE mode, NATIVE records, RANDOM/KEYED organisation) | ❌ Not yet |
 | Editing module — `PRINT USING` | ✅ Implemented |
 | Editing module — formatted `INPUT` | ❌ Not yet |
-| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG, terminal/braille, and raster/Unity-texture backends) |
+| Graphics (§13: coordinate systems, attributes, output) | ✅ Implemented (SVG, terminal/braille, and browser canvas backends) |
 | Fixed-decimal | ❌ Not yet (skipped per project plan unless asked) |
 | Real-time (§14 — concurrent tasks + process/hardware I/O) | ❌ Not in scope |
 
@@ -168,7 +168,7 @@ Domain errors raise the §5.4 exceptions: `SQR` of a negative (3005), `ASIN`/`AC
 
 **IMPLEMENTATION-DEFINED:** `RND` takes 0 or 1 arguments. The argument is **ignored**; every call advances the underlying PRNG. ISO permits dialect-specific behaviour; MS-BASIC's `RND(0) = last value` is not implemented.
 
-`RND` follows §5.4.4: without `RANDOMIZE` a program gets the same sequence every run, one sequence for the whole program (all its program units); `RANDOMIZE` starts an unpredictable one from the clock. **EXTENSION:** `RANDOMIZE n` starts the repeatable sequence that belongs to `n`. **IMPLEMENTATION-DEFINED:** the generator is SplitMix64 (`BasicRandom` in `ArcadeBasic.Runtime`), so both engines, Unity and WebAssembly produce identical numbers; values are uniform in [0, 1) with 53 random bits. An embedding host can pass a *randomize seed* (`randomizeSeed:` on `BasicInterpreter` / `BasicVm`) that a plain `RANDOMIZE` uses instead of the clock, which makes a whole run repeatable — the tests use it to replay the real-time games.
+`RND` follows §5.4.4: without `RANDOMIZE` a program gets the same sequence every run, one sequence for the whole program (all its program units); `RANDOMIZE` starts an unpredictable one from the clock. **EXTENSION:** `RANDOMIZE n` starts the repeatable sequence that belongs to `n`. **IMPLEMENTATION-DEFINED:** the generator is SplitMix64 (`BasicRandom` in `ArcadeBasic.Runtime`), so both engines and WebAssembly produce identical numbers; values are uniform in [0, 1) with 53 random bits. An embedding host can pass a *randomize seed* (`randomizeSeed:` on `BasicInterpreter` / `BasicVm`) that a plain `RANDOMIZE` uses instead of the clock, which makes a whole run repeatable — the tests use it to replay the real-time games.
 
 **IMPLEMENTATION-DEFINED:** `PI`, `EPS`, `INF`, `MAXNUM` are modelled as constant symbols (no parens). Their values:
 
@@ -234,7 +234,7 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 **IMPLEMENTATION-DEFINED:** Exception type codes follow the spec for the ones we implement. Our extensions (e.g. `4003` for INPUT-stream-closed) are documented inline in `BasicRuntimeException` callsites.
 
-**IMPLEMENTATION-DEFINED:** procedure calls may nest 100,000 deep on the VM (`vm`, `build`, standalone binaries); the next call raises exception **5000** (the "storage exhausted" class), which `WHEN`/`USE` can catch. **Known gap:** the tree-walker (`run`, the IDE, Unity) still recurses on the host thread's stack, so very deep recursion — somewhere past 1,000 levels — ends the process instead.
+**IMPLEMENTATION-DEFINED:** procedure calls may nest 100,000 deep on the VM (`vm`, `build`, standalone binaries); the next call raises exception **5000** (the "storage exhausted" class), which `WHEN`/`USE` can catch. **Known gap:** the tree-walker (`run`, the REPL, `BasicEngine.Run`) still recurses on the host thread's stack, so very deep recursion — somewhere past 1,000 levels — ends the process instead.
 
 ## Modules
 
@@ -246,7 +246,7 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 - **Visibility:** code in a module doesn't see the main program's variables. A name a module procedure reads before setting is local to that procedure, as for an external procedure; one in the start-up code is the module's.
 - **`DATA`:** each program-unit has its own: a `READ`, `MAT READ` or `RESTORE` in a module (start-up code or procedure) uses the module's, in the main program (or its internal procedures) the main program's.
 
-**IMPLEMENTATION-DEFINED (finding program-units):** ISO 10279 leaves how a program's units are assembled to the implementation. Here a main program names other files with **`LIBRARY "file" [, …]`** — True BASIC's statement (Kemeny and Kurtz's own Full BASIC). Each file is loaded once; a file's libraries load before it. A library holds `MODULE`s and procedures of its own, which are **external procedures**: callable from the whole program, seeing only their own variables (they're treated as a module named after the file, every procedure public). Any other top-level statement in a library is an error (`FB0211`); a missing file is `FB0210`. The CLI (`run`, `vm`, `build`, `analyze`) looks for a library next to the file that names it; the terminal IDE and the Unity IDE sample next to the open file, then among their bundled examples; the browser IDE among its open tabs, then the bundled examples. A program embedding the engine gives `BasicEngine.Run` a `libraries` function. `run` still also accepts module files after the main file.
+**IMPLEMENTATION-DEFINED (finding program-units):** ISO 10279 leaves how a program's units are assembled to the implementation. Here a main program names other files with **`LIBRARY "file" [, …]`** — True BASIC's statement (Kemeny and Kurtz's own Full BASIC). Each file is loaded once; a file's libraries load before it. A library holds `MODULE`s and procedures of its own, which are **external procedures**: callable from the whole program, seeing only their own variables (they're treated as a module named after the file, every procedure public). Any other top-level statement in a library is an error (`FB0211`); a missing file is `FB0210`. The CLI (`run`, `vm`, `build`, `analyze`) looks for a library next to the file that names it; the browser IDE among its open tabs, then the bundled examples. A program embedding the engine gives `BasicEngine.Run` a `libraries` function. `run` still also accepts module files after the main file.
 
 Errors and the debugger say which file a line is in: a runtime error in a library reads `… at line 8 in greet.bas: …`.
 
@@ -326,8 +326,7 @@ presses the primary button over the drawing surface and assign the point in
 problem coordinates (`GraphicsState.ToProblem` runs the output pipeline backwards).
 `GET` differs from `LOCATE` only by picture transforms (§13.5.4.1), which aren't
 implemented, so the two are the same here. The pointer is an optional
-`IPointer` on the graphics device: the IDE's Graphics tab (Terminal.Gui mouse,
-one cell's resolution) and the browser playground's canvas provide one.
+`IPointer` on the graphics device: the browser IDE's canvas provides one.
 **IMPLEMENTATION-DEFINED:** only device 1 exists (any other raises **11140**); the
 `AT` initial point is evaluated but can't move a mouse pointer; a pick outside the
 current window is ignored and the wait continues (the standard leaves this
@@ -344,11 +343,11 @@ from the keyboard as the standard requires: it reads `x, y` like `INPUT`.
 `IGraphicsDevice` clipped vector primitives in the normalized device unit square.
 The interpreter and VM share that core, so graphics output is byte-identical
 between engines (asserted in `ArcadeBasic.Conformance.Tests`). Shipped backends:
-**SVG** (`arcade-basic run|vm file.bas --svg out.svg`); the **terminal IDE**
-(a Graphics tab in `arcade-basic-ide`); and a **console ANSI** backend
-(`AnsiGraphicsDevice` in Runtime) used by `arcade-basic run`/`vm` and standalone
-binaries on an interactive terminal — so graphics programs run anywhere, not just
-the IDE. Both terminal backends compose onto the same `CellSurface`, which draws
+**SVG** (`arcade-basic run|vm file.bas --svg out.svg`); the **browser IDE**'s
+canvas; and a **console ANSI** backend (`AnsiGraphicsDevice` in Runtime) used by
+`arcade-basic run`/`vm` and standalone binaries on an interactive terminal — so
+graphics programs run in a terminal too. The terminal backend draws on a
+`CellSurface`, which draws
 each primitive with the characters that suit it: horizontal/vertical lines as
 box-drawing characters (`─ │ ┌ ┼ …`, with `┄ ┆` dashed and `┈ ┊` dotted styles),
 filled areas and cell arrays as block elements at 2 × 2 per cell, other lines and points as Braille
@@ -358,12 +357,7 @@ the default LEFT, BASE alignment); a cell shows one kind of drawing, so later
 drawing of another kind replaces earlier, and filling with colour 0 erases. With
 a window as wide and tall as the grid in cells (`ASK DEVICE SIZE` reports dots:
 2 per column, 4 per row), each unit is one cell — draw text on whole rows and
-lines through row middles (row + 0.3) and they never collide. There is also a **`RasterGraphicsDevice`**
-in Runtime that renders into an ARGB pixel buffer (with a shared 5×7 `BitmapFont`
-for `GRAPH TEXT`) — the engine-agnostic core of the **Unity `Texture2D`** backend
-(`unity/Runtime/UnityGraphics/BasicScreen.cs`); the raster core is implemented and
-tested, the Unity texture/scene glue is shipped for static programs. All backends
-share the `Rasterizer` in Runtime.
+lines through row middles (row + 0.3) and they never collide.
 
 **IMPLEMENTATION-DEFINED:** the device transform (DEVICE WINDOW → DEVICE
 VIEWPORT) is a plain linear remap within the unit square; physical aspect-ratio

@@ -1,9 +1,8 @@
 namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// The character grid that §13 drawings are composed onto in a terminal — shared by
-/// the console backend (<see cref="AnsiGraphicsDevice"/>) and the IDE's canvas, so both
-/// look the same. Each kind of drawing gets the characters that show it best:
+/// The character grid that §13 drawings are composed onto in a terminal, for the
+/// console backend (<see cref="AnsiGraphicsDevice"/>). Each kind of drawing gets the characters that show it best:
 /// <list type="bullet">
 /// <item>horizontal and vertical lines → box-drawing characters (─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼;
 /// ┄ ┆ dashed, ┈ ┊ dotted), one cell's resolution: even weight both ways, no gaps;</item>
@@ -77,16 +76,6 @@ public sealed class CellSurface
     {
         Array.Clear(_cells, 0, _cells.Length);
         IsEmpty = true;
-    }
-
-    /// <summary>Copy this surface onto <paramref name="other"/> (the IDE's front buffer).</summary>
-    public void CopyTo(CellSurface other)
-    {
-        if (other._cells.Length != _cells.Length) other._cells = new Cell[_cells.Length];
-        other.Cols = Cols;
-        other.Rows = Rows;
-        other.IsEmpty = IsEmpty;
-        Array.Copy(_cells, other._cells, _cells.Length);
     }
 
     // -- Drawing, in the device unit square (origin bottom-left) -------------------

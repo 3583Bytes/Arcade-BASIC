@@ -3,7 +3,7 @@
 ! every change and opening it again next time — so it can track real work. (In the
 ! browser IDE the file stays in the browser: File → Program files.)
 !
-! With a mouse — the browser IDE, the terminal IDE's Graphics tab, Unity — click a card
+! With a mouse (in the browser IDE) click a card
 ! to select it (it opens up to show all its text), double-click it to edit it, and drag
 ! it to another lane or up and down; "+ add a card" adds one. The keyboard works too:
 ! the arrow keys select, Enter edits, Space picks the card up (then the arrows move it),

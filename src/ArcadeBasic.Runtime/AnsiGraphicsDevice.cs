@@ -5,12 +5,11 @@ namespace ArcadeBasic.Runtime;
 /// <summary>
 /// An <see cref="IGraphicsDevice"/> that renders the §13 primitive stream to a
 /// terminal using ANSI escape sequences and Unicode Braille glyphs (a 2×4 dot
-/// matrix per character cell, U+2800…U+28FF) — the same braille model as the IDE
-/// canvas, but written straight to a <see cref="TextWriter"/>, so graphics work
-/// in the CLI and in standalone binaries (no Terminal.Gui; netstandard2.1- and
-/// AOT-safe).
+/// matrix per character cell, U+2800…U+28FF), written straight to a
+/// <see cref="TextWriter"/>, so graphics work in the CLI and in standalone binaries
+/// (netstandard2.1- and AOT-safe).
 ///
-/// Layout mirrors the IDE: the drawing fills the terminal except the <b>bottom
+/// Layout: the drawing fills the terminal except the <b>bottom
 /// row, which is reserved for the program's input line</b>. So <c>ASK DEVICE
 /// SIZE</c> reports <c>(cols×2) × ((rows−1)×4)</c> dots and a program reads input
 /// on the line directly beneath the picture.
@@ -178,8 +177,7 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
             ? Esc + (AnsiColor(color) + 10) + "m"
             : Esc + "48;5;" + _palette.NearestXterm(color) + "m";
 
-    // Palette index → ANSI SGR foreground code, approximating the IDE's 16-colour
-    // terminal palette.
+    // Palette index → ANSI SGR foreground code: the 16 standard colours.
     private static int AnsiColor(int index) => index switch
     {
         0 => 90, 1 => 37, 2 => 91, 3 => 92, 4 => 94, 5 => 95, 6 => 96, 7 => 93,

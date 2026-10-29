@@ -1,11 +1,10 @@
 namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Integer-grid rasterization shared by the raster graphics backends (terminal
-/// braille canvas, Unity texture). Backends map the core's normalized device
-/// coordinates to their own pixel grid, then call these to turn vector
-/// primitives into individual pixel plots via a callback. Pure int math, so it
-/// is netstandard2.1- and IL2CPP-safe.
+/// Integer-grid rasterization for the terminal's character grid
+/// (<see cref="CellSurface"/>). It maps the core's normalized device coordinates
+/// to a dot grid, then calls these to turn vector primitives into individual dot
+/// plots via a callback. Pure int math, so it is netstandard2.1-safe.
 /// </summary>
 public static class Rasterizer
 {

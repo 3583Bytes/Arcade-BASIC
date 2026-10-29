@@ -153,7 +153,7 @@ Domain types shared by both the interpreter and the VM:
 - **`BuiltinImpls`** — concrete implementations of `SQR`, `SIN`, `LEN`, `MID$`, etc., keyed by name in an `IReadOnlyDictionary`.
 - **`BasicFile`** — abstraction over a `Stream` for DISPLAY/INTERNAL/BYTE mode files.
 - **`PictureFormat`** — parser and applier for `PRINT USING` picture strings.
-- **§13 graphics core** — `GraphicsState` (window/viewport/clip + coordinate mapping and Cohen–Sutherland / Sutherland–Hodgman clipping), `Rasterizer` (Bresenham + scanline fill), a 5×7 `BitmapFont`, and the `IGraphicsDevice` seam with backends `NullGraphicsDevice`, `RecordingGraphicsDevice` (tests), `AnsiGraphicsDevice` (Braille + ANSI terminal), and `RasterGraphicsDevice` (ARGB pixel buffer — the Unity texture backend's core). See *device seams* below.
+- **§13 graphics core** — `GraphicsState` (window/viewport/clip + coordinate mapping and Cohen–Sutherland / Sutherland–Hodgman clipping), `Rasterizer` (Bresenham + scanline fill), and the `IGraphicsDevice` seam with backends `NullGraphicsDevice`, `RecordingGraphicsDevice` (tests) and `AnsiGraphicsDevice` (Braille + ANSI terminal). See *device seams* below.
 - **`IKeyboard`** — the seam behind `INKEY$` (non-blocking key poll); `NullKeyboard` is the default.
 
 ### ArcadeBasic.Interpreter
@@ -238,41 +238,36 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
   and clipping, then hands the backend already-clipped vector primitives in the
   normalized `[0,1]` device square. Backends: `NullGraphicsDevice` (default),
   `SvgGraphicsDevice` (`--svg`), `AnsiGraphicsDevice` (ANSI terminal —
-  CLI/standalone), the IDE's `TuiGraphicsDevice` (Terminal.Gui canvas) — those two
-  compose onto a shared `CellSurface` (box-drawing lines, block fills, Braille for
-  the rest, text in cells) — and
-  `RasterGraphicsDevice` (ARGB pixel buffer — the Unity `Texture2D` backend's
-  engine-agnostic, unit-tested core; `unity/Runtime/UnityGraphics` blits it to a
-  texture). `RecordingGraphicsDevice` captures the primitive stream so the
+  CLI/standalone; it draws on a `CellSurface`: box-drawing lines, block fills,
+  Braille for the rest, text in cells) and the browser's `CanvasGraphicsDevice`
+  (`ArcadeBasic.Web`, an HTML canvas). `RecordingGraphicsDevice` captures the primitive stream so the
   conformance suite can assert interpreter == VM. `SLEEP` calls `Flush()`, which
   is the frame boundary that makes the terminal backends present each frame of a
   game loop.
 - **`IKeyboard`** — a non-blocking `ReadKey()` behind `INKEY$`; `ConsoleKeyboard`
-  (CLI/standalone, via `Console.ReadKey`) and `TuiKeyboard` (the IDE captures keys
-  with a global hook while a program runs) supply real keys, `NullKeyboard`
+  (CLI/standalone, via `Console.ReadKey`) and the browser's `BrowserKeyboard`
+  supply real keys, `NullKeyboard`
   yields `""` when there's no interactive keyboard. Both engines read it through
   `KeyboardState`, which also answers `KEYDOWN`: exactly, from a keyboard that also
-  implements **`IKeyState`** (one that sees key releases — the browser, a game
-  engine), or else estimated from presses and auto-repeat (terminals).
+  implements **`IKeyState`** (one that sees key releases, like the browser's), or else estimated from presses and auto-repeat (terminals).
 - **`IPointer`** — an optional companion to `IGraphicsDevice` for a surface the
   user can point at: the pointer's position and primary-button press/release events,
   in the device unit square. Both engines read it through `PointerState` for
   `LOCATE POINT` (wait for a press) and `GET MOUSE` (sample), mapping back to problem
-  coordinates with `GraphicsState.ToProblem`. The IDE's Graphics tab and the browser
-  canvas implement it; elsewhere `LOCATE POINT` reads typed coordinates.
+  coordinates with `GraphicsState.ToProblem`. The browser canvas implements it; elsewhere `LOCATE POINT` reads typed coordinates.
 - **`ICellArrayDevice`, `IColorMixDevice`** — optional too: a device that draws
   `MAT GRAPH CELLS` itself, leaving cells coloured -1 see-through (the browser uploads each frame's cells as one image and
-  scales pieces of it; the terminals light block quadrants; raster and SVG fill
-  pixels or rectangles) and one whose colours `SET COLOR MIX` changes (each keeps a
-  `GfxPalette`: 256 colours, approximated to 16 or 256 on terminals). Without
+  scales pieces of it; the terminal lights block quadrants; SVG fills
+  rectangles) and one whose colours `SET COLOR MIX` changes (each keeps a
+  `GfxPalette`: 256 colours, approximated to 16 or 256 colours in a terminal). Without
   `ICellArrayDevice`, `GraphicsState` fills each run of same-coloured cells with
-  `FillArea`, so every backend — Unity's included — draws cells unchanged.
+  `FillArea`, so every backend draws cells unchanged.
   Capabilities arrive as new interfaces rather than new `IGraphicsDevice` members so
   existing implementations keep compiling.
 
-These interfaces are netstandard2.1- and IL2CPP-safe (no reflection, only simple
-value types crossing the boundary), so the same code path serves the CLI,
-standalone binaries, the IDE, and Unity.
+These interfaces are netstandard2.1-safe (no reflection, only simple value types
+crossing the boundary), so the same code path serves the CLI, standalone binaries
+and the browser.
 
 ### Frame storage: slot-indexed activation records
 
@@ -300,7 +295,7 @@ A small `Polyfill.cs` file at the repo root is conditionally compiled into every
 - `System.Runtime.CompilerServices.RequiredMemberAttribute` + `CompilerFeatureRequiredAttribute` and `System.Diagnostics.CodeAnalysis.SetsRequiredMembersAttribute` — required for the `required` keyword
 - `System.Collections.Generic.ReferenceEqualityComparer` — used by the analyzer's reference-keyed side tables
 
-The libs are deliberately framework-thin: no `System.Text.Rune` (rewritten as surrogate-pair iteration over `string`), no `Stream.ReadExactly` (replaced by a small loop), no `Math.Log2` (uses `Math.Log(x, 2)`), no `MemoryExtensions.Contains` (uses `IndexOf` over `ReadOnlySpan`). This lets the same DLLs ship to Unity (Mono/IL2CPP), Xamarin, older .NET Framework hosts, and any other netstandard2.1 consumer.
+The libs are deliberately framework-thin: no `System.Text.Rune` (rewritten as surrogate-pair iteration over `string`), no `Stream.ReadExactly` (replaced by a small loop), no `Math.Log2` (uses `Math.Log(x, 2)`), no `MemoryExtensions.Contains` (uses `IndexOf` over `ReadOnlySpan`). This lets the same DLLs ship to Xamarin, older .NET Framework hosts, and any other netstandard2.1 consumer.
 
 `Singulink.Numerics.BigDecimal` (v3) ships netstandard2.1 targets, so the BigDecimal-heavy runtime works unchanged.
 

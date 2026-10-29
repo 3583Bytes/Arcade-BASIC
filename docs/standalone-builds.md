@@ -175,10 +175,3 @@ out/arcade-basic vm examples/factorial.bas
 tail -c 12 factorial | xxd
 # 4-byte length, then "FB-BCEND" magic
 ```
-
-`scripts/build-bundle.sh` does the AOT publish for both the CLI and the
-IDE in one shot — see the script for the full recipe. The Unity sample's
-"Build standalone" menu item uses the same pipeline, just driven from the
-in-Editor IDE instead of the command line; see
-[`unity/Samples~/ArcadeBasic/README.md`](../unity/Samples~/ArcadeBasic/README.md)
-for the Unity-side specifics.

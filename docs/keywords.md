@@ -1099,8 +1099,7 @@ column per screen column), floor and ceiling, and sprites with see-through parts
 ### Mouse: `LOCATE POINT` / `GET POINT`, `GET MOUSE`
 
 Pointer input comes back in the same problem coordinates you draw with. It works
-where there's a mouse over the drawing — the IDE's Graphics tab and the browser
-playground.
+where there's a mouse over the drawing — the browser IDE.
 
 ```basic
 LOCATE POINT : X, Y             ! wait for a click; X, Y in window coordinates

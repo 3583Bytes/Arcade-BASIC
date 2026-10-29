@@ -1,7 +1,8 @@
 # Design proposal: audio extension (`SOUND` / `BEEP` / `PLAY`)
 
-> **Status: implemented** — phases 1–3, 5 and 6 below (the terminal, a WAV file,
-> Unity and the browser); phase 4 (`X` / `=`) is a documented deviation. This began
+> **Status: implemented** — phases 1–3 and 6 below (the terminal, a WAV file and
+> the browser); phase 4 (`X` / `=`) is a documented deviation; phase 5 (Unity) was
+> removed with the Unity package. This began
 > as the design proposal and still carries its reasoning.
 >
 > **Target: the full GW-BASIC/QuickBASIC audio feature set** — `SOUND`, `BEEP`,
@@ -181,19 +182,9 @@ Recorded as a deviation in `docs/conformance.md`. *(If desired later, the only
 faithful route would be to add a real `VARPTR$` builtin returning an opaque handle
 that PLAY/DRAW can dereference — a separate, larger feature.)*
 
-**Phase 5 — Unity audio backend. ✅ IMPLEMENTED (write-to-spec; not verified in Unity).**
-A pull-based `BufferedAudioDevice` (in `Runtime`, unit-tested, no UnityEngine
-dependency) buffers the program's PCM; a `BasicAudioOutput` MonoBehaviour
-(`unity/Runtime/UnityAudio/`) streams it out through a looping `AudioClip` whose
-PCM-reader callback drains the buffer on Unity's audio thread — the audio analogue
-of `BasicScreen`. Wired into the sample IDE's background-task run path
-(`BasicEngine.Run(..., audio:)`), with a fresh device per run and stop/finish
-teardown. The pull-based device is reusable for a future browser/WebAudio
-playground (in the end the browser schedules tones on the Web Audio clock instead
-— Phase 6). **Not verified in Unity** — the Unity package isn't part of the dotnet
-solution, so the `BufferedAudioDevice` logic is unit-tested but the MonoBehaviour /
-`AudioClip` glue needs a human to confirm in the Editor (and `unity/scripts/copy-dlls.sh`
-must be run so the plugin DLLs include the new Runtime types).
+**Phase 5 — Unity audio backend. Removed (2026-10-29) with the Unity package.**
+It streamed the program's PCM through a looping `AudioClip`; its engine-side half,
+`BufferedAudioDevice`, went with it.
 
 **Phase 6 — Browser (Web Audio). ✅ IMPLEMENTED (verified in headless Firefox, not by ear).**
 The playground can't block — it steps the VM from the page's animation loop — so its
@@ -243,8 +234,7 @@ On implementation:
   with the §2–§4 semantics and the §6 implementation-defined choices spelled out.
   This also retires the current gap where `SOUND`/`WAIT` are reserved but
   undocumented.
-- Note the feature in the root `README.md` (and the Unity sample README, since
-  the Unity backend gains audio).
+- Note the feature in the root `README.md`.
 - Add the keywords to `docs/keywords.md` with commented examples.
 - Ship a `sound.bas` / `music.bas` example (a recognizable tune via `PLAY`),
   registered the usual way (`@category` tag → auto-menu).
