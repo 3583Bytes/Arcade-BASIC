@@ -1,7 +1,6 @@
 using ArcadeBasic.Bytecode;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Core;
-using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
@@ -17,17 +16,15 @@ internal static class CompileService
 {
     public sealed record Result(bool Ok, IReadOnlyList<string> Diagnostics, ArcadeBasic.Bytecode.Program? Program);
 
-    public static Result Validate(string source) => Compile(source);
+    public static Result Validate(string source, string? folder = null) => Compile(source, folder);
 
-    public static Result Compile(string source)
+    /// <param name="folder">Where LIBRARY files are (the open file's folder), if anywhere.</param>
+    public static Result Compile(string source, string? folder = null)
     {
-        var file = new SourceFile("<editor>", source);
         var diags = new DiagnosticBag();
-
-        var tokens = new BasicLexer(file, diags).Lex();
-        if (diags.HasErrors) return new Result(false, Render(diags), null);
-
-        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var libraries = Libraries(folder);
+        var program = ProgramLoader.Load(new SourceFile("<editor>", source),
+            (name, _) => libraries(name) is { } text ? new SourceFile(name, text) : null, diags);
         if (diags.HasErrors) return new Result(false, Render(diags), null);
 
         var info = Analyzer.Analyze(program, diags);
@@ -49,6 +46,14 @@ internal static class CompileService
 
         return new Result(true, Render(diags), compiled);
     }
+
+    /// <summary>LIBRARY "name": the file next to the open one — or, for a bundled example,
+    /// the bundled library.</summary>
+    public static Func<string, string?> Libraries(string? folder) => name =>
+    {
+        var path = Path.Combine(folder ?? Directory.GetCurrentDirectory(), name);
+        return File.Exists(path) ? File.ReadAllText(path) : ExamplesProvider.Source(name);
+    };
 
     private static IReadOnlyList<string> Render(DiagnosticBag diags) =>
         diags.All.Select(d => d.Render(useColor: false)).ToList();

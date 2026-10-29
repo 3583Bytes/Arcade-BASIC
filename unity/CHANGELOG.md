@@ -5,9 +5,15 @@ All notable changes to the Unity package will be documented here. Versions follo
 ## [0.1.0] — Unreleased
 
 ### Fixed
+- The editor scripts compile on Unity 6.5, which made `EndNameEditAction` (used by **Assets → Create → Arcade BASIC**) an error; 6.5 and later use its replacement, `AssetCreationEndAction`.
+- The engine no longer ignores a runtime error or an `EXIT` for an outer loop inside a `FOR` or `DO` body (it carried on looping), and `OPTION BASE` holds for the whole program as modules start up — both as the bytecode VM already did.
+- Runtime errors reach `BasicEngine.Result.Diagnostics`, so the IDE sample's Problems pane says why a program stopped instead of only `[exit 1]`.
 - Import error "Reference has errors 'Singulink.Numerics.BigDecimal'" — `copy-dlls.sh` now emits a `.meta` file next to every plugin DLL with `validateReferences: 0`. Unity 2021.3+ otherwise tries to bind netstandard2.1 `System.*` references against its bundled BCL and rejects the assembly when the metadata identity doesn't match exactly.
 
 ### Added
+- Programs in several files: `LIBRARY "file.bas"` in the **Arcade BASIC IDE** sample's Run, Compile and Build standalone (libraries found beside a program opened from disk, then among the bundled examples), in the `.bas` inspector's **▶ Run** (beside the asset), and through `BasicEngine.Run(…, libraries:)`. Library files (`@library`) are left out of the Open dropdown.
+- The IDE sample's screen and keyboard do what the newer examples need: exact held keys for `KEYDOWN`, the mouse for `GET MOUSE` on the Graphics tab, `SET COLOR MIX`, `MAT GRAPH CELLS`, Enter/Backspace/Tab for `INKEY$`, and double-buffered frames (no flicker in games that redraw every frame).
+- The bundled examples are mirrored again: the 3D maze (`maze3d`, with its two libraries), and the current breakout, invaders, kanban, music, snake and tetris.
 - Audio output (`SOUND` / `BEEP` / `PLAY`). A `BasicAudioOutput` component (`Runtime/UnityAudio`) streams a program's audio through a looping `AudioClip` whose PCM-reader callback drains the engine-agnostic `BufferedAudioDevice` on Unity's audio thread — the audio analogue of `BasicScreen`. The **Arcade BASIC IDE** sample plays audio automatically (fresh device per Run, stopped on Stop/finish). Foreground (`MF`) and background (`MB`) music both work.
 - Bundled examples now mirror the repo's full `examples/` library (all programs the CLI and TUI IDE ship, including the real-time games) instead of a hand-picked subset, kept in sync by `unity/scripts/copy-examples.sh`. The Open dropdown still groups them by `@category`; the Unity-only `keys.bas` input demo is preserved.
 - §13 graphics rendering to a `Texture2D`. `RasterGraphicsDevice` (in `ArcadeBasic.Runtime`) rasterizes `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` into an ARGB pixel buffer with a shared 5×7 `BitmapFont`; the `BasicScreen` component (`Runtime/UnityGraphics`) runs a program and blits the buffer onto a `Renderer`'s material. Handles static programs (run-to-completion); real-time/interactive programs (a worker-thread driver + `INKEY$` keyboard) are a planned follow-up.

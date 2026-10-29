@@ -26,9 +26,16 @@ public sealed partial class BasicInterpreter
     private readonly TextReader _in;
     private readonly CancellationToken _cancel;
 
+    /// <summary>Where an exception the program doesn't handle is reported (the console's
+    /// error stream unless the host says otherwise).</summary>
+    public TextWriter Errors { get; set; } = Console.Error;
+
     private ActivationRecord _programFrame;
     private readonly int[] _dataCursors;      // one per program-unit's DATA (SemanticInfo.DataPools)
-    private int _optionBase = 1;   // "if no such declaration occurs, the lower bound shall be one" (ANSI X3.113 §7.1.1)
+    /// <summary>OPTION BASE: one declaration for the whole program, as the compiler has it — in
+    /// force before any module starts up. "If no such declaration occurs, the lower bound
+    /// shall be one" (ANSI X3.113 §7.1.1).</summary>
+    private readonly int _optionBase;
     private readonly ChannelTable _channels = new();
     private readonly IGraphicsDevice _graphics;
     private readonly GraphicsState _gfx = new();
@@ -85,6 +92,7 @@ public sealed partial class BasicInterpreter
         _pointer = new PointerState(_graphics);
         _audio = audio ?? NullAudioDevice.Instance;
         _random = new BasicRandom(randomizeSeed);
+        _optionBase = program.Statements.OfType<OptionBaseStmt>().LastOrDefault()?.Base ?? 1;
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
         _dataCursors = new int[Math.Max(1, info.DataPools.Count)];
         _native = info.Arithmetic == ArithmeticMode.Native;
@@ -117,7 +125,7 @@ public sealed partial class BasicInterpreter
             if (fc is FlowControl.Cause c)
             {
                 _out.Flush();
-                Console.Error.WriteLine(
+                Errors.WriteLine(
                     $"unhandled exception type {c.Exception.Type} at {c.Exception.Where}: {c.Exception.Text}");
                 return 1;
             }
@@ -136,14 +144,14 @@ public sealed partial class BasicInterpreter
             // Every call runs inside some statement, whose ExecStmt turns this back
             // into FlowControl.Cause — so this is only a backstop.
             _out.Flush();
-            Console.Error.WriteLine(
+            Errors.WriteLine(
                 $"unhandled exception type {p.Exception.Type} at {p.Exception.Where}: {p.Exception.Text}");
             return 1;
         }
         catch (BasicRuntimeException ex)
         {
             _out.Flush();
-            Console.Error.WriteLine($"runtime error [{ex.TypeCode}]: {ex.Message}");
+            Errors.WriteLine($"runtime error [{ex.TypeCode}]: {ex.Message}");
             return 1;
         }
         finally
@@ -344,7 +352,7 @@ public sealed partial class BasicInterpreter
             case EndBlockStmt: return FlowControl.Continue;
             case RunStmt: return FlowControl.Continue;
             case RemStmt: return FlowControl.Continue;
-            case OptionBaseStmt ob: _optionBase = ob.Base; return FlowControl.Continue;
+            case OptionBaseStmt: return FlowControl.Continue;   // _optionBase
             case OptionArithmeticStmt: return FlowControl.Continue;
             case RandomizeStmt rnd: return ExecRandomize(rnd, frame);
             case SleepStmt slp: return ExecSleep(slp, frame);

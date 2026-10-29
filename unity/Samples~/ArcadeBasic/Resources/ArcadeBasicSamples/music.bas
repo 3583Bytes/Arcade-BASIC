@@ -1,10 +1,9 @@
 ! music.bas — the audio extension: SOUND, BEEP and PLAY (MML).      @category Basics
 ! These are Microsoft-BASIC / GW-BASIC dialect statements, NOT ISO/ECMA Full
-! BASIC — see docs/conformance.md and docs/audio-extension.md. Render the audio
-! to a WAV file with:
+! BASIC — see docs/conformance.md and docs/audio-extension.md. It plays out loud
+! in the browser and from `arcade-basic run examples/music.bas`; render it to a
+! WAV file instead with:
 !     arcade-basic run examples/music.bas --wav music.wav
-! (Real-time audible playback is a later phase; with no --wav the program runs
-! silently but still exercises every audio statement.)
 
 PRINT "Arcade BASIC audio demo"
 

@@ -1,18 +1,22 @@
 ! kanban.bas — a three-lane Kanban board (To-Do / In-Progress / Done) drawn with  @category Graphics
 ! the ECMA-116 §13 graphics module. Each lane is an outlined GRAPH LINES box with
-! a dashed header divider; cards are GRAPH TEXT, word-wrapped to the lane width,
-! each tagged with a GRAPH POINTS bullet; a thin filled GRAPH AREA bar along the
-! bottom of each lane gauges how full it is. The drawing surface is queried once
-! with ASK DEVICE SIZE and shown on the status line.
+! a header divider; each card is word-wrapped GRAPH TEXT in an outlined box with
+! a GRAPH AREA stripe in the lane's colour; a thin filled GRAPH AREA bar along the
+! bottom of each lane gauges how full it is. The drawing surface is measured with
+! ASK DEVICE SIZE (re-checked as it runs, so the board follows a resized window)
+! and shown on the status line.
 !
-! In the terminal IDE (arcade-basic-ide) the board appears on the Graphics tab
-! and you type commands into the field right below it. Headless, you can render
-! a frame to SVG by piping commands and finishing with Q:
+! With a mouse — the terminal IDE's Graphics tab (arcade-basic-ide) or the
+! browser playground — drag a card onto another lane to move it, and type
+! commands straight onto the board (GET MOUSE + INKEY$, an Arcade BASIC and a
+! Microsoft BASIC extension; see docs/conformance.md). Without one — a plain
+! terminal, or piped input — you type one command per line instead (LINE INPUT
+! reads the whole line, so card text may contain commas). Headless, you can
+! render a frame to SVG by piping commands and finishing with Q:
 !   printf 'A Ship the demo 1\nM 5 2\nD 6\nQ\n' | \
 !     dotnet run --project src/ArcadeBasic.Cli -- run examples/kanban.bas --svg board.svg
 !
-! Commands are one line each (args inline); a status line on the board echoes
-! the result. LINE INPUT reads the whole line, so card text may contain commas.
+! A status line on the board echoes each command's result.
 
 OPTION BASE 1
 
@@ -66,6 +70,7 @@ LET NT = 0
 
 ! Per-lane drawing metadata (set once). Colors are graphics palette indices.
 DIM LNAME$(3)
+DIM LTITLE$(3)          ! the header: name and card count
 DIM LCOL(3)
 DIM LX(3)
 LET LNAME$(1) = "TO-DO"
@@ -74,10 +79,13 @@ LET LNAME$(3) = "DONE"
 LET LCOL(1) = 4         ! blue
 LET LCOL(2) = 7         ! yellow
 LET LCOL(3) = 3         ! green
-LET LX(1) = 0          ! lane 1 starts at column 0, aligned with the input field
+! Lane 1 starts at column 0, aligned with the input field. The lanes are laid out
+! to the screen's width each frame (see 9000); these are the 80-column values.
+LET LX(1) = 0
 LET LX(2) = 27
 LET LX(3) = 54
 LET COLW = 25           ! lane width, in canvas cells (window units)
+LET CARDW = COLW - 4    ! card text width, inside the card box
 
 ! scratch / argument variables
 LET RAW$ = ""
@@ -100,6 +108,26 @@ LET WLINE$ = ""
 LET WWORD$ = ""
 LET WS$ = ""
 LET LANELBL$ = ""
+LET QUIT = 0
+
+! Mouse mode: where each drawn card sits (window rows; CTOPY = -1 when it isn't
+! drawn), the card being dragged and the lane under it, and the command being typed.
+DIM CTOPY(64)
+DIM CBOTY(64)
+LET HASMOUSE = 0        ! 1 when there's a mouse
+LET DRAG = 0            ! card # being dragged, or 0
+LET HOVERLN = 0         ! lane under the pointer while dragging
+LET GRABDX = 0          ! where on the card it was grabbed
+LET GRABDY = 0
+LET HIT = 0
+LET HOVERCARD = 0       ! card under the pointer (highlighted), or 0
+LET CARDLINE = 1        ! arguments to 9300 (draw a card)
+LET CARDSTRIPE = 1
+LET CARDTEXT = 1
+LET CARDFILL = 0
+LET MARKY = 0
+LET TYPED$ = ""
+LET DIRTY = 1           ! the board needs redrawing
 
 ! --- seed the board from DATA (terminator is a lone "*") ----------------
 DO
@@ -121,61 +149,163 @@ DATA "Add this to the README",   1
 DATA "*", 0
 
 ! --- main loop ----------------------------------------------------------
-DO
-  IF HELP = 1 THEN
-    GOSUB 9050                     ! draw the help screen
-  ELSE
-    GOSUB 9000                     ! draw the board (graphics)
-  END IF
-  LINE INPUT ""; RAW$              ! whole line; "" ; suppresses the "?" prompt
-  GOSUB 9100                       ! tokenize RAW$ into TOK$(), NTOK
-  IF NTOK > 0 THEN
-    LET CMD$ = UCASE$(LEFT$(TOK$(1), 1))
-    LET HELP = 0                   ! any command leaves the help screen
-    IF CMD$ = "Q" THEN
-      EXIT DO
-    ELSEIF CMD$ = "A" THEN
-      GOSUB 9350                   ! parse inline add args
-      GOSUB 9400
-    ELSEIF CMD$ = "M" THEN
-      LET HAVEN = 0
-      LET HAVEL = 0
-      IF NTOK >= 2 THEN
-        LET N = TONUM(TOK$(2))
-        LET HAVEN = 1
+GET MOUSE MX, MY, MS
+IF MS < 0 THEN
+  ! No pointing device: one typed command per line.
+  DO
+    GOSUB 9010                     ! draw the board (or the help screen)
+    LINE INPUT ""; RAW$            ! whole line; "" ; suppresses the "?" prompt
+    GOSUB 9150                     ! run it
+    IF QUIT = 1 THEN EXIT DO
+  LOOP
+ELSE
+  ! A mouse: drag cards between lanes; type commands onto the board.
+  LET HASMOUSE = 1
+  GOSUB 9010                       ! the board is up before the first key or click
+  LET DIRTY = 0
+  DO
+    ! keys: build the command line; Enter runs it, Esc clears it
+    DO
+      LET K$ = INKEY$
+      IF K$ = "" THEN EXIT DO
+      IF K$ = CHR$(13) THEN
+        LET RAW$ = TYPED$
+        LET TYPED$ = ""
+        GOSUB 9150
+      ELSEIF K$ = CHR$(8) OR K$ = CHR$(127) THEN
+        IF LEN(TYPED$) > 0 THEN LET TYPED$ = LEFT$(TYPED$, LEN(TYPED$) - 1)
+      ELSEIF K$ = CHR$(27) THEN
+        LET TYPED$ = ""
+      ELSEIF LEN(K$) = 1 AND K$ >= " " THEN
+        LET TYPED$ = TYPED$ & K$
       END IF
-      IF NTOK >= 3 THEN
-        LET L = TONUM(TOK$(3))
-        LET HAVEL = 1
+      LET DIRTY = 1
+    LOOP
+    IF QUIT = 1 THEN EXIT DO
+    ! mouse: 2 = pressed, 1 = held, 3 = released (0 = up)
+    GET MOUSE MX, MY, MS
+    IF MS = 2 THEN
+      IF HELP = 1 THEN
+        LET HELP = 0                 ! a click leaves the help screen
+        LET DIRTY = 1
+      ELSE
+        GOSUB 9700                   ! card under the pointer -> HIT
+        IF HIT > 0 THEN
+          LET DRAG = HIT
+          LET GRABDX = MX - LX(LANE(HIT))
+          LET GRABDY = MY - CTOPY(HIT)
+          LET HOVERLN = LANE(HIT)
+          LET MSG$ = "Moving #" & LTRIM$(STR$(HIT)) & " — drop it on a lane"
+          LET DIRTY = 1
+        END IF
       END IF
-      GOSUB 9500
-    ELSEIF CMD$ = "D" THEN
-      LET HAVEN = 0
-      IF NTOK >= 2 THEN
-        LET N = TONUM(TOK$(2))
-        LET HAVEN = 1
+    ELSEIF MS = 1 AND DRAG > 0 THEN
+      GOSUB 9750                     ! lane under the pointer -> HOVERLN
+      LET DIRTY = 1                  ! the card follows the pointer
+    ELSEIF DRAG = 0 AND HELP = 0 THEN
+      GOSUB 9700                     ! the card under the pointer gets highlighted
+      IF HIT <> HOVERCARD THEN
+        LET HOVERCARD = HIT
+        LET DIRTY = 1
       END IF
-      GOSUB 9600
-    ELSEIF CMD$ = "N" THEN
-      IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
-      LET NT = 0
-      LET MSG$ = "New empty board: " & BOARD$
-    ELSEIF CMD$ = "S" THEN
-      IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
-      GOSUB 9800
-    ELSEIF CMD$ = "L" THEN
-      IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
-      GOSUB 9900
-    ELSEIF CMD$ = "H" THEN
-      LET HELP = 1
-    ELSE
-      LET MSG$ = "Unknown command '" & TOK$(1) & "' — H for help"
+    ELSEIF MS = 3 AND DRAG > 0 THEN
+      GOSUB 9750
+      IF HOVERLN > 0 AND HOVERLN <> LANE(DRAG) THEN
+        LET LANE(DRAG) = HOVERLN
+        LET MSG$ = "Moved #" & LTRIM$(STR$(DRAG)) & " to " & LANENAME$(HOVERLN)
+      ELSE
+        LET MSG$ = "Left #" & LTRIM$(STR$(DRAG)) & " where it was"
+      END IF
+      LET DRAG = 0
+      LET DIRTY = 1
     END IF
-  ELSE
-    LET HELP = 0                   ! empty Enter dismisses the help screen
-  END IF
-LOOP
+    ! the screen changed size (a resized window): lay the board out again
+    ASK DEVICE SIZE NEWW, NEWH, DEVU$
+    IF NEWW <> DEVW OR NEWH <> DEVH THEN LET DIRTY = 1
+    IF DIRTY = 1 THEN
+      GOSUB 9010
+      LET DIRTY = 0
+    END IF
+    SLEEP 0.03                       ! ~30 frames/second (also presents the frame)
+  LOOP
+END IF
 END
+
+! ======================================================================
+! 9010  DRAW — the help screen or the board.
+! ======================================================================
+9010 REM ---- draw ----
+IF HELP = 1 THEN
+  GOSUB 9050
+ELSE
+  GOSUB 9000
+END IF
+RETURN
+
+! ======================================================================
+! 9060  COLUMNS — the window width for the device measured in DEVW, DEVH. On
+!       a character screen (2 x 4 dots a cell, up to 40 rows) it's the screen's
+!       columns, so x = k is column k: an 80-unit window on 78 columns would put
+!       x = 0 and x = 1 in one cell, and on 116 space the columns unevenly. On a
+!       finer device (SVG, pixels) it's 80, scaled to fit.
+! ======================================================================
+9060 REM ---- columns ----
+LET COLS = 80
+IF DEVW >= 2 AND DEVH <= 160 THEN LET COLS = INT(DEVW / 2)
+IF COLS < 60 THEN LET COLS = 60    ! floor: any narrower and the board is clipped
+RETURN
+
+! ======================================================================
+! 9150  EXECUTE — run the command in RAW$ (sets QUIT on Q).
+! ======================================================================
+9150 REM ---- execute command ----
+GOSUB 9100                         ! tokenize RAW$ into TOK$(), NTOK
+IF NTOK > 0 THEN
+  LET CMD$ = UCASE$(LEFT$(TOK$(1), 1))
+  LET HELP = 0                     ! any command leaves the help screen
+  IF CMD$ = "Q" THEN
+    LET QUIT = 1
+  ELSEIF CMD$ = "A" THEN
+    GOSUB 9350                     ! parse inline add args
+    GOSUB 9400
+  ELSEIF CMD$ = "M" THEN
+    LET HAVEN = 0
+    LET HAVEL = 0
+    IF NTOK >= 2 THEN
+      LET N = TONUM(TOK$(2))
+      LET HAVEN = 1
+    END IF
+    IF NTOK >= 3 THEN
+      LET L = TONUM(TOK$(3))
+      LET HAVEL = 1
+    END IF
+    GOSUB 9500
+  ELSEIF CMD$ = "D" THEN
+    LET HAVEN = 0
+    IF NTOK >= 2 THEN
+      LET N = TONUM(TOK$(2))
+      LET HAVEN = 1
+    END IF
+    GOSUB 9600
+  ELSEIF CMD$ = "N" THEN
+    IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
+    LET NT = 0
+    LET MSG$ = "New empty board: " & BOARD$
+  ELSEIF CMD$ = "S" THEN
+    IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
+    GOSUB 9800
+  ELSEIF CMD$ = "L" THEN
+    IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
+    GOSUB 9900
+  ELSEIF CMD$ = "H" THEN
+    LET HELP = 1
+  ELSE
+    LET MSG$ = "Unknown command '" & TOK$(1) & "' — H for help"
+  END IF
+ELSE
+  LET HELP = 0                     ! empty Enter dismisses the help screen
+END IF
+RETURN
 
 ! ======================================================================
 ! 9000  RENDER — three outlined lanes (wrapped, bulleted cards + fill gauge)
@@ -190,16 +320,40 @@ LET ROWS = 24                      ! fallback when the device size is unknown
 IF DEVH >= 4 THEN LET ROWS = INT(DEVH / 4)
 IF ROWS > 40 THEN LET ROWS = 40    ! cap so one line stays about one row
 IF ROWS < 12 THEN LET ROWS = 12    ! floor (degenerate guard)
-SET WINDOW 0, 80, 0, ROWS
-! Vertical geometry. The bottom rows are reserved for the footer:
-!   y=1 quick help   y=0 status   (y=2 is a blank gap; the live input
-!   field just below the canvas is the actual prompt line)
-LET BBOT = 3                       ! lane box bottom border
-LET CBOT = 5                       ! lowest card line (above the gauge)
-LET BTOP = ROWS - 1                ! lane box top border
+GOSUB 9060                         ! COLS: one window unit per column
+SET WINDOW 0, COLS, 0, ROWS
+! Three lanes two columns apart, filling the width (80 columns: at 0, 27 and 54,
+! 25 wide). Whole columns, so lines and text land on cells as the rows do.
+LET COLW = INT((COLS - 5) / 3)
+LET CARDW = COLW - 4
+FOR LN = 1 TO 3
+  LET LX(LN) = (LN - 1) * (COLW + 2)
+NEXT LN
+! Vertical geometry, one text row per window unit. Text sits on its row's baseline
+! (the whole number); a line runs through the middle of its own row (+0.3), so in
+! a terminal a line and text never share a character cell. Top to bottom:
+!   ROWS-1 lane border   ROWS-2 title   ROWS-3 divider   ROWS-4 .. 5 cards
+!   4 "+N more"   3 gauge   2 lane border   1 quick help   0 status
+LET BTOP = ROWS - 0.7              ! lane box top border
 LET BTITLE = ROWS - 2              ! lane title
-LET BDIV = ROWS - 3                ! dashed header divider
-LET CTOP = ROWS - 4                ! top card line
+LET BDIV = ROWS - 2.7              ! divider under the header
+LET CTOP = ROWS - 4                ! the first card's top border row
+LET CBOT = 5                       ! the lowest row a card's bottom border may use
+LET BBOT = 2.3                     ! lane box bottom border
+FOR I = 1 TO NT
+  LET CTOPY(I) = -1                ! not drawn (yet)
+NEXT I
+! Lane headers. The right-aligned "lane n" labels (the lane argument for
+! "M n lane") go in only if every title leaves a space before its label.
+LET SHOWLBL = 1
+FOR LN = 1 TO 3
+  LET CNT = 0
+  FOR I = 1 TO NT
+    IF LANE(I) = LN THEN LET CNT = CNT + 1
+  NEXT I
+  LET LTITLE$(LN) = LNAME$(LN) & " (" & LTRIM$(STR$(CNT)) & ")"
+  IF 2 + LEN(LTITLE$(LN)) + 1 > COLW - 7 THEN LET SHOWLBL = 0
+NEXT LN
 FOR LN = 1 TO 3
   LET X0 = LX(LN)
   LET X1 = X0 + COLW
@@ -207,45 +361,49 @@ FOR LN = 1 TO 3
   SET LINE STYLE 1
   SET LINE COLOR LCOL(LN)
   GRAPH LINES: X0, BBOT; X1, BBOT; X1, BTOP; X0, BTOP; X0, BBOT
-  ! dashed divider under the header
-  SET LINE STYLE 2
+  ! divider under the header
   GRAPH LINES: X0, BDIV; X1, BDIV
-  SET LINE STYLE 1
-  ! header title with the lane's card count
-  LET CNT = 0
-  FOR I = 1 TO NT
-    IF LANE(I) = LN THEN LET CNT = CNT + 1
-  NEXT I
+  ! header title with the lane's card count, and its "lane n" label
   SET TEXT COLOR LCOL(LN)
-  GRAPH TEXT, AT X0 + 2, BTITLE: LNAME$(LN) & " (" & LTRIM$(STR$(CNT)) & ")"
-  ! right-aligned lane number, so the user knows the lane arg for "M n lane"
+  GRAPH TEXT, AT X0 + 2, BTITLE: LTITLE$(LN)
   LET LANELBL$ = "lane " & LTRIM$(STR$(LN))
-  GRAPH TEXT, AT X1 - LEN(LANELBL$), BTITLE: LANELBL$
-  ! cards: word-wrapped, bulleted, top-down; stop when the lane fills up
-  LET ROW = CTOP
+  IF SHOWLBL = 1 THEN GRAPH TEXT, AT X1 - LEN(LANELBL$) - 1, BTITLE: LANELBL$
+  ! cards: word-wrapped boxes, top-down; stop when the lane fills up.
+  ! A card is its top border row, its text rows and its bottom border row.
+  LET ROW = CTOP - 1                 ! the next card's first text line
   LET USED = 0
   LET HIDDEN = 0
   LET FULL = 0
-  SET TEXT COLOR 1
-  SET POINT COLOR LCOL(LN)
   FOR I = 1 TO NT
     IF LANE(I) = LN THEN
       IF FULL = 1 THEN
         LET HIDDEN = HIDDEN + 1
       ELSE
         LET WRAPSRC$ = "#" & LTRIM$(STR$(I)) & " " & TASK$(I)
-        LET WRAPW = COLW - 3
+        LET WRAPW = CARDW
         GOSUB 9200                   ! wrap WRAPSRC$ into WRAP$(1..WRAPN)
-        IF ROW - WRAPN + 1 < CBOT THEN
+        IF ROW - WRAPN < CBOT THEN
           LET FULL = 1
           LET HIDDEN = HIDDEN + 1
         ELSE
-          GRAPH POINTS: X0 + 1, ROW  ! bullet on the card's first line
-          FOR WJ = 1 TO WRAPN
-            GRAPH TEXT, AT X0 + 2, ROW: WRAP$(WJ)
-            LET ROW = ROW - 1
-            LET USED = USED + 1
-          NEXT WJ
+          LET CTOPY(I) = ROW         ! remember where it is, for clicks
+          LET CBOTY(I) = ROW - WRAPN + 1
+          LET Y0 = ROW
+          LET CARDSTRIPE = LCOL(LN)
+          LET CARDFILL = 0
+          IF I = DRAG THEN
+            LET CARDLINE = 8         ! the card being dragged, greyed
+            LET CARDTEXT = 8
+          ELSEIF I = HOVERCARD THEN
+            LET CARDLINE = 1         ! the card under the pointer
+            LET CARDTEXT = 1
+          ELSE
+            LET CARDLINE = LCOL(LN)
+            LET CARDTEXT = 1
+          END IF
+          GOSUB 9300                 ! draw the card box
+          LET ROW = ROW - WRAPN - 2
+          LET USED = USED + WRAPN + 2
         END IF
       END IF
     END IF
@@ -253,25 +411,63 @@ FOR LN = 1 TO 3
   ! "+K more" when cards didn't fit (just above the gauge)
   IF HIDDEN > 0 THEN
     SET TEXT COLOR 8
-    GRAPH TEXT, AT X0 + 2, CBOT - 1: "+" & LTRIM$(STR$(HIDDEN)) & " more"
+    GRAPH TEXT, AT X0 + 2.4, CBOT - 1: "+" & LTRIM$(STR$(HIDDEN)) & " more"
     SET TEXT COLOR 1
   END IF
   ! fill gauge: thin filled bar, width proportional to rows used, sitting just
   ! inside the bottom border
   IF USED > 0 THEN
-    LET GW = (COLW - 1) * USED / (CTOP - CBOT + 1)
-    IF GW > COLW - 1 THEN LET GW = COLW - 1
+    LET GW = (COLW - 2) * USED / (CTOP - CBOT + 1)
+    IF GW > COLW - 2 THEN LET GW = COLW - 2
     SET AREA COLOR LCOL(LN)
-    GRAPH AREA: X0 + 0.5, BBOT + 0.2; X0 + 0.5 + GW, BBOT + 0.2; X0 + 0.5 + GW, BBOT + 0.7; X0 + 0.5, BBOT + 0.7
+    GRAPH AREA: X0 + 1, 3.05; X0 + 1 + GW, 3.05; X0 + 1 + GW, 3.55; X0 + 1, 3.55
   END IF
 NEXT LN
-! --- footer: two fixed lines, left-aligned to the first lane; the live
-!     input field below the canvas serves as the prompt line -------------
+! --- dragging: outline the lane under the pointer, mark where the card will
+!     land in it (cards keep their # order), and draw the card at the pointer --
+IF DRAG > 0 THEN
+  SET LINE COLOR 1
+  IF HOVERLN > 0 AND HOVERLN <> LANE(DRAG) THEN
+    LET X0 = LX(HOVERLN)               ! the target lane's border turns white
+    LET X1 = X0 + COLW
+    GRAPH LINES: X0, BBOT; X1, BBOT; X1, BTOP; X0, BTOP; X0, BBOT
+    LET MARKY = CTOP + 0.3             ! on the first card's top border ...
+    FOR I = 1 TO DRAG - 1
+      IF LANE(I) = HOVERLN AND CTOPY(I) >= 0 THEN LET MARKY = CBOTY(I) - 0.7   ! ... or the bottom border of the last card before it
+    NEXT I
+    GRAPH LINES: X0 + 1, MARKY; X1 - 1, MARKY
+  END IF
+  LET WRAPSRC$ = "#" & LTRIM$(STR$(DRAG)) & " " & TASK$(DRAG)
+  LET WRAPW = CARDW
+  GOSUB 9200
+  LET X0 = MX - GRABDX               ! the card's lane edge, as grabbed
+  LET Y0 = MY - GRABDY               ! its first line
+  LET CARDLINE = 1
+  LET CARDSTRIPE = LCOL(LANE(DRAG))
+  LET CARDTEXT = 1
+  LET CARDFILL = 1                   ! opaque, over whatever it's dragged across
+  GOSUB 9300
+END IF
+! --- footer: two fixed lines, left-aligned to the first lane. Without a mouse
+!     the live input field below the canvas is the prompt line; with one, the
+!     command being typed shows on the status line -----------------------------
 LET FX = LX(1)
 SET TEXT COLOR 6
-GRAPH TEXT, AT FX, 1: "A add  M move  D delete  N new  S save  L load  H help  Q quit"
+! (Text sits on its baseline: 0.2 above the row keeps descenders off the edge of
+! a fine-grained screen, and lands in the same terminal row.)
+IF HASMOUSE = 1 THEN
+  GRAPH TEXT, AT FX, 1.2: "Drag cards · A add  M move  D delete  N new  S save  L load  H help  Q quit"
+ELSE
+  GRAPH TEXT, AT FX, 1.2: "A add  M move  D delete  N new  S save  L load  H help  Q quit"
+END IF
 SET TEXT COLOR 7
-GRAPH TEXT, AT FX, 0: "Status: " & MSG$
+IF TYPED$ <> "" THEN
+  GRAPH TEXT, AT FX, 0.2: "> " & TYPED$ & "_"
+ELSEIF HASMOUSE = 1 THEN
+  GRAPH TEXT, AT FX, 0.2: "Status: " & MSG$ & "   (type a command)"
+ELSE
+  GRAPH TEXT, AT FX, 0.2: "Status: " & MSG$
+END IF
 RETURN
 
 ! ======================================================================
@@ -286,14 +482,23 @@ LET HROWS = 24                     ! fallback when the device size is unknown
 IF DEVH >= 4 THEN LET HROWS = INT(DEVH / 4)
 IF HROWS > 32 THEN LET HROWS = 32  ! cap so a huge surface keeps 1 line ~ 1 row
 IF HROWS < 10 THEN LET HROWS = 10  ! (never exceed the real rows: no overlap)
-SET WINDOW 0, 80, 0, HROWS
+GOSUB 9060
+SET WINDOW 0, COLS, 0, HROWS
 SET LINE STYLE 1
 SET LINE COLOR 6
-GRAPH LINES: 1, 1; 78, 1; 78, HROWS - 1; 1, HROWS - 1; 1, 1
+GRAPH LINES: 1, 1.3; COLS - 2, 1.3; COLS - 2, HROWS - 0.7; 1, HROWS - 0.7; 1, 1.3
+! It takes 19 lines (22 rows with the box); on a shorter screen leave out the
+! notes, then the blank lines, then the lanes, so what's left fits.
+LET HNOTES = 0
+IF HROWS >= 22 THEN LET HNOTES = 1
+LET HGAP = 0
+IF HROWS >= 18 THEN LET HGAP = 1
+LET HLANES = 0
+IF HROWS >= 16 THEN LET HLANES = 1
 LET Y = HROWS - 2
 SET TEXT COLOR 7
 GRAPH TEXT, AT 4, Y: "KANBAN BOARD  —  HELP"
-LET Y = Y - 2
+LET Y = Y - 1 - HGAP
 SET TEXT COLOR 6
 GRAPH TEXT, AT 3, Y: "COMMANDS"
 LET Y = Y - 1
@@ -314,22 +519,33 @@ GRAPH TEXT, AT 4, Y: "H                show this help screen"
 LET Y = Y - 1
 GRAPH TEXT, AT 4, Y: "Q                quit"
 LET Y = Y - 1
-SET TEXT COLOR 6
-GRAPH TEXT, AT 3, Y: "LANES"
-LET Y = Y - 1
-SET TEXT COLOR 1
-GRAPH TEXT, AT 4, Y: "1 = To-Do      2 = In-Progress      3 = Done"
-LET Y = Y - 1
-SET TEXT COLOR 6
-GRAPH TEXT, AT 3, Y: "NOTES"
-LET Y = Y - 1
-SET TEXT COLOR 1
-GRAPH TEXT, AT 4, Y: "Long card text wraps; a full lane shows ""+N more""."
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "Add a trailing 1-3 to set the lane:  A Buy milk 1"
-LET Y = Y - 2
+IF HLANES = 1 THEN
+  SET TEXT COLOR 6
+  GRAPH TEXT, AT 3, Y: "LANES"
+  LET Y = Y - 1
+  SET TEXT COLOR 1
+  GRAPH TEXT, AT 4, Y: "1 = To-Do      2 = In-Progress      3 = Done"
+  LET Y = Y - 1
+END IF
+IF HNOTES = 1 THEN
+  SET TEXT COLOR 6
+  GRAPH TEXT, AT 3, Y: "NOTES"
+  LET Y = Y - 1
+  SET TEXT COLOR 1
+  GRAPH TEXT, AT 4, Y: "Long card text wraps; a full lane shows ""+N more""."
+  LET Y = Y - 1
+  GRAPH TEXT, AT 4, Y: "Add a trailing 1-3 to set the lane:  A Buy milk 1"
+  LET Y = Y - 1
+  GRAPH TEXT, AT 4, Y: "With a mouse, drag a card onto another lane to move it."
+  LET Y = Y - 1
+END IF
+LET Y = Y - HGAP
 SET TEXT COLOR 8
-GRAPH TEXT, AT 4, Y: "Press Enter to return to the board."
+IF HASMOUSE = 1 THEN
+  GRAPH TEXT, AT 4, Y: "Press Enter or click to return to the board."
+ELSE
+  GRAPH TEXT, AT 4, Y: "Press Enter to return to the board."
+END IF
 RETURN
 
 ! ----------------------------------------------------------------------
@@ -507,6 +723,55 @@ FOR I = N TO NT - 1
 NEXT I
 LET NT = NT - 1
 LET MSG$ = "Deleted (remaining renumbered)"
+RETURN
+
+! ----------------------------------------------------------------------
+! 9300  CARD — draw one card: a box around WRAP$(1..WRAPN) with a colour stripe
+!        down its left side; it takes WRAPN + 2 rows (borders above and below).
+!        X0 = the lane's left edge, Y0 = the first line's baseline; colours in
+!        CARDLINE / CARDSTRIPE / CARDTEXT; CARDFILL = 1 blacks out what's underneath first.
+! ----------------------------------------------------------------------
+9300 REM ---- card box ----
+LET BX0 = X0 + 1
+LET BX1 = X0 + COLW - 1
+LET BYT = Y0 + 1.3                 ! through the middle of the row above the first line
+LET BYB = Y0 - WRAPN + 0.3         ! and of the row below the last
+IF CARDFILL = 1 THEN
+  SET AREA COLOR 0
+  GRAPH AREA: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT
+END IF
+SET LINE COLOR CARDLINE
+GRAPH LINES: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT; BX0, BYB
+SET AREA COLOR CARDSTRIPE            ! the stripe runs beside the text rows only,
+LET SYB = Y0 - WRAPN + 1.05          ! (down to the last baseline), leaving the box's corners alone
+GRAPH AREA: BX0, SYB; BX0 + 0.6, SYB; BX0 + 0.6, Y0 + 0.7; BX0, Y0 + 0.7
+SET TEXT COLOR CARDTEXT
+FOR WJ = 1 TO WRAPN
+  GRAPH TEXT, AT X0 + 2.4, Y0 - WJ + 1: WRAP$(WJ)
+NEXT WJ
+RETURN
+
+! ----------------------------------------------------------------------
+! 9700  HIT — the drawn card under the pointer (MX, MY) -> HIT, or 0.
+! ----------------------------------------------------------------------
+9700 REM ---- card under pointer ----
+LET HIT = 0
+FOR I = 1 TO NT
+  IF CTOPY(I) >= 0 THEN
+    LET X0 = LX(LANE(I))
+    IF MX >= X0 AND MX <= X0 + COLW AND MY >= CBOTY(I) - 1.2 AND MY <= CTOPY(I) + 1.8 THEN LET HIT = I
+  END IF
+NEXT I
+RETURN
+
+! ----------------------------------------------------------------------
+! 9750  LANE — the lane under the pointer (MX, MY) -> HOVERLN, or 0.
+! ----------------------------------------------------------------------
+9750 REM ---- lane under pointer ----
+LET HOVERLN = 0
+FOR LN = 1 TO 3
+  IF MX >= LX(LN) AND MX <= LX(LN) + COLW AND MY >= BBOT AND MY <= BTOP THEN LET HOVERLN = LN
+NEXT LN
 RETURN
 
 ! ======================================================================

@@ -27,6 +27,29 @@ public class InterpreterTests
     }
 
     [Fact]
+    public void ExitLeavesTheLoopItNamesFromInsideAnotherOne()
+    {
+        const string src = """
+            DO
+              FOR I = 1 TO 3
+                PRINT I;
+                IF I = 2 THEN EXIT DO
+              NEXT I
+              PRINT "not here"
+            LOOP
+            FOR J = 1 TO 3
+              DO
+                IF J = 2 THEN EXIT FOR
+                EXIT DO
+              LOOP
+              PRINT J;
+            NEXT J
+            PRINT "out"
+            """;
+        Run(src).Output.Should().Be(" 1  2  1 out\n");
+    }
+
+    [Fact]
     public void InkeyReadsFromTheKeyboardSource()
     {
         const string source =

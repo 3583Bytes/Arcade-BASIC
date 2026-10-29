@@ -21,6 +21,9 @@ internal sealed class TuiShell
 
     private string? _currentFilePath;
 
+    /// <summary>Where the program's LIBRARY files are: the open file's folder, if it's saved.</summary>
+    private string? Folder => _currentFilePath is null ? null : Path.GetDirectoryName(Path.GetFullPath(_currentFilePath));
+
     private TuiShell()
     {
         _statusItem = new StatusItem(Key.Null, "Ready", null);
@@ -222,7 +225,7 @@ internal sealed class TuiShell
         if (_tabs.SelectedTab != _graphicsTab) _graphics.FitTo(_tabs.SelectedTab.View.Frame);
         _output.ClearOutput();
         _tabs.SelectedTab = _outputTab;
-        _runner.Run(_source.GetText(), _currentFilePath is null ? null : Path.GetDirectoryName(Path.GetFullPath(_currentFilePath)));
+        _runner.Run(_source.GetText(), Folder);
     }
 
     private void StopProgram()
@@ -264,7 +267,7 @@ internal sealed class TuiShell
     {
         if (_runner.IsRunning) return;
 
-        var result = CompileService.Validate(_source.GetText());
+        var result = CompileService.Validate(_source.GetText(), Folder);
         _source.Problems.SetDiagnostics(result.Diagnostics);
 
         if (!result.Ok || result.Diagnostics.Count > 0)
@@ -294,7 +297,7 @@ internal sealed class TuiShell
 
         // Step 1: compile. Surface any errors in the Problems pane the same
         // way Run / Compile do, so the user fixes them before retrying.
-        var result = CompileService.Compile(_source.GetText());
+        var result = CompileService.Compile(_source.GetText(), Folder);
         _source.Problems.SetDiagnostics(result.Diagnostics);
         if (!result.Ok || result.Program is null)
         {

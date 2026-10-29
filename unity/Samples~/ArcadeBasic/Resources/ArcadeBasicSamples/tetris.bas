@@ -7,6 +7,9 @@
 ! a standalone binary. INKEY$/SLEEP are Microsoft BASIC extensions, not ISO/ECMA
 ! Full BASIC — see docs/conformance.md.
 !
+! The sound effects are PLAY "MB…": background music (GW-BASIC), which plays
+! while the game runs on.
+!
 ! Controls:   A / LEFT  move left     D / RIGHT  move right
 !             W / UP     rotate        S / DOWN   soft drop
 !             SPACE      hard drop      Q  quit
@@ -278,6 +281,7 @@ IF TOPOUT = 1 THEN
   GOSUB 5200
   RETURN
 END IF
+PLAY "MB T255 L64 O2 C"            ! thud
 GOSUB 3700                         ! clear full rows + score them
 GOSUB 3600                         ! spawn the next piece (may top out)
 RETURN
@@ -340,6 +344,11 @@ IF CLR = 1 THEN LET SC = SC + 100 * LVL
 IF CLR = 2 THEN LET SC = SC + 300 * LVL
 IF CLR = 3 THEN LET SC = SC + 500 * LVL
 IF CLR = 4 THEN LET SC = SC + 800 * LVL
+IF CLR = 4 THEN
+  PLAY "MB T200 L32 O4 C E G O5 C E G O6 C8"   ! a tetris
+ELSEIF CLR > 0 THEN
+  PLAY "MB T255 L32 O4 C E G"
+END IF
 LET NLN = NLN + CLR
 LET LVL = INT(NLN / 10) + 1
 LET FALLFR = 13 - LVL
@@ -366,6 +375,7 @@ IF OK = 1 THEN
     LET CR(K) = GR(K)
     LET CC(K) = GC(K)
   NEXT K
+  PLAY "MB T255 L64 O5 C"          ! tick
 END IF
 RETURN
 
@@ -402,6 +412,7 @@ RETURN
 ! 5200  Finalize a game: flag a new record in the message, then persist.
 ! ======================================================================
 5200 REM ---- finalize ----
+PLAY "MB T120 L8 O3 G E C4"
 IF NEWREC = 1 THEN LET MSG$ = MSG$ & "  -  NEW HIGH!"
 GOSUB 5100
 IF ANYKEY = 1 THEN

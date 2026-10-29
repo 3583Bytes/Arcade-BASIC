@@ -71,7 +71,9 @@ BasicEngine.Result Run(
     string source,
     out string output,
     TextReader stdin = null,        // optional: for INPUT statements
-    string filename = "<embedded>"  // optional: shows up in diagnostics
+    string filename = "<embedded>", // optional: shows up in diagnostics
+    CancellationToken cancel = default,
+    Func<string, string> libraries = null   // optional: LIBRARY "name" → that file's source, or null
 );
 
 // One-call, output streamed to your TextWriter (e.g. a UI buffer).
@@ -83,7 +85,14 @@ BasicEngine.Result Run(
 );
 ```
 
-`Result.ExitCode` is `0` on success, `1` on parse/sema/runtime failure. `Result.Diagnostics` is the rendered text of every compile-time warning and error.
+`Result.ExitCode` is `0` on success, `1` on parse/sema/runtime failure, `2` if cancelled. `Result.Diagnostics` is the rendered text of every compile-time warning and error, and of the exception that stopped the program if one did (`unhandled exception type 1001 at line 3 in lib.bas: division by zero`).
+
+A program can be split into several files with `LIBRARY "file.bas"` (modules with `PUBLIC` variables, shared procedures). The engine doesn't read files itself: pass `libraries`, which turns a name into source — from disk, `Resources`, an asset bundle, wherever your game keeps them:
+
+```csharp
+BasicEngine.Run(source, out string output, filename: "game.bas",
+    libraries: name => Resources.Load<TextAsset>("Scripts/" + Path.GetFileNameWithoutExtension(name))?.text);
+```
 
 For finer control (custom diagnostics handling, embedding the lexer/parser/sema/interpreter individually), reference `ArcadeBasic.Lexer`, `ArcadeBasic.Parser`, `ArcadeBasic.Sema`, `ArcadeBasic.Interpreter` directly — the public types are intentionally small but complete.
 
@@ -96,7 +105,7 @@ Per the upstream [`docs/conformance.md`](https://github.com/3583Bytes/Arcade-BAS
 | Statements, expressions, control flow | ✅ |
 | Arrays + MAT | ✅ |
 | Exception handling (`WHEN`/`USE`/`RETRY`/`CONTINUE`) | ✅ |
-| Modules | ✅ |
+| Modules, and programs in several files (`LIBRARY`) | ✅ |
 | File I/O (DISPLAY mode) | ✅ |
 | `PRINT USING` picture strings | ✅ |
 | Codepoint-aware string functions (`LEN("π")` = 1) | ✅ |

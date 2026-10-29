@@ -163,19 +163,34 @@ namespace ArcadeBasic.Editor
             endAction.Content = content;
 
             ProjectWindowUtil.StartNameEditingIfProjectWindowExists(
-                instanceID: 0,
-                endAction: endAction,
-                pathName: defaultName,
-                icon: EditorGUIUtility.IconContent("TextAsset Icon").image as Texture2D,
-                resourceFile: null);
+#if UNITY_6000_5_OR_NEWER
+                EntityId.None,
+#else
+                0,
+#endif
+                endAction,
+                defaultName,
+                EditorGUIUtility.IconContent("TextAsset Icon").image as Texture2D,
+                null);
         }
 
+        // Unity 6.5 made EndNameEditAction (int instance IDs) an error; its replacement,
+        // AssetCreationEndAction (EntityIds), doesn't exist before 6.5.
+#if UNITY_6000_5_OR_NEWER
+        private sealed class CreateBasicAssetEndAction : AssetCreationEndAction
+        {
+            public string Content = string.Empty;
+
+            public override void Action(EntityId entityId, string pathName, string resourceFile)
+            {
+#else
         private sealed class CreateBasicAssetEndAction : EndNameEditAction
         {
             public string Content = string.Empty;
 
             public override void Action(int instanceId, string pathName, string resourceFile)
             {
+#endif
                 File.WriteAllText(pathName, Content);
                 AssetDatabase.ImportAsset(pathName);
                 var imported = AssetDatabase.LoadAssetAtPath<Object>(pathName);

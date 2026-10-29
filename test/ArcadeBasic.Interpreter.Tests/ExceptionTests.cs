@@ -66,6 +66,35 @@ public class ExceptionTests
         output.Should().Contain("caught bounds error");
     }
 
+    // -- In loops --------------------------------------------------------
+
+    [Theory]
+    [InlineData("DIM A(3)\nFOR I = 0 TO 2\n  LET A(I) = 5\n  PRINT \"set\"; I\nNEXT I\nPRINT \"after\"\n")]
+    [InlineData("DIM A(3)\nLET I = 0\nDO\n  LET A(I) = 5\n  PRINT \"set\"; I\n  LET I = I + 1\nLOOP UNTIL I = 3\nPRINT \"after\"\n")]
+    public void AnUnhandledExceptionInALoopStopsTheProgram(string src)
+    {
+        var (output, exit) = Run(src);
+        exit.Should().Be(1);
+        output.Should().NotContain("set").And.NotContain("after");
+    }
+
+    [Fact]
+    public void AnExceptionInALoopReachesTheHandlerAroundIt()
+    {
+        const string src = """
+            DIM A(3)
+            WHEN EXCEPTION IN
+              FOR I = 3 TO 5
+                LET A(I) = I
+                PRINT "set"; I
+              NEXT I
+            USE
+              PRINT "caught at"; I
+            END WHEN
+            """;
+        Run(src).Output.Should().Be("set 3 \ncaught at 4 \n");
+    }
+
     // -- CAUSE EXCEPTION -----------------------------------------------
 
     [Fact]

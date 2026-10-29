@@ -98,12 +98,7 @@ internal sealed class RunController
             try
             {
                 return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token, graphics: device, keyboard: keyboard,
-                    libraries: name =>
-                    {
-                        // Next to the open file — or, for a bundled example, the bundled libraries.
-                        var path = Path.Combine(folder ?? Directory.GetCurrentDirectory(), name);
-                        return File.Exists(path) ? File.ReadAllText(path) : ExamplesProvider.Source(name);
-                    });
+                    libraries: CompileService.Libraries(folder));
             }
             catch (Exception ex)
             {

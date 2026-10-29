@@ -184,8 +184,10 @@ namespace ArcadeBasic.Samples
         int _liveCursor;
 
         TextAsset[] _examples = Array.Empty<TextAsset>();
+        Dictionary<string, string> _bundled;   // the examples' text by file name, for LIBRARY (BundledSources)
         readonly List<OpenEntry> _openEntries = new();   // dropdown rows: placeholder / browse / header / example
         string _currentFilePath;   // absolute path on disk; null = untitled
+        string _programName;       // file name of the program in the editor (maze3d.bas); null = untitled
         int _activeTab;            // 0 = source, 1 = output, 2 = graphics
         string _baseline = string.Empty;   // last-saved source; IsModified compares against it
 
@@ -204,6 +206,9 @@ namespace ArcadeBasic.Samples
 
         // --- Keyboard (INKEY$ real-time input) ---
         UnityKeyboard _keyboard;        // main thread enqueues; the BASIC thread drains via INKEY$
+
+        // --- Mouse (GET MOUSE) over the graphics screen ---
+        bool _pointerDown;              // a press on the screen not yet released
 
         // --- Status / editor / Help (Phase C) ---
         string _statusBase = string.Empty;   // status message without the live Ln/Col suffix
@@ -296,6 +301,7 @@ namespace ArcadeBasic.Samples
             DrainLiveOutput();
             PresentGraphics();
             PumpKeyboard();
+            PumpPointer();
 
             // INPUT handshake: BASIC task asked for a line — turn on the
             // input bar and focus it. Idempotent across frames via _inputBarActivated.
@@ -369,6 +375,7 @@ namespace ArcadeBasic.Samples
             // input on the main thread while the program runs; INKEY$ drains it.
             if (_keyboard == null) _keyboard = new UnityKeyboard();
             _keyboard.Clear();
+            _pointerDown = false;
 
             // Audio output (SOUND / BEEP / PLAY). A streaming AudioClip pulls the
             // program's PCM on Unity's audio thread; a fresh device per run.
@@ -383,15 +390,19 @@ namespace ArcadeBasic.Samples
             var writer = _liveWriter;
             var screen = _screen;
             var keyboard = _keyboard;
+            var filename = ProgramFileName;
+            var libraries = LibraryResolver();   // reads the bundled examples here, on the main thread
             // INPUT readers run on the BASIC task thread; the reader marshals
             // to the main thread via the _inputPending / _inputDone handshake.
-            var stdin = new MainThreadInputReader(this, token);
+            var stdin = new MainThreadInputReader(this, token, screen);
 
             _runTask = Task.Run(() =>
             {
                 try
                 {
-                    var res = BasicEngine.Run(source, writer, stdin: stdin, cancel: token, graphics: screen, keyboard: keyboard, audio: audio);
+                    var res = BasicEngine.Run(source, writer, stdin: stdin, filename: filename, cancel: token,
+                        graphics: screen, keyboard: keyboard, audio: audio, libraries: libraries);
+                    if (res.ExitCode != 2) screen.Present();   // its last frame, flushed or not (not a half-drawn one when stopped)
                     return new RunResult(res.ExitCode, res.Diagnostics);
                 }
                 catch (Exception ex)
@@ -503,6 +514,7 @@ namespace ArcadeBasic.Samples
             _newConfirmArmed = false;
             if (inputField != null) inputField.text = string.Empty;
             _currentFilePath = null;
+            _programName = null;
             _baseline = string.Empty;
             UpdateFilenameDisplay();
             SetStatus("New file");
@@ -558,24 +570,17 @@ namespace ArcadeBasic.Samples
         }
         bool _quitConfirmArmed;
 
-        /// <summary>Compile-only: lex + parse + sema with no execution. Diagnostics
-        /// surface in the output pane and the status text. Faster than Run for
-        /// catching syntax/sema errors before kicking off a long-running program.</summary>
+        /// <summary>Compile-only: lex + parse + sema with no execution — the program and
+        /// the files its LIBRARY statements name. Diagnostics surface in the Problems
+        /// pane and the status text. Faster than Run for catching syntax/sema errors
+        /// before kicking off a long-running program.</summary>
         public void CompileOnly()
         {
             if (_runTask != null) return;
             if (inputField == null) return;
 
-            var source = inputField.text ?? string.Empty;
-            var file = new SourceFile("<editor>", source);
             var diags = new DiagnosticBag();
-
-            var tokens = new BasicLexer(file, diags).Lex();
-            if (!diags.HasErrors)
-            {
-                var program = new BasicParser(tokens, file, diags).ParseProgram();
-                if (!diags.HasErrors) Analyzer.Analyze(program, diags);
-            }
+            LoadProgram(diags, out _);
 
             if (diags.HasErrors)
             {
@@ -670,19 +675,10 @@ namespace ArcadeBasic.Samples
         /// can't have its +x bit set here (the recipient runs `chmod +x`).</summary>
         void BuildStandaloneForRid(string targetRid)
         {
-            // 1. Compile to bytecode; surface any errors in the Problems pane.
-            var source = inputField.text ?? string.Empty;
-            var file = new SourceFile("<editor>", source);
+            // 1. Compile to bytecode, its libraries and all; surface any errors in the Problems pane.
             var diags = new DiagnosticBag();
-            var tokens = new BasicLexer(file, diags).Lex();
-            ArcadeBasic.Parser.Ast.Program ast = null;
-            SemanticInfo info = null;
-            if (!diags.HasErrors)
-            {
-                ast = new BasicParser(tokens, file, diags).ParseProgram();
-                if (!diags.HasErrors) info = Analyzer.Analyze(ast, diags);
-            }
-            if (diags.HasErrors || ast == null || info == null)
+            var ast = LoadProgram(diags, out var info);
+            if (ast == null)
             {
                 SetProblems(diags.All.Select(d => d.Render(useColor: false)).ToList());
                 SetStatus("Build failed");
@@ -1040,14 +1036,17 @@ namespace ArcadeBasic.Samples
             if (exampleDropdown == null) return;
 
             _examples = Resources.LoadAll<TextAsset>(resourcesPath) ?? Array.Empty<TextAsset>();
+            _bundled = null;
 
             // Rows: placeholder, Browse, then examples grouped by @category
             // (Graphics, Games, Basics, …) under a non-selectable header each.
+            // Libraries (maze3d-level, …) aren't listed: the programs that use them load them.
             _openEntries.Clear();
             _openEntries.Add(new OpenEntry { Label = "Open ▾" });
             _openEntries.Add(new OpenEntry { Label = "📂 Browse...", IsBrowse = true });
 
             var groups = _examples
+                .Where(e => !IsLibrary(e))
                 .GroupBy(ExampleCategory)
                 .OrderBy(g => CategoryRank(g.Key))
                 .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
@@ -1081,6 +1080,7 @@ namespace ArcadeBasic.Samples
             inputField.text = ex.text;
             inputField.MoveTextStart(false);
             _currentFilePath = null;          // examples aren't on disk; Save will prompt
+            _programName = ex.name + ".bas";  // its LIBRARY files are bundled examples too
             if (filenameField != null) filenameField.text = ex.name;
             SetStatus("Loaded example " + ex.name);
         }
@@ -1108,6 +1108,16 @@ namespace ArcadeBasic.Samples
             int start = i;
             while (i < source.Length && (char.IsLetterOrDigit(source[i]) || source[i] == '&')) i++;
             return i > start ? source.Substring(start, i - start) : "Basics";
+        }
+
+        /// <summary>A library: an <c>@library</c> tag on the first line. The programs that name
+        /// it in LIBRARY load it, so the Open menu leaves it out.</summary>
+        static bool IsLibrary(TextAsset ex)
+        {
+            string text = ex != null ? ex.text : null;
+            if (string.IsNullOrEmpty(text)) return false;
+            int end = text.IndexOf('\n');
+            return (end < 0 ? text : text.Substring(0, end)).IndexOf("@library", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         struct OpenEntry
@@ -1191,6 +1201,7 @@ namespace ArcadeBasic.Samples
                 inputField.text = File.ReadAllText(path);
                 inputField.MoveTextStart(false);
                 _currentFilePath = path;
+                _programName = Path.GetFileName(path);
                 _baseline = inputField.text ?? string.Empty;
                 UpdateFilenameDisplay();
                 SetStatus("Loaded " + Path.GetFileName(path));
@@ -1208,6 +1219,7 @@ namespace ArcadeBasic.Samples
             {
                 File.WriteAllText(path, inputField.text ?? string.Empty);
                 _currentFilePath = path;
+                _programName = Path.GetFileName(path);
                 _baseline = inputField.text ?? string.Empty;
                 UpdateFilenameDisplay();
                 SetStatus("Saved " + Path.GetFileName(path));
@@ -1243,6 +1255,58 @@ namespace ArcadeBasic.Samples
             }
             var result = sb.ToString().Trim('.', '_', '-');
             return string.IsNullOrEmpty(result) ? "untitled" : result;
+        }
+
+        // =====================================================================
+        // Programs in several files (LIBRARY "file.bas")
+        // =====================================================================
+
+        /// <summary>The program's file name, for its messages ("at line 8 in maze3d-level.bas"
+        /// names the library; the program's own lines just say "at line 8").</summary>
+        string ProgramFileName => string.IsNullOrEmpty(_programName) ? "<editor>" : _programName;
+
+        /// <summary>Where LIBRARY "name" finds its file: next to the program if it came from
+        /// disk, then among the bundled examples — so maze3d.bas finds maze3d-level.bas either
+        /// way. Make it on the main thread (it reads the examples there); use it on any.</summary>
+        Func<string, string> LibraryResolver()
+        {
+            string folder = string.IsNullOrEmpty(_currentFilePath) ? null : Path.GetDirectoryName(_currentFilePath);
+            var bundled = BundledSources();
+            return name =>
+            {
+                if (folder != null)
+                {
+                    string path = Path.Combine(folder, name);
+                    if (File.Exists(path)) return File.ReadAllText(path);
+                }
+                return bundled.TryGetValue(name, out var text) ? text : null;
+            };
+        }
+
+        /// <summary>The bundled examples' text by file name (maze3d-level.bas). A copy, because
+        /// <see cref="TextAsset.text"/> can only be read on the main thread and the program
+        /// runs on its own.</summary>
+        Dictionary<string, string> BundledSources()
+        {
+            if (_bundled != null) return _bundled;
+            if (_examples.Length == 0) _examples = Resources.LoadAll<TextAsset>(resourcesPath) ?? Array.Empty<TextAsset>();
+            _bundled = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ex in _examples)
+                if (ex != null) _bundled[ex.name + ".bas"] = ex.text;
+            return _bundled;
+        }
+
+        /// <summary>Parse and check the editor's program, with the files its LIBRARY
+        /// statements name. Null if there are errors (they're in <paramref name="diags"/>).</summary>
+        ArcadeBasic.Parser.Ast.Program LoadProgram(DiagnosticBag diags, out SemanticInfo info)
+        {
+            info = null;
+            var libraries = LibraryResolver();
+            var program = ProgramLoader.Load(new SourceFile(ProgramFileName, inputField.text ?? string.Empty),
+                (name, _) => libraries(name) is string text ? new SourceFile(name, text) : null, diags);
+            if (diags.HasErrors) return null;
+            info = Analyzer.Analyze(program, diags);
+            return diags.HasErrors ? null : program;
         }
 
         // =====================================================================
@@ -1477,16 +1541,23 @@ namespace ArcadeBasic.Samples
         // =====================================================================
 
         /// <summary>While a program runs, forward Unity key presses to the INKEY$
-        /// buffer (main thread). Mirrors the TUI/CLI mapping exactly: printable
-        /// ASCII 32–126 pass through as one-character strings; the arrow keys map
-        /// to <c>CHR$(0)</c> + 72/80/75/77 (GW-BASIC convention). Suppressed while
-        /// an <c>INPUT</c> line is pending (the input bar owns the keyboard) and
-        /// while a Ctrl/Cmd shortcut is held (so IDE hotkeys pass through).</summary>
+        /// buffer (main thread). Mirrors the TUI/CLI mapping: printable ASCII 32–126
+        /// pass through as one-character strings, Enter, Backspace and Tab as
+        /// <c>CHR$(13)</c>, <c>CHR$(8)</c> and <c>CHR$(9)</c>, and the arrow keys map to
+        /// <c>CHR$(0)</c> + 72/80/75/77 (GW-BASIC convention). It also notes which keys
+        /// are held, for <c>KEYDOWN</c>. Suppressed while an <c>INPUT</c> line is pending
+        /// (the input bar owns the keyboard) and while a Ctrl/Cmd shortcut is held (so
+        /// IDE hotkeys pass through).</summary>
         void PumpKeyboard()
         {
-            if (_runTask == null || _keyboard == null || _inputPending) return;
-            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)
-                || Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand)) return;
+            if (_runTask == null || _keyboard == null) return;
+            if (_inputPending
+                || Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)
+                || Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand))
+            {
+                _keyboard.SetHeld(null);
+                return;
+            }
 
             if (Input.GetKeyDown(KeyCode.UpArrow))    _keyboard.Enqueue("\0" + (char)72);
             if (Input.GetKeyDown(KeyCode.DownArrow))  _keyboard.Enqueue("\0" + (char)80);
@@ -1498,6 +1569,81 @@ namespace ArcadeBasic.Samples
             {
                 char c = typed[i];
                 if (c >= 32 && c < 127) _keyboard.Enqueue(c.ToString());
+                else if (c == '\n' || c == '\r') _keyboard.Enqueue("\r");
+                else if (c == '\b' || c == '\t') _keyboard.Enqueue(c.ToString());
+            }
+
+            HashSet<string> held = null;
+            foreach (var key in HeldKeyNames)
+            {
+                if (!Input.GetKey(key.Code)) continue;
+                if (held == null) held = new HashSet<string>(StringComparer.Ordinal);
+                held.Add(key.Name);
+                if (key.Typed != null) held.Add(key.Typed);
+            }
+            _keyboard.SetHeld(held);
+        }
+
+        /// <summary>The keys <c>KEYDOWN</c> can ask about: Unity's key, its W3C
+        /// <c>KeyboardEvent.code</c> name (<c>"KeyA"</c>, <c>"ArrowLeft"</c>), and the
+        /// character it types on a US layout (<c>"a"</c>), if any.</summary>
+        static readonly (KeyCode Code, string Name, string Typed)[] HeldKeyNames = BuildHeldKeyNames();
+
+        static (KeyCode, string, string)[] BuildHeldKeyNames()
+        {
+            var keys = new List<(KeyCode, string, string)>
+            {
+                (KeyCode.UpArrow, "ArrowUp", null), (KeyCode.DownArrow, "ArrowDown", null),
+                (KeyCode.LeftArrow, "ArrowLeft", null), (KeyCode.RightArrow, "ArrowRight", null),
+                (KeyCode.Space, "Space", null), (KeyCode.Return, "Enter", null), (KeyCode.KeypadEnter, "NumpadEnter", null),
+                (KeyCode.Tab, "Tab", null), (KeyCode.Backspace, "Backspace", null), (KeyCode.Escape, "Escape", null),
+                (KeyCode.LeftShift, "ShiftLeft", null), (KeyCode.RightShift, "ShiftRight", null),
+                (KeyCode.LeftAlt, "AltLeft", null), (KeyCode.RightAlt, "AltRight", null),
+                (KeyCode.Home, "Home", null), (KeyCode.End, "End", null), (KeyCode.PageUp, "PageUp", null),
+                (KeyCode.PageDown, "PageDown", null), (KeyCode.Insert, "Insert", null), (KeyCode.Delete, "Delete", null),
+                (KeyCode.BackQuote, "Backquote", "`"), (KeyCode.Minus, "Minus", "-"), (KeyCode.Equals, "Equal", "="),
+                (KeyCode.LeftBracket, "BracketLeft", "["), (KeyCode.RightBracket, "BracketRight", "]"),
+                (KeyCode.Backslash, "Backslash", "\\"), (KeyCode.Semicolon, "Semicolon", ";"), (KeyCode.Quote, "Quote", "'"),
+                (KeyCode.Comma, "Comma", ","), (KeyCode.Period, "Period", "."), (KeyCode.Slash, "Slash", "/"),
+            };
+            for (int i = 0; i < 26; i++)
+                keys.Add((KeyCode.A + i, "Key" + (char)('A' + i), ((char)('a' + i)).ToString()));
+            for (int i = 0; i < 10; i++)
+            {
+                keys.Add((KeyCode.Alpha0 + i, "Digit" + i, i.ToString()));
+                keys.Add((KeyCode.Keypad0 + i, "Numpad" + i, i.ToString()));
+            }
+            for (int i = 0; i < 12; i++)
+                keys.Add((KeyCode.F1 + i, "F" + (i + 1), null));
+            return keys.ToArray();
+        }
+
+        /// <summary>While a program runs, tell its screen where the mouse is and when the
+        /// left button goes down and up over it, for <c>GET MOUSE</c> (main thread). A press
+        /// counts only on the Graphics tab, inside the screen; once pressed, the pointer is
+        /// followed until the release, wherever it goes (as a browser canvas does).</summary>
+        void PumpPointer()
+        {
+            if (_runTask == null || _screen == null || _graphicsImage == null) return;
+            var rt = _graphicsImage.rectTransform;
+            var canvas = _graphicsImage.canvas;
+            var cam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(rt, Input.mousePosition, cam, out var local)) return;
+            var r = rt.rect;
+            if (r.width <= 0f || r.height <= 0f) return;
+            var at = new GfxPoint((local.x - r.xMin) / r.width, (local.y - r.yMin) / r.height);   // origin bottom-left
+            bool over = _activeTab == 2 && !_inputPending && at.X >= 0 && at.X <= 1 && at.Y >= 0 && at.Y <= 1;
+
+            if (over || _pointerDown) _screen.MovePointer(at);
+            if (over && Input.GetMouseButtonDown(0))
+            {
+                _pointerDown = true;
+                _screen.PressPointer(true, at);
+            }
+            else if (_pointerDown && (!Input.GetMouseButton(0) || !Application.isFocused))
+            {
+                _pointerDown = false;
+                _screen.PressPointer(false, at);
             }
         }
 
@@ -1530,7 +1676,8 @@ namespace ArcadeBasic.Samples
             "F6   Compile-check\n" +
             "F7   Build standalone\n" +
             "Esc   Stop\n\n" +
-            "Arrow keys + printable feed INKEY$ while a program runs.";
+            "Keys feed INKEY$ and KEYDOWN while a program runs,\n" +
+            "and the mouse GET MOUSE on the Graphics tab.";
 
         /// <summary>Show the About modal (closes any open menu first).</summary>
         public void ShowAbout()
@@ -1608,14 +1755,17 @@ namespace ArcadeBasic.Samples
         {
             readonly ArcadeBasicCodeEditor _editor;
             readonly CancellationToken _cancel;
-            public MainThreadInputReader(ArcadeBasicCodeEditor editor, CancellationToken cancel)
+            readonly ThreadSafeScreen _screen;
+            public MainThreadInputReader(ArcadeBasicCodeEditor editor, CancellationToken cancel, ThreadSafeScreen screen)
             {
                 _editor = editor;
                 _cancel = cancel;
+                _screen = screen;
             }
             public override string ReadLine()
             {
                 _cancel.ThrowIfCancellationRequested();
+                _screen?.Present();   // what the program drew before asking
                 _editor._inputResult = null;
                 _editor._inputDone.Reset();
                 _editor._inputPending = true;
@@ -1636,25 +1786,77 @@ namespace ArcadeBasic.Samples
         /// BASIC task thread; the main thread calls <see cref="TryPresent"/> to copy
         /// the pixel buffer into a Unity-ready <see cref="Color32"/> array (flipping
         /// rows, since Unity textures are bottom-up). All access is serialized under
-        /// one lock so a frame is never read mid-draw.
+        /// one lock so a frame is never read mid-draw. Frames are double-buffered like
+        /// the browser's and the TUI's: once the program flushes one (SLEEP, a sound),
+        /// only finished frames are shown — so CLEAR-and-redraw games don't flicker —
+        /// while a program that never flushes (a static drawing) is shown live. Like the raster device it also
+        /// draws <c>MAT GRAPH CELLS</c> as an image (<see cref="ICellArrayDevice"/>), lets
+        /// <c>SET COLOR MIX</c> change its colours (<see cref="IColorMixDevice"/>), and is
+        /// the mouse's surface for <c>GET MOUSE</c> (<see cref="IPointer"/>), which the
+        /// main thread feeds from Unity's input (<see cref="PumpPointer"/>).
         /// </summary>
-        sealed class ThreadSafeScreen : IGraphicsDevice
+        sealed class ThreadSafeScreen : IGraphicsDevice, ICellArrayDevice, IColorMixDevice, IPointer
         {
             readonly RasterGraphicsDevice _dev;
             readonly object _lock = new();
             bool _dirty;
+            int[] _frame;               // the last finished frame (Flush)
+            bool _everFlushed;          // then show only finished frames
+            GfxPoint _pointerAt;
+            bool _pointerKnown;
+            readonly Queue<PointerEvent> _pointerEvents = new();
 
             public ThreadSafeScreen(int width, int height) { _dev = new RasterGraphicsDevice(width, height); }
 
-            public void Clear()                               { lock (_lock) { _dev.Clear(); _dirty = true; } }
+            public void Clear()                               { lock (_lock) { _dev.Clear(); Drew(); } }
             public void SetLineStyle(int style)               { lock (_lock) _dev.SetLineStyle(style); }
             public void SetPointStyle(int style)              { lock (_lock) _dev.SetPointStyle(style); }
             public void SetColor(GfxColorTarget t, int c)     { lock (_lock) _dev.SetColor(t, c); }
-            public void DrawPoints(IReadOnlyList<GfxPoint> p) { lock (_lock) { _dev.DrawPoints(p); _dirty = true; } }
-            public void DrawLines(IReadOnlyList<GfxPoint> p)  { lock (_lock) { _dev.DrawLines(p); _dirty = true; } }
-            public void FillArea(IReadOnlyList<GfxPoint> p)   { lock (_lock) { _dev.FillArea(p); _dirty = true; } }
-            public void DrawText(GfxPoint at, string s)       { lock (_lock) { _dev.DrawText(at, s); _dirty = true; } }
-            public void Flush()                               { lock (_lock) _dirty = true; }
+            public void DrawPoints(IReadOnlyList<GfxPoint> p) { lock (_lock) { _dev.DrawPoints(p); Drew(); } }
+            public void DrawLines(IReadOnlyList<GfxPoint> p)  { lock (_lock) { _dev.DrawLines(p); Drew(); } }
+            public void FillArea(IReadOnlyList<GfxPoint> p)   { lock (_lock) { _dev.FillArea(p); Drew(); } }
+            public void DrawText(GfxPoint at, string s)       { lock (_lock) { _dev.DrawText(at, s); Drew(); } }
+            public void Flush()                               { lock (_lock) Finish(); }
+            public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible)
+                                                              { lock (_lock) { _dev.DrawCells(rect, columns, rows, colors, visible); Drew(); } }
+            public void SetColorMix(int index, double red, double green, double blue)
+                                                              { lock (_lock) _dev.SetColorMix(index, red, green, blue); }
+
+            /// <summary>Show what's drawn now, finished or not: the program is waiting for
+            /// INPUT, or has ended. (Any thread.)</summary>
+            public void Present()                             { lock (_lock) Finish(); }
+
+            void Drew() { if (!_everFlushed) _dirty = true; }
+
+            void Finish()
+            {
+                var src = _dev.Pixels;
+                if (_frame == null || _frame.Length != src.Length) _frame = new int[src.Length];
+                Array.Copy(src, _frame, src.Length);
+                _everFlushed = true;
+                _dirty = true;
+            }
+
+            public void MovePointer(GfxPoint at)              { lock (_lock) { _pointerAt = at; _pointerKnown = true; } }
+            public void PressPointer(bool pressed, GfxPoint at)
+            {
+                lock (_lock)
+                {
+                    _pointerAt = at;
+                    _pointerKnown = true;
+                    if (_pointerEvents.Count < 64) _pointerEvents.Enqueue(new PointerEvent(pressed, at));
+                }
+            }
+            public bool TryGetPosition(out GfxPoint position) { lock (_lock) { position = _pointerAt; return _pointerKnown; } }
+            public bool TryReadEvent(out PointerEvent e)
+            {
+                lock (_lock)
+                {
+                    if (_pointerEvents.Count > 0) { e = _pointerEvents.Dequeue(); return true; }
+                    e = default;
+                    return false;
+                }
+            }
 
             public int MaxColor => _dev.MaxColor;
             public int MaxLineStyle => _dev.MaxLineStyle;
@@ -1671,7 +1873,7 @@ namespace ArcadeBasic.Samples
                     w = _dev.Width; h = _dev.Height;
                     if (!_dirty) return false;
                     _dirty = false;
-                    var src = _dev.Pixels;
+                    var src = _everFlushed ? _frame : _dev.Pixels;
                     if (dst == null || dst.Length != src.Length) dst = new Color32[src.Length];
                     for (int y = 0; y < h; y++)
                     {
@@ -1696,15 +1898,22 @@ namespace ArcadeBasic.Samples
         /// <see cref="IKeyboard"/> for the IDE behind <c>INKEY$</c>. The main thread
         /// enqueues key presses (<see cref="PumpKeyboard"/>) and the program's
         /// background thread drains them via <see cref="ReadKey"/>. A concurrent
-        /// queue is the only shared state, so it's thread-safe by construction —
-        /// the same design as the TUI IDE's keyboard.
+        /// queue is the shared state, so it's thread-safe by construction —
+        /// the same design as the TUI IDE's keyboard. Unity knows when a key is let
+        /// go, too, so <c>KEYDOWN</c> is exact (<see cref="IKeyState"/>): each frame the
+        /// main thread swaps in the set of keys held now.
         /// </summary>
-        sealed class UnityKeyboard : IKeyboard
+        sealed class UnityKeyboard : IKeyboard, IKeyState
         {
+            static readonly HashSet<string> None = new();
             readonly ConcurrentQueue<string> _keys = new();
+            volatile HashSet<string> _held = None;
             public void Enqueue(string key) { if (!string.IsNullOrEmpty(key)) _keys.Enqueue(key); }
-            public void Clear() { while (_keys.TryDequeue(out _)) { } }
+            public void Clear() { while (_keys.TryDequeue(out _)) { } _held = None; }
             public string ReadKey() => _keys.TryDequeue(out var k) ? k : string.Empty;
+            /// <summary>The keys held now, by name (main thread); null for none.</summary>
+            public void SetHeld(HashSet<string> held) => _held = held ?? None;
+            public bool IsKeyDown(string key) => _held.Contains(key);
         }
     }
 
@@ -1741,8 +1950,9 @@ namespace ArcadeBasic.Samples
 
             var sb = new StringBuilder(source.Length + 256);
             int cursor = 0;
-            foreach (var tok in tokens)
+            for (int i = 0; i < tokens.Count; i++)
             {
+                var tok = tokens[i];
                 if (tok.Kind == TokenKind.EndOfFile) break;
                 int start = tok.Span.Start;
                 int len = tok.Span.Length;
@@ -1751,7 +1961,7 @@ namespace ArcadeBasic.Samples
                 // Pass through any whitespace/skipped chars between tokens unchanged.
                 if (start > cursor) sb.Append(Escape(source.Substring(cursor, start - cursor)));
 
-                string color = ColorFor(tok.Kind);
+                string color = ColorFor(tok.Kind) ?? (IsLibraryStatement(tokens, i) ? ColKeyword : null);
                 string text = Escape(source.Substring(start, len));
                 if (color != null)
                 {
@@ -1779,6 +1989,13 @@ namespace ArcadeBasic.Samples
                 _ => null,
             };
         }
+
+        /// <summary>LIBRARY "file.bas": True BASIC's statement, not a reserved word (ISO 10279
+        /// leaves it to the implementation), so it lexes as a name — a keyword before a string.</summary>
+        static bool IsLibraryStatement(List<Token> tokens, int i) =>
+            tokens[i].Kind == TokenKind.Identifier
+            && string.Equals(tokens[i].Text, "LIBRARY", StringComparison.OrdinalIgnoreCase)
+            && i + 1 < tokens.Count && tokens[i + 1].Kind == TokenKind.StringLiteral;
 
         // TMP rich text uses < and >; <noparse>...</noparse> tells TMP not to
         // interpret tags inside, so we can safely include any user text.

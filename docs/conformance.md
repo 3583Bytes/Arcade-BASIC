@@ -208,6 +208,7 @@ source.
 ## Arrays + MAT
 
 - **OPTION BASE 0 | 1** controlled. With no OPTION BASE, arrays start at subscript 1 (ANSI X3.113 §7.1.1: "if no such declaration occurs, the lower bound shall be one").
+- **DEVIATION:** OPTION BASE is one declaration for the whole program: the main program's (the last, if there are several) applies everywhere, modules and libraries included, and from the start — before any module starts up. ISO 10279 gives each program-unit its own.
 - **MAT operations:** `=`, `+`, `-`, `*` (matrix multiply), `TRN`, `INV`, `IDN`, `ZER`, `CON`, `PRINT`, `READ`, `INPUT`, `REDIM`.
 - **MAT INV** uses LU decomposition with partial pivoting.
 - **MAT REDIM preserves elements** within the new bounds; element-wise per the spec.
@@ -245,7 +246,7 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 - **Visibility:** code in a module doesn't see the main program's variables. A name a module procedure reads before setting is local to that procedure, as for an external procedure; one in the start-up code is the module's.
 - **`DATA`:** each program-unit has its own: a `READ`, `MAT READ` or `RESTORE` in a module (start-up code or procedure) uses the module's, in the main program (or its internal procedures) the main program's.
 
-**IMPLEMENTATION-DEFINED (finding program-units):** ISO 10279 leaves how a program's units are assembled to the implementation. Here a main program names other files with **`LIBRARY "file" [, …]`** — True BASIC's statement (Kemeny and Kurtz's own Full BASIC). Each file is loaded once; a file's libraries load before it. A library holds `MODULE`s and procedures of its own, which are **external procedures**: callable from the whole program, seeing only their own variables (they're treated as a module named after the file, every procedure public). Any other top-level statement in a library is an error (`FB0211`); a missing file is `FB0210`. The CLI (`run`, `vm`, `build`, `analyze`) and the terminal IDE look for a library next to the file that names it; the browser IDE among its open tabs, then the bundled examples. `run` still also accepts module files after the main file.
+**IMPLEMENTATION-DEFINED (finding program-units):** ISO 10279 leaves how a program's units are assembled to the implementation. Here a main program names other files with **`LIBRARY "file" [, …]`** — True BASIC's statement (Kemeny and Kurtz's own Full BASIC). Each file is loaded once; a file's libraries load before it. A library holds `MODULE`s and procedures of its own, which are **external procedures**: callable from the whole program, seeing only their own variables (they're treated as a module named after the file, every procedure public). Any other top-level statement in a library is an error (`FB0211`); a missing file is `FB0210`. The CLI (`run`, `vm`, `build`, `analyze`) looks for a library next to the file that names it; the terminal IDE and the Unity IDE sample next to the open file, then among their bundled examples; the browser IDE among its open tabs, then the bundled examples. A program embedding the engine gives `BasicEngine.Run` a `libraries` function. `run` still also accepts module files after the main file.
 
 Errors and the debugger say which file a line is in: a runtime error in a library reads `… at line 8 in greet.bas: …`.
 

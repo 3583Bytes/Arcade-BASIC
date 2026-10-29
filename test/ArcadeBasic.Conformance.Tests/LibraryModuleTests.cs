@@ -122,6 +122,16 @@ public class LibraryModuleTests
     }
 
     [Fact]
+    public void TheProgramsOptionBaseHoldsAsItsModulesStartUp()
+    {
+        Assert.Equal(" 7  7 \n", Run(new()
+        {
+            ["main.bas"] = "LIBRARY \"grid.bas\"\nOPTION BASE 0\nDECLARE PUBLIC G()\nPRINT G(0); G(2)\n",
+            ["grid.bas"] = "MODULE GRID\n  PUBLIC G(2)\n  FOR I = 0 TO 2\n    LET G(I) = 7\n  NEXT I\nEND MODULE\n",
+        }));
+    }
+
+    [Fact]
     public void EachProgramUnitReadsItsOwnData()
     {
         Assert.Equal(" 1  2 alpha\nbeta\ngamma\n 1 \n", Run(new()
@@ -213,6 +223,17 @@ public class LibraryModuleTests
     {
         var (_, _, problems) = Load(new() { ["main.bas"] = main, ["lib.bas"] = library });
         Assert.Contains(problems, p => p.Code == code && p.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public void TheOneCallEngineFindsLibrariesAndSaysWhereTheProgramStopped()
+    {
+        var output = new StringWriter { NewLine = "\n" };
+        var result = BasicEngine.Run("LIBRARY \"lib.bas\"\nPRINT \"start\"\nCALL DIVIDE(0)\n", output, filename: "main.bas",
+            libraries: name => name == "lib.bas" ? "MODULE L\n  PUBLIC SUB DIVIDE(D)\n    PRINT 1 / D\n  END SUB\nEND MODULE\n" : null);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("start\n", output.ToString());
+        Assert.Equal(["unhandled exception type 1001 at line 3 in lib.bas: division by zero"], result.Diagnostics);
     }
 
     [Fact]

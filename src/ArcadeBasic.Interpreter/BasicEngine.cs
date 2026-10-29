@@ -36,7 +36,8 @@ public static class BasicEngine
     /// Result of <see cref="Run(string, TextWriter, TextReader, string)"/>.
     /// </summary>
     /// <param name="ExitCode">0 on normal termination, 1 on parse/sema/runtime failure.</param>
-    /// <param name="Diagnostics">Rendered text of every compile-time diagnostic (errors + warnings).</param>
+    /// <param name="Diagnostics">Rendered text of every compile-time diagnostic (errors + warnings), and
+    /// of the exception that stopped the program, if one did.</param>
     public sealed record class Result(int ExitCode, IReadOnlyList<string> Diagnostics);
 
     /// <summary>
@@ -71,7 +72,11 @@ public static class BasicEngine
             return new Result(1, RenderDiagnostics(diags));
         }
 
-        var interp = new ArcadeBasic.Interpreter.BasicInterpreter(program, info, stdout, stdin ?? TextReader.Null, cancel, graphics, keyboard, audio);
+        var errors = new StringWriter();
+        var interp = new ArcadeBasic.Interpreter.BasicInterpreter(program, info, stdout, stdin ?? TextReader.Null, cancel, graphics, keyboard, audio)
+        {
+            Errors = errors,
+        };
         int exitCode;
         try
         {
@@ -86,16 +91,17 @@ public static class BasicEngine
             return new Result(1, RenderDiagnostics(diags).Concat(new[] { $"runtime error: {ex.Message}" }).ToList());
         }
 
-        return new Result(exitCode, RenderDiagnostics(diags));
+        var stopped = errors.ToString().Split('\n').Select(line => line.TrimEnd()).Where(line => line.Length > 0);
+        return new Result(exitCode, RenderDiagnostics(diags).Concat(stopped).ToList());
     }
 
     /// <summary>
     /// Convenience overload that collects PRINT output into a string instead of a TextWriter.
     /// </summary>
-    public static Result Run(string source, out string output, TextReader? stdin = null, string filename = "<embedded>", CancellationToken cancel = default)
+    public static Result Run(string source, out string output, TextReader? stdin = null, string filename = "<embedded>", CancellationToken cancel = default, Func<string, string?>? libraries = null)
     {
         using var sw = new StringWriter();
-        var result = Run(source, sw, stdin, filename, cancel);
+        var result = Run(source, sw, stdin, filename, cancel, libraries: libraries);
         output = sw.ToString();
         return result;
     }

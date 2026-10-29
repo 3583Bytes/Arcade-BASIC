@@ -465,8 +465,7 @@ public sealed partial class BasicInterpreter
 
             var fc = ExecuteStatementList(f.Body, frame);
             if (fc is FlowControl.Exit ex && ex.Kind == ExitKind.For) return FlowControl.Continue;
-            if (fc is FlowControl.End or FlowControl.Stop or FlowControl.Return) return fc;
-            if (fc is FlowControl.Goto or FlowControl.Gosub) return fc;
+            if (fc is not FlowControl.Next) return fc;   // END, RETURN, a GOTO out, an outer block's EXIT, an exception, …
 
             WriteSlot(frame, owner, slot, Numbers.Add((NumericValue)ReadSlot(frame, owner, slot, false), step));
         }
@@ -488,8 +487,7 @@ public sealed partial class BasicInterpreter
 
             var fc = ExecuteStatementList(d.Body, frame);
             if (fc is FlowControl.Exit ex && ex.Kind == ExitKind.Do) return FlowControl.Continue;
-            if (fc is FlowControl.End or FlowControl.Stop or FlowControl.Return) return fc;
-            if (fc is FlowControl.Goto or FlowControl.Gosub) return fc;
+            if (fc is not FlowControl.Next) return fc;   // END, RETURN, a GOTO out, an outer block's EXIT, an exception, …
 
             if (d.Post is not null)
             {

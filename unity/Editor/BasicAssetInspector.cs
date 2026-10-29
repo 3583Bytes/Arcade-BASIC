@@ -8,7 +8,8 @@ namespace ArcadeBasic.Editor
     /// <summary>
     /// Custom inspector for <c>.bas</c> files. Shows a source preview, a
     /// <b>Run</b> button that executes the program through
-    /// <see cref="BasicEngine"/>, and the captured stdout / diagnostics.
+    /// <see cref="BasicEngine"/>, and the captured stdout / diagnostics. LIBRARY
+    /// statements find their files beside the asset.
     /// </summary>
     [CustomEditor(typeof(BasicScriptedImporter))]
     public sealed class BasicAssetInspector : ScriptedImporterEditor
@@ -56,7 +57,7 @@ namespace ArcadeBasic.Editor
             GUI.backgroundColor = new Color(0.45f, 0.8f, 0.45f);
             if (GUILayout.Button("▶  Run", GUILayout.Height(28)))
             {
-                RunProgram(_cachedSource);
+                RunProgram(_cachedSource, importer.assetPath);
             }
             GUI.backgroundColor = Color.white;
 
@@ -94,11 +95,17 @@ namespace ArcadeBasic.Editor
                 : "(file not found on disk)";
         }
 
-        private void RunProgram(string source)
+        private void RunProgram(string source, string assetPath)
         {
             try
             {
-                var result = BasicEngine.Run(source, out string output);
+                var folder = Path.GetDirectoryName(assetPath) ?? string.Empty;
+                var result = BasicEngine.Run(source, out string output, filename: Path.GetFileName(assetPath),
+                    libraries: name =>
+                    {
+                        var path = Path.Combine(folder, name);
+                        return File.Exists(path) ? File.ReadAllText(path) : null;
+                    });
                 _output = output;
                 _diagnostics = string.Join("\n", result.Diagnostics);
                 if (result.ExitCode != 0 && string.IsNullOrEmpty(_diagnostics))
