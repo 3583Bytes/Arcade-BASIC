@@ -1,14 +1,14 @@
 // The files programs write — OPEN #1: NAME "todo.board", ACCESS OUTPUT — live in the
 // page's memory (Playground.Files.cs), which a reload wipes. So the page keeps a copy in
 // the browser and puts it back when it starts. File → Program files… shows them: download
-// one to keep it elsewhere, upload one for a program to read, or delete one.
+// one to keep it elsewhere, upload one for a program to read, or delete one. The player
+// (src/ArcadeBasic.Player) keeps its program's files the same way, with no dialog, each
+// game under its own `key`.
 
-const KEY = 'arcade-basic.files';
-
-export function createFiles({ store, ask }) {
-  const dialog = document.getElementById('filesDialog');
-  const table = dialog.querySelector('.fileList');
-  const empty = dialog.querySelector('.empty');
+export function createFiles({ store, ask, key = 'arcade-basic.files' }) {
+  const dialog = document.getElementById('filesDialog');   // (none in the player)
+  const table = dialog?.querySelector('.fileList');
+  const empty = dialog?.querySelector('.empty');
   const picker = Object.assign(document.createElement('input'), { type: 'file', multiple: true });
   let files = read();   // name → text
   let P = null;
@@ -16,11 +16,11 @@ export function createFiles({ store, ask }) {
 
   function read() {
     try {
-      const saved = JSON.parse(store.get(KEY) ?? '{}');
+      const saved = JSON.parse(store.get(key) ?? '{}');
       return saved && typeof saved === 'object' ? saved : {};
     } catch { return {}; }
   }
-  const write = () => store.set(KEY, JSON.stringify(files));
+  const write = () => store.set(key, JSON.stringify(files));
 
   /** .NET is ready: put the files back where programs look for them. */
   function attach(playground) {
@@ -37,7 +37,7 @@ export function createFiles({ store, ask }) {
     if (!changed.length) return;
     for (let i = 0; i < changed.length; i += 2) files[changed[i]] = changed[i + 1];
     write();
-    if (dialog.open) list();
+    if (dialog?.open) list();
   }
   // Leaving the page: whatever the program wrote last.
   addEventListener('pagehide', () => sync(true));
@@ -93,7 +93,7 @@ export function createFiles({ store, ask }) {
     list();
   }
 
-  picker.addEventListener('change', async () => {
+  picker.addEventListener('change', async () => {   // (only the dialog's Upload opens it)
     for (const file of picker.files) {
       const text = await file.text();
       files[file.name] = text;
@@ -103,7 +103,7 @@ export function createFiles({ store, ask }) {
     write();
     list();
   });
-  dialog.querySelector('.upload').addEventListener('click', () => picker.click());
+  dialog?.querySelector('.upload').addEventListener('click', () => picker.click());
 
   function open() {
     sync(true);

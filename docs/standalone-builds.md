@@ -175,3 +175,37 @@ out/arcade-basic run examples/factorial.bas
 tail -c 12 factorial | xxd
 # 4-byte length, then "FB-BCEND" magic
 ```
+
+## Desktop apps (`--desktop`)
+
+`arcade-basic build game.bas --desktop` makes the program a desktop app instead: a
+window showing just the program — its screen, its output and input when it prints or
+asks, its sound and keys — as it runs in the browser, but with no IDE: no editor, no
+compiler, and no source code, only the compiled bytecode. When the program ends, the
+window says so and closes at the next key or click.
+
+The app is the **desktop player** (`desktop/player`) with the program attached. The
+player is a small [Tauri](https://tauri.app) app: a native window around the system's
+web view, showing the player page (`src/ArcadeBasic.Player`) — the VM compiled to
+WebAssembly, and the IDE's own screen, sound and stepping code (`screen.js`,
+`audio.js`, `runner.js`), so a program looks and plays the same as in the IDE. The page
+and its WebAssembly are compiled into the player's one executable (about 6 MB).
+
+What `--desktop` writes depends on the player it's given (`--player <path>`, else
+`arcade-player` next to `arcade-basic`):
+
+| Player built for | `build --desktop` writes | Where the program goes |
+|---|---|---|
+| macOS | `game.app` | `Contents/Resources/game.bin` (the player is `Contents/MacOS/game`) |
+| Windows | `game.exe` | appended to the player, with the same trailer as above |
+| Linux | `game` | appended to the player, with the same trailer as above |
+
+So a Windows or Linux app is made from that OS's player, on any computer. The window's
+title is the app's name. Files a program writes (a high score, a kanban board) are kept
+in the window's storage, per game.
+
+Build the player for the computer you're on with `desktop/player/build.sh` (it needs
+the .NET `wasm-tools` workload and Rust); see [building.md](building.md).
+
+The apps aren't signed: a Mac that downloads one will want it cleared before it opens
+(`xattr -dr com.apple.quarantine game.app`), as for the other binaries here.

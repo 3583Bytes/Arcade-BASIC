@@ -8,7 +8,9 @@
 import { dotnet } from './_framework/dotnet.js';
 import { createEditor } from './editor.js';
 import { createDocuments } from './documents.js';
-import { createAudio, QUEUE } from './audio.js';
+import { createAudio } from './audio.js';
+import { createScreen, connectInput } from './screen.js';
+import { stepFrame, newRun, NEEDS_INPUT, NEEDS_POINT, PAUSED, HALTED } from './runner.js';
 import { openPictureEditor, insertPicture } from './pictures.js';
 import { setDefaultPalette, openPalette } from './colours.js';
 import { setTuneEngine, openTuneEditor, insertTune } from './tunes.js';
@@ -25,27 +27,14 @@ const loadingNet = (async () => {
 let P = null;       // the .NET side, once loaded
 let readyMs = 0;
 
-// StepStatus values (src/ArcadeBasic.Vm/StepResult.cs)
-const RUNNING = 0, SLEEPING = 1, NEEDS_INPUT = 2, AWAITING_AUDIO = 3, HALTED = 4, NEEDS_POINT = 5, PAUSED = 6;
 // DebugStep values (src/ArcadeBasic.Vm/Debugging.cs)
 const PAUSE = 0, INTO = 1, OVER = 2, OUT = 3;
-const SLICE = 20_000;          // instructions per Step call
-const FRAME_BUDGET_MS = 10;    // VM time allowed per animation frame
-// A foreground SOUND/PLAY resumes this soon before its tones end, so the next
-// statement's tones follow on without a gap (the page only steps on animation frames).
-const AUDIO_LEAD_MS = 20;
 
-// The colours (GfxPalette): 256 of them, which SET COLOR MIX can change. A frame
-// brings the whole palette with it whenever it has changed — always the first.
-let palette = Array(256).fill('#ffffff');   // CSS colours
-const paletteAbgr = new Uint32Array(256);   // the same, as ImageData pixels (little-endian ABGR)
-// CanvasGraphicsDevice command codes.
-const COLOR = 2, LINES = 3, AREA = 4, POINTS = 5, TEXT = 6, LINE_STYLE = 7, POINT_STYLE = 8, CELLS = 9, PALETTE = 10;
-// SET LINE STYLE 1 solid, 2 dashed, 3 dotted — the SVG backend's dash patterns.
-const DASHES = { 2: [12, 6], 3: [3, 5] };
 
 const $ = id => document.getElementById(id);
-const canvas = $('screen'), ctx = canvas.getContext('2d');
+const root = document.documentElement;
+const canvas = $('screen');
+const screen = createScreen(canvas, { glow: () => $('glow').checked });
 const output = $('output'), stats = $('stats');
 const inputRow = $('inputRow'), inputLine = $('inputLine');
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -57,7 +46,6 @@ const store = {
 const audio = createAudio();
 const programFiles = createFiles({ store, ask });   // the files programs write, kept in the browser
 let run = null;   // the running program's loop state
-let lastTexts = [];   // the last drawn frame's text: [{ x, y, text }] in unit coordinates
 
 // -- The editor and its tabs ------------------------------------------------------
 
@@ -235,24 +223,26 @@ function runActive(stopAtFirst = false) {
   start(textOf(doc), null, doc, stopAtFirst);
 }
 
-function start(text, onHalt, doc = null, stopAtFirst = false) {
+/** Run `text`: a tab's program (`doc`), or with no tab, `program` names it and its
+ *  libraries ({ name, libraries: [names, texts] }, a play link's). */
+function start(text, onHalt, doc = null, stopAtFirst = false, program = null) {
   stop();
   output.replaceChildren();
   editor.clearRuntimeError();
-  const diagnostics = P.Load(doc?.name ?? 'program.bas', text, ...(doc ? openPrograms(doc) : [[], []]));
+  const diagnostics = P.Load(doc?.name ?? program?.name ?? 'program.bas', text,
+    ...(doc ? openPrograms(doc) : program?.libraries ?? [[], []]));
   if (diagnostics) {
     appendOutput(diagnostics, 'error');
     if (doc) { if (documents.active !== doc) documents.show(doc); editor.goToFirstProblem(); }
     return false;
   }
   audio.reset();
-  paletteSeen = false;
+  screen.newRun();
   const files = P.SourceFiles();
   const docs = files.map((name, i) => i === 0 ? doc : documents.all.find(d => d.name.toLowerCase() === name.toLowerCase()) ?? null);
   if (stopAtFirst) P.PauseAt(PAUSE);
   lastVariables = new Map();
-  run = { sleepingUntil: 0, audioUntil: 0, waiting: false, waitingPoint: false, paused: false, began: performance.now(),
-          ticks: 0, frames: 0, vmMs: 0, onHalt, doc, files, docs };
+  run = { ...newRun(), waiting: false, waitingPoint: false, paused: false, onHalt, doc, files, docs };
   syncBreakpoints();
   documents.setRunning(doc);
   $('stop').disabled = false;
@@ -279,45 +269,26 @@ function tick() {
   if (!r) return;
   r.ticks++;
   let halted = false;
-  const playing = audio.queued();
-  const ready = performance.now() >= Math.max(r.sleepingUntil, r.audioUntil) && playing <= QUEUE;
-  if (!r.waiting && !r.waitingPoint && !r.paused && ready) {
-    const t0 = performance.now();
-    P.SetTonesPlaying(playing);
-    for (;;) {
-      const s = P.Step(SLICE);
-      if (s === RUNNING) {
-        if (performance.now() - t0 < FRAME_BUDGET_MS) continue;
-        break;
-      }
-      if (s === AWAITING_AUDIO) {     // a foreground SOUND, BEEP or PLAY; or a full background queue
-        audio.play(P.TakeTones());
-        if (P.MaxQueuedTones() === 0) r.audioUntil = performance.now() + audio.remaining() - AUDIO_LEAD_MS;
-        break;                        // (with a full queue, the wait is the `playing <= QUEUE` above)
-      }
-      if (s === SLEEPING) {
-        // Wake-ups land on animation frames, so time each SLEEP from the previous
-        // deadline (unless we've fallen well behind) to keep the program's frame rate
-        // on average: SLEEP 0.04 alternates 2- and 3-frame waits = 25 fps, not 20.
-        const now = performance.now();
-        const base = now - r.sleepingUntil < 100 ? r.sleepingUntil : now;
-        r.sleepingUntil = base + P.SleepSeconds() * 1000;
-        break;
-      }
-      if (s === NEEDS_INPUT) { r.waiting = true; askForInput(); break; }
-      if (s === NEEDS_POINT) { r.waitingPoint = true; canvas.style.cursor = 'crosshair'; break; }
-      if (s === PAUSED) { enterPause(r); break; }
-      halted = true;
-      break;
-    }
-    r.vmMs += performance.now() - t0;
+  if (!r.waiting && !r.waitingPoint && !r.paused) {
+    const s = stepFrame(P, r, audio);
+    if (s === NEEDS_INPUT) { r.waiting = true; askForInput(); }
+    else if (s === NEEDS_POINT) { r.waitingPoint = true; canvas.style.cursor = 'crosshair'; }
+    else if (s === PAUSED) enterPause(r);
+    else if (s === HALTED) halted = true;
   }
   if (!r.paused && variablesShowing() && performance.now() - lastVariablesShown > 500) showVariables(false);   // live
   audio.play(P.TakeTones());                              // background music (MB)
   appendOutput(P.TakeOutput());
   programFiles.sync();                                    // keep what it wrote
   const frame = P.TakeFrame();
-  if (frame.length) { drawFrame(frame, P.FrameText(), P.FrameCells()); r.frames++; }
+  if (frame.length) {
+    const drew = screen.draw(frame, P.FrameText(), P.FrameCells());
+    r.frames++;
+    if (drew && !root.classList.contains('drawn')) {
+      root.classList.add('drawn');
+      if (player) canvas.focus();         // (a play link's screen shows from its first frame: give it the keys)
+    }
+  }
   if (!r.paused) showStats(r, halted);
   if (halted) {
     const error = P.Error();
@@ -546,110 +517,9 @@ function valueOf(name) {
   return null;
 }
 
-// The canvas is drawn at the screen's real pixel density (fitCanvas), and straight
-// lines are snapped to the pixel grid, so every line is crisp and the same weight.
-let lastFrame = null;   // [cmds, texts, cells] — redrawn when the canvas is resized or glow toggled
-
-/** Size the canvas's backing store to its on-screen size in device pixels. */
-function fitCanvas() {
-  const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
-  if (canvas.width === w && canvas.height === h) return;
-  canvas.width = w;
-  canvas.height = h;
-  if (lastFrame) drawFrame(...lastFrame);
-}
-new ResizeObserver(fitCanvas).observe(canvas);
-
-/** Canvas geometry for the current backing store: the unit square, inset by half a
- *  line width so lines on its edges aren't clipped. */
-function geometry() {
-  const dpr = window.devicePixelRatio || 1;
-  const W = canvas.width, H = canvas.height;
-  const lineWidth = Math.max(1, Math.round(1.5 * dpr));
-  const inset = Math.ceil(lineWidth / 2);
-  return { W, H, dpr, lineWidth, inset, w: W - 2 * inset, h: H - 2 * inset };
-}
-
-function drawFrame(cmds, texts, cells = []) {
-  lastFrame = [cmds, texts, cells];
-  let i = 0;
-  if (cmds[0] === PALETTE) { setPalette(cmds, 1); i = 1 + 256; }
-  const { W, H, dpr, lineWidth, inset, w, h } = geometry();
-  const X = x => inset + x * w, Y = y => inset + (1 - y) * h;   // unit square, origin bottom-left
-  // Snap to the pixel grid: an odd-width line's centre on a pixel centre, an even one's on an edge.
-  const half = lineWidth % 2 ? 0.5 : 0;
-  const snap = v => Math.round(v - half) + half;
-  const glow = $('glow').checked;
-  const colors = [1, 1, 1, 1];                      // point, line, text, area
-  let lineStyle = 1, pointStyle = 3;                // GraphicsState's defaults
-  lastTexts = [];
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = palette[0];                       // colour 0 is the background
-  ctx.fillRect(0, 0, W, H);
-  ctx.imageSmoothingEnabled = false;                // cells stay crisp squares when scaled up
-  let atlas = null;                                 // this frame's cell arrays, uploaded on first use
-  ctx.lineWidth = lineWidth;
-  ctx.lineJoin = 'miter';
-  ctx.lineCap = 'square';
-  // An 80 x 24-cell screen, like the terminal's: a monospace glyph is ~0.6 em wide,
-  // so size the font to fit 80 columns.
-  ctx.font = `${Math.round(w / 80 / 0.6)}px ui-monospace, Menlo, monospace`;
-  ctx.textBaseline = 'alphabetic';
-  const paint = index => {
-    const c = palette[index] ?? palette[1];
-    ctx.strokeStyle = ctx.fillStyle = c;
-    if (glow) { ctx.shadowColor = c; ctx.shadowBlur = 6 * dpr; }
-  };
-  while (i < cmds.length) {
-    const op = cmds[i++];
-    if (op === COLOR) { colors[cmds[i]] = cmds[i + 1]; i += 2; continue; }
-    if (op === CELLS) {
-      // MAT GRAPH CELLS: its block of the atlas, scaled into the rectangle (edges on
-      // whole pixels, so neighbouring arrays meet without seams), cut to what's visible.
-      const [l, b, r, t, cols, rows, vl, vb, vr, vt, ax, ay] = cmds.slice(i, i + 12);
-      i += 12;
-      if (!atlas) atlas = uploadAtlas(cells);
-      const x0 = Math.round(X(l)), x1 = Math.round(X(r)), y0 = Math.round(Y(t)), y1 = Math.round(Y(b));
-      const cx0 = Math.round(X(vl)), cx1 = Math.round(X(vr)), cy0 = Math.round(Y(vt)), cy1 = Math.round(Y(vb));
-      const cut = cx0 > x0 || cx1 < x1 || cy0 > y0 || cy1 < y1;
-      ctx.shadowBlur = 0;
-      if (cut) { ctx.save(); ctx.beginPath(); ctx.rect(cx0, cy0, cx1 - cx0, cy1 - cy0); ctx.clip(); }
-      ctx.drawImage(atlas, ax, ay, cols, rows, x0, y0, x1 - x0, y1 - y0);
-      if (cut) ctx.restore();
-      continue;
-    }
-    if (op === LINE_STYLE) { lineStyle = cmds[i++]; continue; }
-    if (op === POINT_STYLE) { pointStyle = cmds[i++]; continue; }
-    if (op === TEXT) {
-      paint(colors[2]);                             // the point is the text's baseline (ECMA-116 LEFT, BASE)
-      ctx.fillText(texts[cmds[i + 2]], X(cmds[i]), Y(cmds[i + 1]));
-      lastTexts.push({ x: cmds[i], y: cmds[i + 1], text: texts[cmds[i + 2]] });
-      i += 3;
-      continue;
-    }
-    const n = cmds[i++];
-    paint(colors[op === POINTS ? 0 : op === LINES ? 1 : 3]);
-    ctx.setLineDash(op === LINES ? (DASHES[lineStyle] ?? []).map(d => d * dpr) : []);
-    ctx.beginPath();
-    for (let k = 0; k < n; k++, i += 2) {
-      let x = X(cmds[i]), y = Y(cmds[i + 1]);
-      if (op === LINES) { x = snap(x); y = snap(y); }
-      else if (op === AREA) { x = Math.round(x); y = Math.round(y); }
-      if (op === POINTS) marker(x, y, pointStyle, dpr);
-      else if (k === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    if (op === LINES || (op === POINTS && pointStyle !== 1)) ctx.stroke();
-    else { if (op === AREA) ctx.closePath(); ctx.fill(); }
-  }
-}
 
 /** The running program's colours ('#rrggbb' × 256) once it has drawn, else null. */
-let paletteSeen = false;
-const programColours = () => run && paletteSeen
-  ? palette.map(c => '#' + c.match(/\d+/g).map(v => (+v).toString(16).padStart(2, '0')).join(''))
-  : null;
+const programColours = () => run ? screen.colours() : null;
 
 /** A line of code above the cursor's (the palette's "Insert SET COLOR MIX"). */
 function insertLine(text) {
@@ -659,45 +529,6 @@ function insertLine(text) {
   view.focus();
 }
 
-/** The colours a PALETTE command carries: 256 ARGB values from cmds[at]. */
-function setPalette(cmds, at) {
-  paletteSeen = true;
-  palette = [];
-  for (let k = 0; k < 256; k++) {
-    const c = cmds[at + k] >>> 0, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-    palette.push(`rgb(${r},${g},${b})`);
-    paletteAbgr[k] = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
-  }
-}
-
-/** Put a frame's cell atlas (width, height, then colour indices row by row) into an
- *  image, in one upload, for drawImage to scale pieces of. Colour -1 is see-through
- *  (a transparent pixel), so a cell array can be a sprite. */
-const atlasCanvas = document.createElement('canvas'), atlasCtx = atlasCanvas.getContext('2d');
-function uploadAtlas(cells) {
-  const w = cells[0], h = cells[1];
-  if (atlasCanvas.width !== w || atlasCanvas.height !== h) { atlasCanvas.width = w; atlasCanvas.height = h; }
-  const image = atlasCtx.createImageData(w, h), pixels = new Uint32Array(image.data.buffer);
-  for (let k = 0; k < w * h; k++) {
-    const c = cells[2 + k];
-    pixels[k] = c < 0 ? 0 : paletteAbgr[c] ?? paletteAbgr[1];
-  }
-  atlasCtx.putImageData(image, 0, 0);
-  return atlasCanvas;
-}
-
-// SET POINT STYLE 1 dot, 2 plus, 3 asterisk (adds to the current path).
-function marker(x, y, style, dpr) {
-  const r = 4 * dpr;
-  if (style === 1) { const d = 2.5 * dpr; ctx.moveTo(x + d, y); ctx.arc(x, y, d, 0, 2 * Math.PI); return; }
-  ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
-  ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
-  if (style === 3) {
-    const d = r * 0.7;
-    ctx.moveTo(x - d, y - d); ctx.lineTo(x + d, y + d);
-    ctx.moveTo(x - d, y + d); ctx.lineTo(x + d, y - d);
-  }
-}
 
 function appendOutput(text, cls = '') {
   if (!text) return;
@@ -730,6 +561,13 @@ inputRow.addEventListener('submit', e => {
 });
 $('clearOutput').addEventListener('click', () => output.replaceChildren());
 
+// Keys go to the program only while the canvas has focus (so typing in the editor
+// doesn't); the page's own shortcuts (F5, Ctrl+S, …) are taken before it sees them.
+connectInput(screen, canvas, {
+  program: () => P, audio,
+  onPress: () => { if (run?.waitingPoint) { run.waitingPoint = false; canvas.style.cursor = ''; } },
+});
+
 let lastStats = 0;
 function showStats(r, finished = false) {
   const now = performance.now();
@@ -745,47 +583,13 @@ function showStats(r, finished = false) {
                       `${(instructions / Math.max(secs, 1e-3) / 1e6).toFixed(2)} M instructions/s`;
 }
 
-// Keys go to the program only while the canvas has focus (so typing in the editor
-// doesn't); the page's own shortcuts (F5, Ctrl+S, …) are taken before it sees them.
-canvas.addEventListener('keydown', e => {
-  audio.unlock();
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  P.KeyDown(e.code, e.key, e.repeat);
-  e.preventDefault();
-});
-canvas.addEventListener('keyup', e => { P.KeyUp(e.code); });
-canvas.addEventListener('blur', () => P?.ReleaseKeys());
-
-// The pointer, in the canvas's unit square (origin bottom-left), for GET MOUSE and
-// LOCATE POINT. Capturing it keeps a drag's moves and release coming even if the
-// pointer leaves the canvas.
-const unitPoint = e => {
-  const r = canvas.getBoundingClientRect(), { inset, w, h } = geometry();
-  const px = (e.clientX - r.left - canvas.clientLeft) * canvas.width / canvas.clientWidth;
-  const py = (e.clientY - r.top - canvas.clientTop) * canvas.height / canvas.clientHeight;
-  return [(px - inset) / w, 1 - (py - inset) / h];
-};
-canvas.addEventListener('pointermove', e => P?.PointerMove(...unitPoint(e)));
-canvas.addEventListener('pointerdown', e => {
-  if (e.button !== 0 || !P) return;
-  audio.unlock();
-  try { canvas.setPointerCapture(e.pointerId); } catch { /* not a live pointer (synthetic) */ }
-  canvas.focus();
-  P.PointerDown(...unitPoint(e));
-  e.preventDefault();
-  if (run?.waitingPoint) { run.waitingPoint = false; canvas.style.cursor = ''; }
-});
-canvas.addEventListener('pointerup', e => { if (e.button === 0) P?.PointerUp(...unitPoint(e)); });
-canvas.addEventListener('pointercancel', () => P?.PointerCancel());
-canvas.addEventListener('lostpointercapture', () => P?.PointerCancel());
 
 const glowBox = $('glow');
 glowBox.checked = store.get('arcade-basic.glow') === '1';
 glowBox.addEventListener('change', () => {
   store.set('arcade-basic.glow', glowBox.checked ? '1' : '0');
-  if (lastFrame) drawFrame(...lastFrame);
+  screen.redraw();
 });
-fitCanvas();
 
 const soundBox = $('sound');
 soundBox.checked = store.get('arcade-basic.sound') !== '0';
@@ -828,7 +632,8 @@ const actions = {
   openFolder: () => documents.openFolder(),
   save: () => documents.save(),
   saveAs: () => documents.save(documents.active, true),
-  share: shareLink,
+  share: () => shareLink(false),
+  sharePlay: () => shareLink(true),
   picture: () => { if (documents.active) insertPicture(editor.view, { key: documents.active.name, ask }); },
   tune: () => { if (documents.active && P) insertTune(editor.view, { ask }); },
   palette: () => openPalette({ current: programColours, insert: insertLine }),
@@ -837,7 +642,8 @@ const actions = {
   shortcuts: () => $('shortcutsDialog').showModal(),
   about: () => $('aboutDialog').showModal(),
 };
-if (!('CompressionStream' in window)) document.querySelector('[data-action="share"]').disabled = true;
+if (!('CompressionStream' in window))
+  for (const item of document.querySelectorAll('[data-action^="share"]')) item.disabled = true;
 
 // The File and Help menus.
 const menus = [...document.querySelectorAll('.menu')].map(menu => {
@@ -882,6 +688,12 @@ $('stepOut').addEventListener('click', () => debugStep(OUT));
 window.addEventListener('keydown', e => {
   const mod = isMac ? e.metaKey : e.ctrlKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (player) {                         // (no editor: F5 plays the link's program again, Shift+F5 stops it)
+    if (key !== 'F5' || mod || !root.classList.contains('started')) return;
+    e.preventDefault();
+    if (e.shiftKey) stop(); else playShared();
+    return;
+  }
   let action = null;
   if (key === 'F5' && !mod) action = e.shiftKey ? () => stop() : () => runOrContinue(e);
   else if (mod && key === 'Enter') action = () => runOrContinue(e);
@@ -951,21 +763,26 @@ divider.addEventListener('keydown', e => {
 });
 
 // -- Links to programs ---------------------------------------------------------------------
-// …/#breakout opens an example; …/#code=… carries a whole program, compressed.
+// …/#breakout opens an example; …/#code=… carries a whole program, compressed; …/#play=…
+// carries one to play, with no editor.
 
-async function shareLink() {
+/** Copy a link to the program showing (or the one it's a library of): to open in the
+ *  editor, or with `play`, to play. */
+async function shareLink(play) {
   if (!documents.active) return;
   // A program with libraries (open, not bundled) goes with them: {"main": [name, text], "libraries": [[name, text] …]}.
+  // A play link always says the program's name (it's the page's title).
   const doc = programFor(documents.active), text = textOf(doc);
   const libraries = libraryNames(text).map(n => documents.all.find(d => d.name.toLowerCase() === n.toLowerCase()))
     .filter(d => d && !P.Examples().includes(d.name)).map(d => [d.name, textOf(d)]);
-  const payload = libraries.length ? JSON.stringify({ main: [doc.name, text], libraries }) : text;
-  const link = `${location.origin}${location.pathname}#code=${await pack(payload)}`;
+  const payload = libraries.length || play ? JSON.stringify({ main: [doc.name, text], libraries }) : text;
+  const link = `${location.origin}${location.pathname}#${play ? 'play' : 'code'}=${await pack(payload)}`;
   try {
     await navigator.clipboard.writeText(link);
-    notify('Link copied: whoever opens it gets this program');
+    notify(play ? 'Link copied: whoever opens it can play this program' : 'Link copied: whoever opens it gets this program');
   } catch {
-    await ask({ title: 'A link to this program', message: 'Copy it from here:', input: link, buttons: [{ label: 'Close', value: 'ok', kind: 'primary' }] });
+    await ask({ title: play ? 'A link to play this program' : 'A link to this program', message: 'Copy it from here:', input: link,
+                buttons: [{ label: 'Close', value: 'ok', kind: 'primary' }] });
   }
 }
 
@@ -985,6 +802,8 @@ async function unpack(code) {
 
 /** Open what an address names; false if it names nothing. */
 async function openAddress(hash) {
+  if (hash.startsWith('#play=')) return openPlayer(hash.slice(6));
+  if (player) leavePlayer();
   if (hash.startsWith('#code=')) {
     try {
       const shared = await unpack(hash.slice(6));
@@ -1004,6 +823,75 @@ async function openAddress(hash) {
   openExampleProgram(example);
   return true;
 }
+
+// -- Play links ------------------------------------------------------------------------------
+// A #play= link shows the program's screen and a bar, no editor; the program isn't opened
+// in a tab, so the editor's own programs are just as they were. Play is a click, which is
+// also what lets the page make sound.
+
+let player = null;   // { name, text, libraries: [names, texts], code } while showing a play link
+
+async function openPlayer(code) {
+  let shared;
+  try {
+    shared = await unpack(code);
+  } catch {
+    notify('The program in that link couldn\'t be read');
+    return false;
+  }
+  const project = shared.startsWith('{"main"') ? JSON.parse(shared) : { main: ['program.bas', shared], libraries: [] };
+  stop();
+  player = { name: project.main[0], text: project.main[1], code,
+             libraries: [project.libraries.map(l => l[0]), project.libraries.map(l => l[1])] };
+  output.replaceChildren();
+  root.classList.add('player');
+  root.classList.remove('started', 'drawn');
+  const title = player.name.replace(/\.bas$/i, '');
+  $('playerName').textContent = title;
+  $('playerStatus').textContent = '';
+  document.title = `${title} — Arcade BASIC`;
+  $('playButton').textContent = `▶ Play ${title}`;
+  $('playButton').disabled = false;
+  return true;
+}
+
+function playShared() {
+  if (!player || !P) return;
+  audio.unlock();                        // (a click: the browser now allows sound)
+  root.classList.add('started');
+  $('playerStatus').textContent = '';
+  $('playerRestart').disabled = false;
+  start(player.text, () => { $('playerStatus').textContent = 'Finished'; }, null, false, player);
+}
+
+/** Back to the editor, showing the link's program in a tab — to read it, or change it. */
+function leavePlayer(openIt = false) {
+  if (!player) return;
+  const { code } = player;
+  stop();
+  player = null;
+  root.classList.remove('player', 'started', 'drawn');
+  document.title = 'Arcade BASIC';
+  if (openIt) {
+    history.replaceState(null, '', location.pathname + location.search + '#code=' + code);
+    openAddress('#code=' + code);
+  }
+}
+
+$('playButton').addEventListener('click', playShared);
+$('playerRestart').addEventListener('click', playShared);
+$('playerEdit').addEventListener('click', () => leavePlayer(true));
+$('playerFullscreen').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $('runPane').requestFullscreen?.().then(() => canvas.focus(), () => {});
+});
+if (!document.fullscreenEnabled) $('playerFullscreen').hidden = true;
+const playerSound = $('playerSound');
+playerSound.checked = soundBox.checked;
+playerSound.addEventListener('change', () => {
+  soundBox.checked = playerSound.checked;
+  soundBox.dispatchEvent(new Event('change'));
+});
 
 /** An example, and the bundled libraries it names in tabs beside it. */
 function openExampleProgram(name) {
@@ -1091,7 +979,7 @@ async function kanbanSelftest() {
   const pause = () => new Promise(r => setTimeout(r, 300));
   const at = t => t && [t.x + 0.02, t.y + 0.01];
   const pointer = (type, [x, y]) => {
-    const r = canvas.getBoundingClientRect(), { inset, w, h } = geometry();
+    const r = canvas.getBoundingClientRect(), { inset, w, h } = screen.geometry();
     const toClient = (px, size, offset, client) => offset + client + px * size;
     canvas.dispatchEvent(new PointerEvent(type, {
       clientX: toClient(inset + x * w, canvas.clientWidth / canvas.width, r.left, canvas.clientLeft),
@@ -1102,33 +990,33 @@ async function kanbanSelftest() {
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: k, code, bubbles: true }));
     canvas.dispatchEvent(new KeyboardEvent('keyup', { key: k, code, bubbles: true }));
   };
-  const card = prefix => lastTexts.filter(t => t.text.startsWith(prefix));
+  const card = prefix => screen.texts.filter(t => t.text.startsWith(prefix));
   const result = {};
   try {
     programFiles.forget('kanban.board');            // the demo board, whatever an earlier run left
     documents.openExample('kanban.bas');
     start(editor.state.doc.toString());
     await pause();
-    result.mouseMode = lastTexts.some(t => t.text === '+ add a card');
+    result.mouseMode = screen.texts.some(t => t.text === '+ add a card');
     if (params.has('snapshot')) {                  // hover over card #6 first
       pointer('pointermove', at(card('The board saves')[0]));
       await pause();
       result.hoverSnapshot = canvas.toDataURL('image/png');
     }
-    const done = [lastTexts.find(t => t.text === 'DONE').x + 0.02, 0.5];
+    const done = [screen.texts.find(t => t.text === 'DONE').x + 0.02, 0.5];
     pointer('pointerdown', at(card('Select a card')[0])); await pause();
     pointer('pointermove', done); await pause();
     result.copiesWhileDragging = card('Select a card').length;
     if (params.has('snapshot')) result.snapshot = canvas.toDataURL('image/png');   // mid-drag picture
     pointer('pointerup', done); await pause();
-    result.status = lastTexts.find(t => t.text.startsWith('Moved #'))?.text;
-    const heads = ['TO DO', 'DOING', 'DONE'].map(name => lastTexts.find(t => t.text === name));
+    result.status = screen.texts.find(t => t.text.startsWith('Moved #'))?.text;
+    const heads = ['TO DO', 'DOING', 'DONE'].map(name => screen.texts.find(t => t.text === name));
     result.lanes = heads.map(h => h.text + ' ' +
-      lastTexts.find(t => t.y === h.y && t.x > h.x && /^\d+$/.test(t.text))?.text);
+      screen.texts.find(t => t.y === h.y && t.x > h.x && /^\d+$/.test(t.text))?.text);
     programFiles.sync(true);
     result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('Select a card'));
     key('q', 'KeyQ'); await pause();
-    result.typed = lastTexts.find(t => t.text.startsWith('q'))?.text;
+    result.typed = screen.texts.find(t => t.text.startsWith('q'))?.text;
     key('Enter', 'Enter'); await pause();
     result.stillRunning = run !== null;
   } catch (e) {

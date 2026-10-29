@@ -54,6 +54,9 @@ src/
   ArcadeBasic.Vm/            # Stack-based bytecode VM, BasicEngine
   ArcadeBasic.Cli/           # Command dispatch + self-extracting AOT stub
   ArcadeBasic.Web/           # The browser IDE (WebAssembly; not in the .sln)
+  ArcadeBasic.Player/        # The player for desktop apps: compiled bytecode on the VM, no IDE (not in the .sln)
+
+desktop/player/              # The desktop player (Tauri, Rust): the player page in a native window
 
 test/
   ArcadeBasic.{Lexer,Parser,Sema,Vm,Runtime,Conformance}.Tests/

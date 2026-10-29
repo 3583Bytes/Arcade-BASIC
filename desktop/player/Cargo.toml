@@ -1,0 +1,20 @@
+[package]
+name = "arcade-player"
+version = "0.1.0"
+description = "Arcade BASIC's desktop player: a compiled program in a window of its own"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+# Small: the player is copied into every app `arcade-basic build --desktop` makes.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -152,6 +152,26 @@ binary, producing one self-contained executable (see
 > terminal with Braille-glyph and ANSI/VT support (Windows Terminal, modern
 > macOS/Linux terminals).
 
+### A desktop app (`--desktop`)
+
+`build --desktop` puts the program in the **desktop player** instead: a window
+showing just the program, as in the browser (see
+[standalone-builds.md](standalone-builds.md#desktop-apps---desktop)). Build the
+player once, for the computer you're on — it needs the WebAssembly build tools
+(`dotnet workload install wasm-tools`, run outside the repo, with `sudo` if your .NET
+is system-wide) and [Rust](https://rustup.rs):
+
+```sh
+desktop/player/build.sh                          # → desktop/player/target/release/arcade-player
+./publish/cli/arcade-basic build examples/maze3d.bas --desktop \
+    --player desktop/player/target/release/arcade-player      # → maze3d.app on a Mac
+open maze3d.app
+```
+
+Copy `arcade-player` next to `arcade-basic` and `--player` isn't needed. On Linux the
+player also needs WebKitGTK (`libwebkit2gtk-4.1`), as every Tauri app does; Windows
+10 and 11 have the web view it uses (WebView2) built in.
+
 ---
 
 ## 6. Platform notes
@@ -188,3 +208,5 @@ If AOT linking fails, the usual cause is a missing `clang` or `zlib` dev package
 | Tests | `dotnet test -c Release` | — | no |
 | CLI (AOT) | `dotnet publish src/ArcadeBasic.Cli -c Release -r <RID> -o publish/cli` | `publish/cli/arcade-basic` | **yes** |
 | Standalone `.bas` | `arcade-basic build foo.bas -o foo` | `foo` | **yes** (uses the AOT CLI) |
+| Desktop player | `desktop/player/build.sh` | `desktop/player/target/release/arcade-player` | Rust, `wasm-tools` |
+| Desktop app | `arcade-basic build foo.bas --desktop` | `foo.app` / `foo.exe` / `foo` | no (uses the player) |

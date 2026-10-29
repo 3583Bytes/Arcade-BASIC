@@ -78,6 +78,8 @@ static int PrintUsage()
           analyze <file>        Lex + parse + analyze; print symbol summary.
           run <file>            Compile <file> and run it (vm does the same).
           build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
+            --desktop             ... a desktop app instead: the program in a window
+                                  (needs the desktop player, arcade-player; --player <path>)
           repl                  Start an interactive Arcade BASIC session.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
@@ -166,17 +168,22 @@ static int RunParse(ReadOnlySpan<string> args)
 
 static int RunBuild(ReadOnlySpan<string> args)
 {
+    const string usage = "usage: arcade-basic build <source> [-o <output>] [--desktop [--player <arcade-player>]]";
     string? source = null;
     string? output = null;
+    string? player = null;
+    var desktop = false;
     for (var i = 0; i < args.Length; i++)
     {
         if (args[i] == "-o" && i + 1 < args.Length) { output = args[i + 1]; i++; }
+        else if (args[i] == "--desktop") desktop = true;
+        else if (args[i] == "--player" && i + 1 < args.Length) { player = args[i + 1]; desktop = true; i++; }
         else if (source is null) source = args[i];
-        else { Console.Error.WriteLine("usage: arcade-basic build <source> [-o <output>]"); return 2; }
+        else { Console.Error.WriteLine(usage); return 2; }
     }
     if (source is null)
     {
-        Console.Error.WriteLine("usage: arcade-basic build <source> [-o <output>]");
+        Console.Error.WriteLine(usage);
         return 2;
     }
     if (!File.Exists(source))
@@ -184,9 +191,6 @@ static int RunBuild(ReadOnlySpan<string> args)
         Console.Error.WriteLine($"file not found: {source}");
         return 1;
     }
-
-    output ??= Path.ChangeExtension(source, null) ?? "a.out";
-    if (string.IsNullOrEmpty(output) || output == source) output = "a.out";
 
     // Lex + parse (with its libraries) + sema + compile to bytecode.
     var diags = new DiagnosticBag();
@@ -209,6 +213,10 @@ static int RunBuild(ReadOnlySpan<string> args)
     }
 
     var payload = BytecodeSerializer.Serialize(compiled);
+    if (desktop) return BuildDesktop(source, output, payload, player);
+
+    output ??= Path.ChangeExtension(source, null) ?? "a.out";
+    if (string.IsNullOrEmpty(output) || output == source) output = "a.out";
 
     // Locate the running CLI binary; we use it as the VM stub.
     var stubPath = Environment.ProcessPath;
@@ -218,40 +226,43 @@ static int RunBuild(ReadOnlySpan<string> args)
         return 1;
     }
 
-    var stubBytes = File.ReadAllBytes(stubPath);
-
-    // If our stub already has an embedded payload (e.g. user re-bundling),
-    // strip it so we don't grow the binary on each rebuild.
-    var existing = EmbeddedPayload.TryRead(stubPath);
-    if (existing is not null)
-    {
-        var strip = existing.Length + 12;
-        Array.Resize(ref stubBytes, stubBytes.Length - strip);
-    }
-
-    using (var fs = File.Create(output))
-    {
-        fs.Write(stubBytes, 0, stubBytes.Length);
-        EmbeddedPayload.Append(fs, payload);
-    }
-
-    if (!OperatingSystem.IsWindows())
-    {
-        try
-        {
-            File.SetUnixFileMode(output,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
-                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
-        }
-        catch { /* best effort — chmod failure is non-fatal */ }
-    }
-
+    Bundles.WriteWithProgram(stubPath, output, payload);
     Console.WriteLine($"wrote {output} ({new FileInfo(output).Length:N0} bytes, payload {payload.Length:N0} bytes)");
     return 0;
 }
 
+/// <summary>`build --desktop`: the program in the desktop player (desktop/player), a window
+/// showing just the program (see <see cref="Bundles"/>). The player is the one given, else
+/// `arcade-player` next to this CLI.</summary>
+static int BuildDesktop(string source, string? output, byte[] payload, string? player)
+{
+    if (player is null)
+    {
+        var here = Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
+        player = new[] { "arcade-player", "arcade-player.exe" }.Select(n => Path.Combine(here, n)).FirstOrDefault(File.Exists);
+    }
+    if (player is null || !File.Exists(player))
+    {
+        Console.Error.WriteLine(player is null
+            ? "build error: no desktop player (arcade-player) next to arcade-basic; name one with --player <path>"
+            : $"build error: no desktop player at {player}");
+        return 1;
+    }
+    try
+    {
+        var written = Bundles.WriteDesktopApp(player, output, Path.GetFileNameWithoutExtension(source), payload);
+        Console.WriteLine($"wrote {written} (program {payload.Length:N0} bytes)");
+        return 0;
+    }
+    catch (InvalidOperationException ex)
+    {
+        Console.Error.WriteLine($"build error: {ex.Message}");
+        return 1;
+    }
+}
+
 static int RunAnalyze(ReadOnlySpan<string> args)
+
 {
     if (args.Length != 1)
     {

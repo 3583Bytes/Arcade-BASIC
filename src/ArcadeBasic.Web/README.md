@@ -86,7 +86,11 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   Sound box turns it off. The arcade examples have sound effects.
 - **Links**: the address names the example showing (`…/Arcade-BASIC/#breakout`),
   and *File → Copy a link* puts a whole program, compressed, in the address
-  (`#code=…`).
+  (`#code=…`). *Copy a link to play this program* makes a play link (`#play=…`):
+  it opens the program's screen with a Play button and a small bar (Restart, Full
+  screen, Sound, Open in the editor), no editor, and doesn't open the program in a
+  tab. The screen shows once the program draws, so a program that only prints is
+  just its output and input line.
 
 It's live at <https://3583bytes.github.io/Arcade-BASIC/>, published by
 [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) whenever `main`
@@ -128,7 +132,7 @@ frame as a PNG. `?selftest=kanban` drags a card with real pointer events and
 reports the board, and what it saved; `?selftest=page` reports which program the address opened and
 the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
-tabs, Save (catching the download), line endings, links, sound timing and Web
+tabs, Save (catching the download), line endings, links, play links, sound timing and Web
 Audio (oscillators started, with the test profile allowing autoplay), and the
 debugger (breakpoints, stepping, the Variables tab, values on hover), and the
 pixel editor (painting maze3d's stone texture, recolouring it, one undo; a new
@@ -152,13 +156,16 @@ npm ci && npm run build
 
 | File | Role |
 |---|---|
-| `Program.cs` | `[JSExport]` surface: check, load/compile, `Step`, output, input, frames, keys, stats, the error's line |
+| `Program.cs` | `[JSExport]` surface for the IDE: the examples, check, load (compile) |
+| `Playground.Run.cs` | running a program (shared with the player, `src/ArcadeBasic.Player`): `Step`, output, input, frames, keys, the pointer, sound, the error's line |
 | `Playground.Debug.cs` | the debugger's exports: breakpoints, pause and step, the variables by name (as JSON) |
 | `Playground.Files.cs` | programs' files: their folder, and what's changed for the page to keep |
 | `CanvasGraphicsDevice.cs` | §13 backend: records each frame as a flat command list the page replays |
 | `BrowserKeyboard.cs` | `IKeyboard` + `IKeyState` from DOM `keydown`/`keyup` |
 | `BrowserAudio.cs` | `IAudioDevice` + `IAudioQueue`: collects tones for the page |
-| `wwwroot/main.js` | the loop, canvas drawing (optional phosphor glow), keyboard, input, menus, shortcuts, themes, links |
+| `wwwroot/main.js` | the IDE: running and debugging, output and input, menus, shortcuts, themes, links, play links |
+| `wwwroot/screen.js` | the program's screen (shared with the player): frames drawn on the canvas (optional phosphor glow), keys and the pointer passed on |
+| `wwwroot/runner.js` | stepping a program from animation frames, waiting out `SLEEP` and sound (shared with the player) |
 | `wwwroot/editor.js` | the CodeMirror editor: BASIC colouring, problems, runtime-error line, completion, go to definition, breakpoints, the paused line, values on hover |
 | `wwwroot/documents.js` | the tabs: examples, files (open, save, drop), changes, what's kept in the browser |
 | `wwwroot/audio.js` | sound: tones on a timeline, played as Web Audio square waves |
@@ -167,6 +174,6 @@ npm ci && npm run build
 | `wwwroot/tunes.js` | ▶ and ♫ beside `PLAY` strings, and the tune editor |
 | `Playground.Tools.cs` | the tools' exports: a `PLAY` string's tones, the starting palette |
 | `wwwroot/outline.js` | a program's sections, blocks and subroutines: the outline, folding, Go to |
-| `wwwroot/files.js` | the files programs write, kept in the browser; File → Program files… |
+| `wwwroot/files.js` | the files programs write, kept in the browser; File → Program files… (the player keeps its game's too) |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

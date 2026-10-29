@@ -10,7 +10,7 @@ A fun and modern re-implementation of **Full BASIC** including an interpreter, c
 
 Run classic BASIC programs, write new ones, embed BASIC in your .NET app, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
 
-**[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, programs in several files (`LIBRARY`), an outline and folding for long ones, a debugger (breakpoints, stepping, the variables as they change), a pixel editor for the sprites and textures kept in `DATA`, colour swatches and a palette, a tune editor for `PLAY`, open and save your own `.bas` files, six themes (QBasic blue and Commodore 64 among them), sound, and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
+**[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, programs in several files (`LIBRARY`), an outline and folding for long ones, a debugger (breakpoints, stepping, the variables as they change), a pixel editor for the sprites and textures kept in `DATA`, colour swatches and a palette, a tune editor for `PLAY`, open and save your own `.bas` files, share a link that opens straight into your game, six themes (QBasic blue and Commodore 64 among them), sound, and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
 
 [![A first-person 3D maze written in Arcade BASIC, running in the browser](src/ArcadeBasic.Web/wwwroot/preview.png)](https://3583bytes.github.io/Arcade-BASIC/)
 
@@ -74,6 +74,7 @@ Console.WriteLine(output);   //  42
 | **Browser** | [the IDE](https://3583bytes.github.io/Arcade-BASIC/) | Writing, debugging and playing — graphics, sound, mouse. |
 | **Command line** | `arcade-basic run foo.bas` | Compiles to bytecode and runs it on the VM, in a terminal. |
 | **Native binary** | `arcade-basic build foo.bas -o foo` | Bundles the VM and your compiled program into a single self-contained executable — no .NET needed on the target. |
+| **Desktop app** | `arcade-basic build foo.bas --desktop` | Your compiled program in a window of its own — its screen, sound and keys as in the browser, no IDE (a Mac `.app`, or a Windows or Linux executable). Needs the desktop player, `arcade-player` ([`desktop/player`](desktop/player)). |
 
 All of them run the same engine, the bytecode VM, so they execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules (`PUBLIC` and `SHARE` variables, `DECLARE PUBLIC`, start-up code, their own `DATA`) and programs in several files (`LIBRARY "file.bas"`), exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers.
 
@@ -173,6 +174,7 @@ arcade-basic <command> [args]
 
   run <file>              compile to bytecode and run it on the VM (vm is the same)
   build <file> [-o out]   produce a self-contained native binary
+    --desktop             ... or a desktop app: the program in a window (--player <arcade-player>)
   repl                    interactive Arcade BASIC session
   lex <file>              tokenize and print the token stream
   parse <file>            lex + parse, pretty-print the AST
@@ -224,6 +226,8 @@ A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assemb
 | `ArcadeBasic.Vm` | stack-based bytecode VM, and `BasicEngine` (source in, program run) |
 | `ArcadeBasic.Cli` | command dispatcher + self-extracting AOT stub |
 | `ArcadeBasic.Web` | the browser IDE (WebAssembly, on the VM) |
+| `ArcadeBasic.Player` | the player for desktop apps: a compiled program on the VM, no IDE (WebAssembly) |
+| `desktop/player` | the desktop player: the player page in a native window (Tauri) |
 
 The VM runs on the runtime's `Value` hierarchy, `BigDecimal` numerics, `MatOps` math kernels (LU-decomposition inverse, transpose, …), picture-string formatter, and channel table. (Until 2026 a tree-walking interpreter ran programs too, as a second, reference engine.) The full architecture writeup lives in [`docs/architecture.md`](docs/architecture.md).
 

@@ -17,6 +17,8 @@
       document.documentElement.dataset.theme = localStorage.getItem('arcade-basic.theme') ||
         (matchMedia('(prefers-color-scheme: light)').matches ? 'daylight' : 'midnight');
     } catch { /* no storage: the default */ }
+    // A play link (#play=…) shows just the program's screen: no flash of the editor first.
+    if (location.hash.startsWith('#play=')) document.documentElement.classList.add('player');
   </script>
   <link rel="stylesheet" href="./style.css">
 </head>
@@ -36,6 +38,7 @@
         <button data-action="programFiles" role="menuitem">Program files…</button>
         <hr>
         <button data-action="share" role="menuitem">Copy a link to this program</button>
+        <button data-action="sharePlay" role="menuitem">Copy a link to play this program</button>
         <hr>
         <button data-action="close" role="menuitem">Close tab <span class="key" data-key="Alt+W"></span></button>
       </div>
@@ -60,6 +63,15 @@
       <button class="tool" id="stepOut" disabled>↑ Out</button>
     </span>
     <span id="loading">loading .NET…</span>
+    <div class="playerBar" aria-label="Player">
+      <span class="name" id="playerName"></span>
+      <span id="playerStatus" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button class="tool" id="playerRestart" disabled>↻ Restart</button>
+      <button class="tool" id="playerFullscreen" title="Full screen (Esc to leave)">⛶ Full screen</button>
+      <label title="Play SOUND, BEEP and PLAY"><input type="checkbox" id="playerSound"> Sound</label>
+      <button class="tool" id="playerEdit" title="See the program in the editor, and change it">Open in the editor</button>
+    </div>
     <div class="right">
       <label>Theme <select id="theme" aria-label="Theme"></select></label>
       <label title="Play SOUND, BEEP and PLAY"><input type="checkbox" id="sound" checked> Sound</label>
@@ -97,6 +109,7 @@
     </section>
     <div id="divider" role="separator" aria-orientation="vertical" aria-label="Resize the editor" tabindex="0"></div>
     <section id="runPane" aria-label="Program">
+      <button id="playButton" class="playButton" type="button" disabled>Loading…</button>
       <canvas id="screen" width="960" height="576" tabindex="0" aria-label="Program screen (click to give it the keyboard)"></canvas>
       <p id="hint">Press <b>Run</b> (<kbd>F5</kbd>), then click the screen so it gets your keys.</p>
       <div class="outputHead" role="tablist">

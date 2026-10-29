@@ -46,3 +46,8 @@ project.lock.json
 /full-basic-standard.pdf
 /NBS Minimal BASIC Test Programs*.pdf
 
+
+## Desktop player (desktop/player/build.sh): the published page it embeds, and Rust output
+desktop/player/dist/
+desktop/player/target/
+desktop/player/gen/

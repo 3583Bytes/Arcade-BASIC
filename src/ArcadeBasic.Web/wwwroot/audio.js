@@ -14,6 +14,7 @@ export const QUEUE = 32;     // GW-BASIC's background-music buffer: past this, t
 export function createAudio() {
   let context = null;        // made on the first click or key press
   let out = null;            // this run's output: disconnecting it silences the run
+  let running = false;       // a run is on: its output connects as soon as there's a context
   let muted = false;
   let end = 0;               // when the last tone given ends (ms, page time)
   const ends = [];           // when each tone not finished yet ends
@@ -36,6 +37,13 @@ export function createAudio() {
     oscillator.stop(at + seconds);
   }
 
+  function connect() {
+    if (!context || !running || out) return;
+    out = context.createGain();
+    out.gain.value = muted ? 0 : 1;
+    out.connect(context.destination);
+  }
+
   function silence() {
     out?.disconnect();
     out = null;
@@ -50,20 +58,22 @@ export function createAudio() {
       try {
         context ??= new AudioContext();
         if (context.state === 'suspended') context.resume();
+        connect();                       // (a run that started before this: it's heard from now on)
       } catch { /* no Web Audio: the timeline still runs, silently */ }
     },
 
     /** A new run: whatever the last one left playing stops. */
     reset() {
       silence();
-      if (!context) return;
-      out = context.createGain();
-      out.gain.value = muted ? 0 : 1;
-      out.connect(context.destination);
+      running = true;
+      connect();
     },
 
     /** Stop: silence now. */
-    stop: silence,
+    stop() {
+      silence();
+      running = false;
+    },
 
     /** Tones from the program, flat (frequency Hz, sounded s, silent s); frequency 0 is a rest. */
     play(tones) {

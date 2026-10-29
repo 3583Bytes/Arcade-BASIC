@@ -256,6 +256,32 @@ dialog.goTo .items { max-height: 50vh; overflow: auto; }
 }
 #screen:focus { border-color: var(--accent); }
 #hint { color: var(--muted); margin: 0; font-size: 13px; }
+
+/* A play link (#play=…): the program's screen, a bar, and nothing else. The screen shows
+   once the program draws, so a program that only PRINTs is just its output. */
+.playerBar, .playButton { display: none; }
+html.player header > :not(h1):not(.playerBar) { display: none; }
+html.player .playerBar { display: flex; flex: 1; gap: 8px; align-items: center; min-width: 0; flex-wrap: wrap; }
+.playerBar .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.playerBar #playerStatus { color: var(--muted); }
+.playerBar .spacer { flex: 1; }
+html.player footer, html.player #editorPane, html.player #divider, html.player .outputHead,
+html.player #hint, html.player #variables { display: none; }
+html.player main { grid-template-columns: minmax(0, 1fr) !important; }   /* (over the editor's split, set on the element) */
+html.player #runPane { align-items: center; }
+html.player #screen, html.player .playButton { width: min(100%, calc((100vh - 90px) * 5 / 3)); }
+html.player:not(.drawn) #screen { display: none; }
+html.player #output { width: min(100%, 960px); flex: 1; }
+html.player #output:empty { display: none; }
+html.player #inputRow { width: min(100%, 960px); }
+html.player:not(.started) .playButton {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 5 / 3; flex: none;
+  background: #000; color: #fff; border: 1px solid var(--border); border-radius: 6px; font-size: 28px; cursor: pointer;
+}
+html.player .playButton:disabled { color: #888; cursor: default; }
+html.player .playButton:not(:disabled):hover { border-color: var(--accent); }
+#runPane:fullscreen { background: #000; justify-content: center; }
+#runPane:fullscreen #screen { width: min(100%, calc((100vh - 20px) * 5 / 3)); border: 0; }
 .outputHead { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
 .outputHead .spacer { flex: 1; }
 .outputHead button { background: transparent; border: 0; color: var(--muted); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 4px; }

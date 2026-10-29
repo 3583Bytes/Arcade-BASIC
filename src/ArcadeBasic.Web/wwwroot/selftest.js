@@ -172,6 +172,26 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     return { codeLength: code.length, active: documents.active.name, same: view.state.doc.toString() === text };
   });
 
+  await step('playLink', async () => {
+    // A play link shows a Play button and no editor; playing draws and prints, and opens no tab;
+    // "Open in the editor" goes back, with the program in a tab.
+    const root = document.documentElement, tabs = documents.all.length;
+    const text = 'SET WINDOW 0, 1, 0, 1\nGRAPH AREA: 0.1, 0.1; 0.9, 0.1; 0.5, 0.9\nPRINT "played"\n';
+    await openAddress('#play=' + await pack(JSON.stringify({ main: ['triangle.bas', text], libraries: [] })));
+    const before = { player: root.classList.contains('player'), button: $('playButton').textContent,
+                     editorHidden: $('editorPane').offsetParent === null, title: document.title };
+    $('playButton').click();
+    for (let i = 0; i < 200 && !$('output').textContent.includes('played'); i++) await pause(10);
+    await pause(50);
+    const played = { drawn: root.classList.contains('drawn'), screenShown: $('screen').offsetParent !== null,
+                     output: $('output').textContent.trim(), status: $('playerStatus').textContent,
+                     tabsAdded: documents.all.length - tabs };
+    $('playerEdit').click();
+    await pause(50);
+    return { ...before, ...played, backInEditor: !root.classList.contains('player'), opened: documents.active.name,
+             same: view.state.doc.toString() === text };
+  });
+
   await step('soundTiming', async () => {
     // How long until the program PRINTs "after": a foreground tune holds it up, background music doesn't.
     const timeTo = async program => {

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!-- The player for exported programs: compiled bytecode on the VM, drawn on a canvas,
+       with none of the IDE (no editor, no compiler). The desktop player (desktop/player)
+       shows it in a native window. It runs programs the way the IDE does: the .NET side
+       and the page's drawing, sound and input code are the IDE's own (src/ArcadeBasic.Web),
+       compiled and linked in here. Not in ArcadeBasic.sln, like the IDE. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ArcadeBasic.Vm\ArcadeBasic.Vm.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ArcadeBasic.Web\Playground.Run.cs" Link="Shared\Playground.Run.cs" />
+    <Compile Include="..\ArcadeBasic.Web\Playground.Files.cs" Link="Shared\Playground.Files.cs" />
+    <Compile Include="..\ArcadeBasic.Web\CanvasGraphicsDevice.cs" Link="Shared\CanvasGraphicsDevice.cs" />
+    <Compile Include="..\ArcadeBasic.Web\BrowserKeyboard.cs" Link="Shared\BrowserKeyboard.cs" />
+    <Compile Include="..\ArcadeBasic.Web\BrowserAudio.cs" Link="Shared\BrowserAudio.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\ArcadeBasic.Web\wwwroot\screen.js" Link="wwwroot\screen.js" />
+    <Content Include="..\ArcadeBasic.Web\wwwroot\runner.js" Link="wwwroot\runner.js" />
+    <Content Include="..\ArcadeBasic.Web\wwwroot\audio.js" Link="wwwroot\audio.js" />
+    <Content Include="..\ArcadeBasic.Web\wwwroot\files.js" Link="wwwroot\files.js" />
+  </ItemGroup>
+
+</Project>
