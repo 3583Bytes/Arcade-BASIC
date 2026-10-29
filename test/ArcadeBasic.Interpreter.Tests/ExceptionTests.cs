@@ -95,6 +95,32 @@ public class ExceptionTests
         Run(src).Output.Should().Be("set 3 \ncaught at 4 \n");
     }
 
+    [Fact]
+    public void ASubroutineCalledInAWhenBlockReturnsIntoItAndItsExceptionsAreHandled()
+    {
+        const string src = """
+            GOSUB 100
+            PRINT "end"
+            END
+            100 REM
+            WHEN EXCEPTION IN
+              PRINT "a"
+              GOSUB 200
+              PRINT "b"
+              GOSUB 300
+              PRINT "not reached"
+            USE
+              PRINT "caught"
+            END WHEN
+            RETURN
+            200 PRINT "in 200"
+            RETURN
+            300 LET X = 1 / 0
+            RETURN
+            """;
+        Run(src).Output.Should().Be("a\nin 200\nb\ncaught\nend\n");
+    }
+
     // -- CAUSE EXCEPTION -----------------------------------------------
 
     [Fact]

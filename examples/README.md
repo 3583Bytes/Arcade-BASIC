@@ -23,7 +23,7 @@ dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
 | `pi.bas`         | Leibniz series, MOD, ABS, PI constant           | ✓           | ✓           |
 | `mandelbrot.bas` | escape-time Mandelbrot as ASCII art — pure-compute benchmark (nested loops, `z=z*z+c`) | ✓ | ✓ |
 | `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | ✓           |
-| `kanban.bas`     | interactive graphics board: GRAPH LINES lane boxes (dashed dividers), word-wrapped GRAPH TEXT cards in outlined boxes with a GRAPH AREA colour stripe, GRAPH AREA fill gauges, ASK DEVICE SIZE, save/load; drag cards between lanes with the mouse (GET MOUSE) where there is one, else a typed-command INPUT loop | ✓ | ✓ |
+| `kanban.bas`     | a Kanban board for your own tasks that keeps itself in `kanban.board` (saved after every change, opened next time): SET COLOR MIX palette, GRAPH AREA lanes and cards, one-line cards that open up when selected, lanes that scroll, ASK DEVICE SIZE; with a mouse (GET MOUSE) drag cards between lanes and up and down, double-click to edit, arrow keys + Space to move them; else a typed-command INPUT loop | ✓ | ✓ |
 | `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
 | `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
 | `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |

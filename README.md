@@ -151,7 +151,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`fileio.bas`](examples/fileio.bas) | `OPEN` / `PRINT #` / `LINE INPUT #` / `CLOSE` |
 | [`formatted.bas`](examples/formatted.bas) | `PRINT USING` with picture strings |
 | [`graphics.bas`](examples/graphics.bas) | §13 graphics — `SET WINDOW`, `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` (render with `--svg`) |
-| [`kanban.bas`](examples/kanban.bas) | interactive graphics board — colored `GRAPH LINES` lanes + `GRAPH TEXT` cards; drag cards between lanes with the mouse (`GET MOUSE`) |
+| [`kanban.bas`](examples/kanban.bas) | a Kanban board for your own tasks that saves itself as you go — drag cards between lanes and up and down with the mouse (`GET MOUSE`), edit them, move them with the keys |
 | [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `KEYDOWN` (held keys) + `INKEY$` (key presses) + `SLEEP` (frame delay) + §13 graphics |
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `KEYDOWN` + `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |

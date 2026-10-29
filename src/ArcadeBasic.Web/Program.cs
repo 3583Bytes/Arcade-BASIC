@@ -14,6 +14,7 @@ using ArcadeBasic.Web;
 // waits out SLEEPs, shows output, and draws the newest frame. Everything runs on
 // the browser's one thread — nothing here blocks.
 Console.WriteLine("Arcade BASIC playground loaded");
+Playground.UseFilesFolder();   // programs' files (Playground.Files.cs)
 
 internal static partial class Playground
 {

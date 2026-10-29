@@ -13,6 +13,7 @@ import { openPictureEditor, insertPicture } from './pictures.js';
 import { setDefaultPalette, openPalette } from './colours.js';
 import { setTuneEngine, openTuneEditor, insertTune } from './tunes.js';
 import { createOutline, openGoTo } from './outline.js';
+import { createFiles } from './files.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
@@ -54,6 +55,7 @@ const store = {
 };
 
 const audio = createAudio();
+const programFiles = createFiles({ store, ask });   // the files programs write, kept in the browser
 let run = null;   // the running program's loop state
 let lastTexts = [];   // the last drawn frame's text: [{ x, y, text }] in unit coordinates
 
@@ -263,7 +265,7 @@ function start(text, onHalt, doc = null, stopAtFirst = false) {
 /** Stop the program; its sound stops too unless it ended by itself (background music plays on). */
 function stop(silence = true) {
   if (silence) audio.stop();
-  if (run) { P.Stop(); documents.setRunning(null); }
+  if (run) { programFiles.sync(true); P.Stop(); documents.setRunning(null); }
   if (run?.paused) leavePause();
   run = null;
   $('stop').disabled = true;
@@ -313,6 +315,7 @@ function tick() {
   if (!r.paused && variablesShowing() && performance.now() - lastVariablesShown > 500) showVariables(false);   // live
   audio.play(P.TakeTones());                              // background music (MB)
   appendOutput(P.TakeOutput());
+  programFiles.sync();                                    // keep what it wrote
   const frame = P.TakeFrame();
   if (frame.length) { drawFrame(frame, P.FrameText(), P.FrameCells()); r.frames++; }
   if (!r.paused) showStats(r, halted);
@@ -830,6 +833,7 @@ const actions = {
   tune: () => { if (documents.active && P) insertTune(editor.view, { ask }); },
   palette: () => openPalette({ current: programColours, insert: insertLine }),
   close: () => documents.close(),
+  programFiles: () => programFiles.open(),
   shortcuts: () => $('shortcutsDialog').showModal(),
   about: () => $('aboutDialog').showModal(),
 };
@@ -1019,6 +1023,7 @@ const restored = documents.restore();    // what was open last time, before .NET
 
 P = await loadingNet;
 readyMs = performance.now();
+programFiles.attach(P);
 
 const words = P.Words(), gap = words.indexOf('');
 documents.refresh(editor.setWords(words.slice(0, gap), words.slice(gap + 1)));
@@ -1080,7 +1085,8 @@ if (params.get('selftest') === 'page')
   fetch('/results', { method: 'POST', body: JSON.stringify({ example: documents.active?.name, hash: location.hash,
     firstLine: editor.state.doc.line(1).text, examples: P.Examples().length, tabs: documents.all.map(d => d.name) }) });
 
-// ?selftest=kanban: drag card #5 onto Done with real DOM pointer events, type Q, report.
+// ?selftest=kanban: drag card #4 onto Done with real DOM pointer events, check the board
+// saved itself, type Q, report.
 async function kanbanSelftest() {
   const pause = () => new Promise(r => setTimeout(r, 300));
   const at = t => t && [t.x + 0.02, t.y + 0.01];
@@ -1096,28 +1102,33 @@ async function kanbanSelftest() {
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: k, code, bubbles: true }));
     canvas.dispatchEvent(new KeyboardEvent('keyup', { key: k, code, bubbles: true }));
   };
+  const card = prefix => lastTexts.filter(t => t.text.startsWith(prefix));
   const result = {};
   try {
+    programFiles.forget('kanban.board');            // the demo board, whatever an earlier run left
     documents.openExample('kanban.bas');
     start(editor.state.doc.toString());
     await pause();
-    result.mouseMode = lastTexts.some(t => t.text.includes('type a command'));
+    result.mouseMode = lastTexts.some(t => t.text === '+ add a card');
     if (params.has('snapshot')) {                  // hover over card #6 first
-      pointer('pointermove', at(lastTexts.find(t => t.text.startsWith('#6 '))));
+      pointer('pointermove', at(card('The board saves')[0]));
       await pause();
       result.hoverSnapshot = canvas.toDataURL('image/png');
     }
-    const card = at(lastTexts.find(t => t.text.startsWith('#5 ')));
-    const done = [lastTexts.find(t => t.text.startsWith('DONE (')).x + 0.02, 0.5];
-    pointer('pointerdown', card); await pause();
+    const done = [lastTexts.find(t => t.text === 'DONE').x + 0.02, 0.5];
+    pointer('pointerdown', at(card('Select a card')[0])); await pause();
     pointer('pointermove', done); await pause();
-    result.copiesWhileDragging = lastTexts.filter(t => t.text.startsWith('#5 ')).length;
+    result.copiesWhileDragging = card('Select a card').length;
     if (params.has('snapshot')) result.snapshot = canvas.toDataURL('image/png');   // mid-drag picture
     pointer('pointerup', done); await pause();
-    result.status = lastTexts.find(t => t.text.startsWith('Status:'))?.text;
-    result.lanes = lastTexts.filter(t => /^(TO-DO|IN-PROGRESS|DONE) \(/.test(t.text)).map(t => t.text);
+    result.status = lastTexts.find(t => t.text.startsWith('Moved #'))?.text;
+    const heads = ['TO DO', 'DOING', 'DONE'].map(name => lastTexts.find(t => t.text === name));
+    result.lanes = heads.map(h => h.text + ' ' +
+      lastTexts.find(t => t.y === h.y && t.x > h.x && /^\d+$/.test(t.text))?.text);
+    programFiles.sync(true);
+    result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('Select a card'));
     key('q', 'KeyQ'); await pause();
-    result.typed = lastTexts.find(t => t.text.startsWith('> '))?.text;
+    result.typed = lastTexts.find(t => t.text.startsWith('q'))?.text;
     key('Enter', 'Enter'); await pause();
     result.stillRunning = run !== null;
   } catch (e) {

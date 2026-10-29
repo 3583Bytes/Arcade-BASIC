@@ -33,6 +33,8 @@
         <button data-action="save" role="menuitem">Save <span class="key" data-key="Mod+S"></span></button>
         <button data-action="saveAs" role="menuitem">Save as… <span class="key" data-key="Mod+Shift+S"></span></button>
         <hr>
+        <button data-action="programFiles" role="menuitem">Program files…</button>
+        <hr>
         <button data-action="share" role="menuitem">Copy a link to this program</button>
         <hr>
         <button data-action="close" role="menuitem">Close tab <span class="key" data-key="Alt+W"></span></button>
@@ -158,6 +160,18 @@
         this browser and in the files you save. Nothing is sent anywhere.</p>
       <p>The editor is <a href="https://codemirror.net">CodeMirror</a>.</p>
       <div class="buttons"><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- The files programs write, kept in this browser (files.js). -->
+  <dialog id="filesDialog" class="files" aria-labelledby="filesHeading">
+    <form method="dialog">
+      <h2 id="filesHeading">Program files</h2>
+      <p>The files your programs write are kept in this browser, so they're still here next time.
+        Download one to keep a copy somewhere else.</p>
+      <table class="fileList"></table>
+      <p class="empty">No files yet. A program makes one with <code>OPEN #1: NAME "notes.txt", ACCESS OUTPUT</code>.</p>
+      <div class="buttons"><button type="button" class="upload">Upload…</button><span class="spacer"></span><button class="primary">Close</button></div>
     </form>
   </dialog>
 

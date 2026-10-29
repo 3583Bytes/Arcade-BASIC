@@ -166,4 +166,18 @@ public class CellSurfaceTests
         s.Text(P(2, 3), "ok", 1);                                  // and text back over the line
         Assert.Equal("──ok──────", Rows(s).Split('\n')[1]);
     }
+
+    [Fact]
+    public void TextOverAFilledAreaKeepsItsColourBehind()
+    {
+        var s = Surface();
+        s.Area([P(0, 2), P(5.9, 2), P(5.9, 4), P(0, 4)], 17);       // a filled card, rows 1 and 2
+        s.Text(P(1, 3.25), "card", 21);                            // text on its top row
+        s.Text(P(7, 3.25), "out", 21);                             // and beside it, on nothing
+        Assert.Equal("█card█ out", Rows(s).Split('\n')[1]);
+        Assert.Equal((21, 17), (s[1, 1].Color, s[1, 1].Back));
+        Assert.Equal(0, s[7, 1].Back);
+        s.Text(P(1, 3.25), "C", 1);                                // text over that text keeps it too
+        Assert.Equal(17, s[1, 1].Back);
+    }
 }

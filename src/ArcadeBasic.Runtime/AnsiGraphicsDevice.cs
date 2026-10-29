@@ -119,14 +119,17 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
         for (var cy = 0; cy < CanvasRows; cy++)
         {
             sb.Append(Esc).Append(cy + 1).Append(";1H");                   // row cy+1, col 1 (1-based)
-            var cur = -1;
+            int cur = -1, curBack = 0;
             for (var cx = 0; cx < _cols; cx++)
             {
                 var cell = _surface[cx, cy];
                 var color = cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color;
+                var back = cell.Kind == CellSurface.CellKind.Text ? cell.Back : 0;
                 if (color != cur) { sb.Append(Sgr(color)); cur = color; }
+                if (back != curBack) { sb.Append(SgrBack(back)); curBack = back; }
                 sb.Append(_surface.Glyph(cx, cy));
             }
+            if (curBack != 0) sb.Append(SgrBack(0));
             sb.Append(Esc).Append('K');                                    // clear to end of line
         }
 
@@ -167,6 +170,13 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
     private string Sgr(int color) => _palette.IsStandard(color)
         ? Esc + AnsiColor(color) + "m"
         : Esc + "38;5;" + _palette.NearestXterm(color) + "m";
+
+    /// <summary>The background behind text written over a filled area (0: the terminal's own).</summary>
+    private string SgrBack(int color) => color == 0
+        ? Esc + "49m"
+        : _palette.IsStandard(color)
+            ? Esc + (AnsiColor(color) + 10) + "m"
+            : Esc + "48;5;" + _palette.NearestXterm(color) + "m";
 
     // Palette index → ANSI SGR foreground code, approximating the IDE's 16-colour
     // terminal palette.

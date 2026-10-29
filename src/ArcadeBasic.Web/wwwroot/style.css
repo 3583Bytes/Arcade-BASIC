@@ -228,6 +228,20 @@ main {
 .items .item.picture i { color: var(--syn-str); }
 .items .item:hover { background: var(--hover); }
 .items .item.current, .items .item.chosen { background: var(--ed-sel); color: var(--ed-text); }
+dialog.files { width: min(520px, calc(100vw - 32px)); }
+dialog.files .fileList { margin-bottom: 10px; }
+dialog.files .fileList td { padding: 5px 8px 5px 0; vertical-align: middle; }
+dialog.files .fileList .name { font-family: var(--code-font); word-break: break-all; white-space: normal; }
+dialog.files .fileList .size { color: var(--muted); white-space: nowrap; }
+dialog.files .fileList .actions { text-align: right; white-space: nowrap; }
+dialog.files .fileList button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px;
+  margin-left: 6px; cursor: pointer;
+}
+dialog.files .fileList button.danger { border-color: var(--danger); color: var(--danger); }
+dialog.files .buttons .spacer { flex: 1; }
+dialog.files code { font-family: var(--code-font); font-size: 12px; }
+
 dialog.goTo { width: min(520px, calc(100vw - 32px)); padding: 10px; position: fixed; top: 12vh; margin: 0 auto; }
 dialog.goTo input { width: 100%; margin-bottom: 6px; }
 dialog.goTo .items { max-height: 50vh; overflow: auto; }

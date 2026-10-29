@@ -26,6 +26,11 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   File System Access API) a program stays linked to its file and Save writes
   straight back to it, even after a reload; Firefox and Safari open with a file
   picker and save by downloading. A file's line endings are kept as they were.
+- **Program files**: the files programs write (`OPEN #1: NAME "todo.board", ACCESS
+  OUTPUT`) are kept in the browser — the page copies what a running program writes
+  into local storage, and puts it back in the program's folder when it starts — so
+  the kanban board is still there tomorrow. *File → Program files…* lists them, to
+  download, upload or delete.
 - **Programs in several files**: `LIBRARY "file.bas"` names another file whose
   modules and procedures join the program; the IDE finds it among the open tabs
   (then the bundled examples — maze3d opens with its two). *File → Open a folder*
@@ -120,7 +125,7 @@ that accepts them; a plain static server just ignores the request): compute
 loops, then ten seconds each of `invaders`, `breakout` and `maze3d` for their
 frame rate and VM time per frame. Add `&snapshot` to include each game's last
 frame as a PNG. `?selftest=kanban` drags a card with real pointer events and
-reports the board; `?selftest=page` reports which program the address opened and
+reports the board, and what it saved; `?selftest=page` reports which program the address opened and
 the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
 tabs, Save (catching the download), line endings, links, sound timing and Web
@@ -149,6 +154,7 @@ npm ci && npm run build
 |---|---|
 | `Program.cs` | `[JSExport]` surface: check, load/compile, `Step`, output, input, frames, keys, stats, the error's line |
 | `Playground.Debug.cs` | the debugger's exports: breakpoints, pause and step, the variables by name (as JSON) |
+| `Playground.Files.cs` | programs' files: their folder, and what's changed for the page to keep |
 | `CanvasGraphicsDevice.cs` | §13 backend: records each frame as a flat command list the page replays |
 | `BrowserKeyboard.cs` | `IKeyboard` + `IKeyState` from DOM `keydown`/`keyup` |
 | `BrowserAudio.cs` | `IAudioDevice` + `IAudioQueue`: collects tones for the page |
@@ -161,5 +167,6 @@ npm ci && npm run build
 | `wwwroot/tunes.js` | ▶ and ♫ beside `PLAY` strings, and the tune editor |
 | `Playground.Tools.cs` | the tools' exports: a `PLAY` string's tones, the starting palette |
 | `wwwroot/outline.js` | a program's sections, blocks and subroutines: the outline, folding, Go to |
+| `wwwroot/files.js` | the files programs write, kept in the browser; File → Program files… |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

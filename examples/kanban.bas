@@ -1,151 +1,226 @@
-! kanban.bas — a three-lane Kanban board (To-Do / In-Progress / Done) drawn with  @category Graphics
-! the ECMA-116 §13 graphics module. Each lane is an outlined GRAPH LINES box with
-! a header divider; each card is word-wrapped GRAPH TEXT in an outlined box with
-! a GRAPH AREA stripe in the lane's colour; a thin filled GRAPH AREA bar along the
-! bottom of each lane gauges how full it is. The drawing surface is measured with
-! ASK DEVICE SIZE (re-checked as it runs, so the board follows a resized window)
-! and shown on the status line.
+! kanban.bas — a Kanban board for your own tasks (To Do, Doing, Done), drawn with the  @category Graphics
+! ECMA-116 §13 graphics module. It keeps itself in a file, kanban.board, saving after
+! every change and opening it again next time — so it can track real work. (In the
+! browser IDE the file stays in the browser: File → Program files.)
 !
-! With a mouse — the terminal IDE's Graphics tab (arcade-basic-ide) or the
-! browser playground — drag a card onto another lane to move it, and type
-! commands straight onto the board (GET MOUSE + INKEY$, an Arcade BASIC and a
-! Microsoft BASIC extension; see docs/conformance.md). Without one — a plain
-! terminal, or piped input — you type one command per line instead (LINE INPUT
-! reads the whole line, so card text may contain commas). Headless, you can
-! render a frame to SVG by piping commands and finishing with Q:
-!   printf 'A Ship the demo 1\nM 5 2\nD 6\nQ\n' | \
+! With a mouse — the browser IDE, the terminal IDE's Graphics tab, Unity — click a card
+! to select it (it opens up to show all its text), double-click it to edit it, and drag
+! it to another lane or up and down; "+ add a card" adds one. The keyboard works too:
+! the arrow keys select, Enter edits, Space picks the card up (then the arrows move it),
+! Delete deletes. GET MOUSE and INKEY$ are an Arcade BASIC and a Microsoft BASIC
+! extension (see docs/conformance.md).
+!
+! Without a mouse — a plain terminal, or piped input — type one command per line (LINE
+! INPUT reads the whole line, so a card may have commas in it); H lists them. Headless,
+! you can render a frame to SVG by piping commands and finishing with Q (it saves
+! kanban.board in the current folder as it goes):
+!   printf 'A Ship the demo\nM 5 doing\nQ\n' | \
 !     dotnet run --project src/ArcadeBasic.Cli -- run examples/kanban.bas --svg board.svg
 !
-! A status line on the board echoes each command's result.
+! Cards keep their number (#7) for good — the commands use it — and a lane keeps its
+! cards in the order you put them. The screen is laid out in text rows (one window unit
+! per row, from ASK DEVICE SIZE), so it looks the same in a terminal and in a window.
 
 OPTION BASE 1
 
-! Pad (or truncate) S$ to exactly W columns so card text fits its lane.
-FUNCTION PAD$(S$, W)
-  PAD$ = LEFT$(S$ & REPEAT$(" ", W), W)
+! S$ cut to W columns, ending in "…" when it doesn't fit.
+FUNCTION FIT$(S$, W)
+  IF W < 1 THEN
+    FIT$ = ""
+  ELSEIF LEN(S$) <= W THEN
+    FIT$ = S$
+  ELSE
+    FIT$ = LEFT$(S$, W - 1) & "…"
+  END IF
 END FUNCTION
 
-FUNCTION LANENAME$(LN)
-  IF LN = 1 THEN
-    LANENAME$ = "To-Do"
-  ELSEIF LN = 2 THEN
-    LANENAME$ = "In-Progress"
+FUNCTION LANENAME$(N)
+  IF N = 1 THEN
+    LANENAME$ = "To Do"
+  ELSEIF N = 2 THEN
+    LANENAME$ = "Doing"
   ELSE
     LANENAME$ = "Done"
   END IF
 END FUNCTION
 
-! Parse S$ as a non-negative integer, or -1 if it isn't all digits.
+! S$ as a whole number of digits, or -1 if it isn't one.
 FUNCTION TONUM(S$)
-  IF S$ = "" THEN
+  IF S$ = "" OR LEN(S$) > 6 THEN
     TONUM = -1
   ELSE
-    LET R = 0
-    LET OK = 1
-    FOR I = 1 TO LEN(S$)
-      LET D$ = MID$(S$, I, 1)
-      IF D$ >= "0" AND D$ <= "9" THEN
-        LET R = R * 10 + (ORD(D$) - ORD("0"))
+    LET TNR = 0
+    LET TNOK = 1
+    FOR TNI = 1 TO LEN(S$)
+      LET TND$ = MID$(S$, TNI, 1)
+      IF TND$ >= "0" AND TND$ <= "9" THEN
+        LET TNR = TNR * 10 + (ORD(TND$) - ORD("0"))
       ELSE
-        LET OK = 0
+        LET TNOK = 0
       END IF
-    NEXT I
-    IF OK = 1 THEN
-      TONUM = R
+    NEXT TNI
+    IF TNOK = 1 THEN
+      TONUM = TNR
     ELSE
       TONUM = -1
     END IF
   END IF
 END FUNCTION
 
-LET MAXT = 64
-LET BOARD$ = "kanban"
-DIM TASK$(64)
-DIM LANE(64)
+! ---- the cards: in lane order (a lane shows its cards in the order they come here) ----
+LET MAXT = 200
+DIM TASK$(200)
+DIM LANE(200)
+DIM ID(200)             ! each card's number, for good
+DIM TTASK$(200)         ! staging for an all-or-nothing load
+DIM TLANE(200)
+DIM TID(200)
+DIM CTOPY(200)          ! where each card was drawn: its top and bottom rows (-1: not drawn)
+DIM CBOTY(200)
 DIM TOK$(64)
 DIM WRAP$(64)
-DIM TTASK$(64)          ! staging buffers for an atomic LOAD
-DIM TLANE(64)
 LET NT = 0
+LET NEXTID = 1
+LET BOARD$ = "kanban"   ! the board's file is BOARD$ & ".board"
 
-! Per-lane drawing metadata (set once). Colors are graphics palette indices.
+! ---- the lanes ----
 DIM LNAME$(3)
-DIM LTITLE$(3)          ! the header: name and card count
-DIM LCOL(3)
-DIM LX(3)
-LET LNAME$(1) = "TO-DO"
-LET LNAME$(2) = "IN-PROGRESS"
+DIM LACC(3)             ! each lane's colour
+DIM LX(3)               ! its left edge
+DIM TOP(3)              ! how many of its cards are scrolled out of sight above
+DIM UPAT(3)             ! the rows of its "▲ n more" and "▼ n more" (-1: not shown)
+DIM DNAT(3)
+DIM LCNT(3)             ! how many cards it has
+DIM VISN(3)             ! and how many showed
+LET LNAME$(1) = "TO DO"
+LET LNAME$(2) = "DOING"
 LET LNAME$(3) = "DONE"
-LET LCOL(1) = 4         ! blue
-LET LCOL(2) = 7         ! yellow
-LET LCOL(3) = 3         ! green
-! Lane 1 starts at column 0, aligned with the input field. The lanes are laid out
-! to the screen's width each frame (see 9000); these are the 80-column values.
-LET LX(1) = 0
-LET LX(2) = 27
-LET LX(3) = 54
-LET COLW = 25           ! lane width, in canvas cells (window units)
-LET CARDW = COLW - 4    ! card text width, inside the card box
 
-! scratch / argument variables
-LET RAW$ = ""
-LET MSG$ = "Waiting for command"
-LET NTOK = 0
-LET CMD$ = ""
-LET T$ = ""
-LET NM$ = ""
-LET N = 0
-LET L = 0
-LET HAVET = 0
-LET HAVEL = 0
-LET HAVEN = 0
-LET HAVENM = 0
-LET HELP = 0            ! 1 while the help screen is showing
-LET WRAPN = 0
-LET WRAPW = 0
-LET WRAPSRC$ = ""
-LET WLINE$ = ""
-LET WWORD$ = ""
-LET WS$ = ""
-LET LANELBL$ = ""
+! ---- colours: SET COLOR MIX makes a calm palette from 16 up (0-15 stay as they are) ----
+LET CPANEL = 16         ! a lane
+LET CPANEL2 = 17        ! the lane a card is being dragged over
+LET CCARD = 18
+LET CHOVER = 19         ! the card under the pointer
+LET CSEL = 20           ! the selected card
+LET CTEXT = 21
+LET CDIM = 22
+LET CBAR = 23           ! the title bar
+LET CWARN = 24
+LET LACC(1) = 25
+LET LACC(2) = 26
+LET LACC(3) = 27
+SET COLOR MIX (CPANEL) 0.09, 0.10, 0.13
+SET COLOR MIX (CPANEL2) 0.13, 0.15, 0.20
+SET COLOR MIX (CCARD) 0.17, 0.18, 0.23
+SET COLOR MIX (CHOVER) 0.23, 0.25, 0.32
+SET COLOR MIX (CSEL) 0.20, 0.29, 0.48
+SET COLOR MIX (CTEXT) 0.90, 0.92, 0.95
+SET COLOR MIX (CDIM) 0.50, 0.54, 0.61
+SET COLOR MIX (CBAR) 0.05, 0.06, 0.08
+SET COLOR MIX (CWARN) 1.00, 0.45, 0.42
+SET COLOR MIX (LACC(1)) 0.40, 0.62, 1.00      ! blue
+SET COLOR MIX (LACC(2)) 1.00, 0.76, 0.30      ! amber
+SET COLOR MIX (LACC(3)) 0.40, 0.82, 0.50      ! green
+
+! ---- keys, as INKEY$ spells them ----
+LET KENTER$ = CHR$(13)
+LET KESC$ = CHR$(27)
+LET KBS$ = CHR$(8)
+LET KBS2$ = CHR$(127)
+LET KUP$ = CHR$(0) & CHR$(72)
+LET KDN$ = CHR$(0) & CHR$(80)
+LET KLT$ = CHR$(0) & CHR$(75)
+LET KRT$ = CHR$(0) & CHR$(77)
+LET KHOME$ = CHR$(0) & CHR$(71)
+LET KEND$ = CHR$(0) & CHR$(79)
+LET KDEL$ = CHR$(0) & CHR$(83)
+
+! ---- what's going on ----
+LET MSG$ = ""
+LET HASMOUSE = 0        ! 1 when there's a mouse (and keys arrive one at a time)
+LET HELP = 0            ! 1 while the help screen shows
 LET QUIT = 0
-
-! Mouse mode: where each drawn card sits (window rows; CTOPY = -1 when it isn't
-! drawn), the card being dragged and the lane under it, and the command being typed.
-DIM CTOPY(64)
-DIM CBOTY(64)
-LET HASMOUSE = 0        ! 1 when there's a mouse
-LET DRAG = 0            ! card # being dragged, or 0
-LET HOVERLN = 0         ! lane under the pointer while dragging
-LET GRABDX = 0          ! where on the card it was grabbed
+LET DIRTY = 1           ! the screen needs drawing again
+LET FRAME = 0
+LET SELID = 0           ! the selected card's number, or 0
+LET KEEPSEL = 0         ! scroll so the selected card shows, next time it's drawn
+LET CARRY = 0           ! 1 while the selected card is picked up (Space)
+LET CONFIRMID = 0       ! the card Delete was pressed on once
+LET HOVERID = 0         ! the card under the pointer
+LET HOVERK = 0          ! what else is under it (a HITKIND) and in which lane
+LET HOVERL = 0
+LET PRESSID = 0         ! the card pressed on, and where
+LET PRESSX = 0
+LET PRESSY = 0
+LET DRAGGING = 0        ! 1 once it's being dragged
+LET GRABDX = 0
 LET GRABDY = 0
-LET HIT = 0
-LET HOVERCARD = 0       ! card under the pointer (highlighted), or 0
-LET CARDLINE = 1        ! arguments to 9300 (draw a card)
-LET CARDSTRIPE = 1
-LET CARDTEXT = 1
-LET CARDFILL = 0
+LET DROPLN = 0          ! where it would land: the lane, the card it would go before (0: the end)
+LET DROPBEFORE = 0
 LET MARKY = 0
+LET LASTID = 0          ! the last card clicked, and when (for a double-click)
+LET LASTF = -100
+LET MODE = 0            ! typing: 1 a command, 2 a card's new text, 3 a new card
 LET TYPED$ = ""
-LET DIRTY = 1           ! the board needs redrawing
+LET CURP = 0            ! the cursor, after this many characters
+LET EDITID = 0
+LET ADDLN = 1
+LET NOSAVE = 0          ! 1 when the file there couldn't be read: don't save over it
+LET SAVEOK = 0
+LET LOADOK = 0
+LET LOADBAD = 0
+LET BADD0 = 0           ! the buttons: from x to x
+LET BADD1 = 0
+LET BHELP0 = 0
+LET BHELP1 = 0
+LET RAW$ = ""
+LET NTOK = 0
+LET HITKIND = 0         ! 9700: 1 a card, 2 "▲ more", 3 "▼ more", 4 "+ add a card", 5 + Add, 6 Help
+LET HITID = 0
+LET HITLN = 0
+LET FILE$ = BOARD$ & ".board"
+LET DAY$ = ""
+LET FI = 0              ! 8950's answer: a card's index
+LET LV = 0              ! 9140's: a lane
+LET NAMEOK = 0          ! 9130's and 9120's: a board's name is fine, and there's one by that name
+LET EXISTS = 0
+LET WRAPN = 0           ! 9200's: how many lines
+! the layout, measured as the board is drawn (9000)
+LET DEVW = 0
+LET DEVH = 0
+LET COLW = 25
+LET HEADY = 22
+LET CTOP = 20
 
-! --- seed the board from DATA (terminator is a lone "*") ----------------
-DO
-  READ T$
-  IF T$ = "*" THEN EXIT DO
-  READ L
-  LET NT = NT + 1
-  LET TASK$(NT) = T$
-  LET LANE(NT) = L
-LOOP
+GOSUB 9990              ! today's date, for the title bar
+GOSUB 9900              ! open kanban.board, if it's there
+IF LOADOK = 1 THEN
+  LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+ELSEIF LOADBAD = 1 THEN
+  LET NOSAVE = 1
+  LET MSG$ = FILE$ & " isn't a board this can read, so it won't save over it (S name saves elsewhere)"
+ELSE
+  ! A first run: a few cards that show how it works.
+  DO
+    READ T$
+    IF T$ = "*" THEN EXIT DO
+    READ L
+    LET NT = NT + 1
+    LET TASK$(NT) = T$
+    LET LANE(NT) = L
+    LET ID(NT) = NEXTID
+    LET NEXTID = NEXTID + 1
+  LOOP
+  LET MSG$ = "A new board: it saves itself to " & FILE$ & " as you go"
+END IF
 
-DATA "Design the board layout", 3
-DATA "Write the PAD$ helper",    3
-DATA "Render three lanes",       2
-DATA "Wire up the add command",  2
-DATA "Wire up move + delete",    1
-DATA "Persist board to a file",  1
-DATA "Add this to the README",   1
+DATA "Click a card to select it, double-click to edit it", 1
+DATA "Drag cards to another lane, or up and down", 1
+DATA "Add one with + add a card, or type A Buy milk", 1
+DATA "Select a card and press Delete (twice) to remove it", 1
+DATA "Arrow keys select; Space picks a card up, arrows move it", 2
+DATA "The board saves itself as you go", 3
+DATA "Press H for help", 3
 DATA "*", 0
 
 ! --- main loop ----------------------------------------------------------
@@ -159,66 +234,26 @@ IF MS < 0 THEN
     IF QUIT = 1 THEN EXIT DO
   LOOP
 ELSE
-  ! A mouse: drag cards between lanes; type commands onto the board.
+  ! A mouse, and keys one at a time.
   LET HASMOUSE = 1
   GOSUB 9010                       ! the board is up before the first key or click
   LET DIRTY = 0
   DO
-    ! keys: build the command line; Enter runs it, Esc clears it
     DO
       LET K$ = INKEY$
       IF K$ = "" THEN EXIT DO
-      IF K$ = CHR$(13) THEN
-        LET RAW$ = TYPED$
-        LET TYPED$ = ""
-        GOSUB 9150
-      ELSEIF K$ = CHR$(8) OR K$ = CHR$(127) THEN
-        IF LEN(TYPED$) > 0 THEN LET TYPED$ = LEFT$(TYPED$, LEN(TYPED$) - 1)
-      ELSEIF K$ = CHR$(27) THEN
-        LET TYPED$ = ""
-      ELSEIF LEN(K$) = 1 AND K$ >= " " THEN
-        LET TYPED$ = TYPED$ & K$
-      END IF
+      GOSUB 8000                   ! a key
       LET DIRTY = 1
+      IF QUIT = 1 THEN EXIT DO
     LOOP
     IF QUIT = 1 THEN EXIT DO
-    ! mouse: 2 = pressed, 1 = held, 3 = released (0 = up)
-    GET MOUSE MX, MY, MS
-    IF MS = 2 THEN
-      IF HELP = 1 THEN
-        LET HELP = 0                 ! a click leaves the help screen
-        LET DIRTY = 1
-      ELSE
-        GOSUB 9700                   ! card under the pointer -> HIT
-        IF HIT > 0 THEN
-          LET DRAG = HIT
-          LET GRABDX = MX - LX(LANE(HIT))
-          LET GRABDY = MY - CTOPY(HIT)
-          LET HOVERLN = LANE(HIT)
-          LET MSG$ = "Moving #" & LTRIM$(STR$(HIT)) & " — drop it on a lane"
-          LET DIRTY = 1
-        END IF
-      END IF
-    ELSEIF MS = 1 AND DRAG > 0 THEN
-      GOSUB 9750                     ! lane under the pointer -> HOVERLN
-      LET DIRTY = 1                  ! the card follows the pointer
-    ELSEIF DRAG = 0 AND HELP = 0 THEN
-      GOSUB 9700                     ! the card under the pointer gets highlighted
-      IF HIT <> HOVERCARD THEN
-        LET HOVERCARD = HIT
-        LET DIRTY = 1
-      END IF
-    ELSEIF MS = 3 AND DRAG > 0 THEN
-      GOSUB 9750
-      IF HOVERLN > 0 AND HOVERLN <> LANE(DRAG) THEN
-        LET LANE(DRAG) = HOVERLN
-        LET MSG$ = "Moved #" & LTRIM$(STR$(DRAG)) & " to " & LANENAME$(HOVERLN)
-      ELSE
-        LET MSG$ = "Left #" & LTRIM$(STR$(DRAG)) & " where it was"
-      END IF
-      LET DRAG = 0
-      LET DIRTY = 1
+    IF DIRTY = 1 THEN              ! (so the mouse finds the cards where they are now)
+      GOSUB 9010
+      LET DIRTY = 0
     END IF
+    ! the mouse: 2 = pressed, 1 = held, 3 = released, 0 = up
+    GET MOUSE MX, MY, MS
+    GOSUB 8500
     ! the screen changed size (a resized window): lay the board out again
     ASK DEVICE SIZE NEWW, NEWH, DEVU$
     IF NEWW <> DEVW OR NEWH <> DEVH THEN LET DIRTY = 1
@@ -226,20 +261,510 @@ ELSE
       GOSUB 9010
       LET DIRTY = 0
     END IF
-    SLEEP 0.03                       ! ~30 frames/second (also presents the frame)
+    LET FRAME = FRAME + 1
+    SLEEP 0.03                     ! ~30 frames/second (also presents the frame)
   LOOP
 END IF
 END
 
 ! ======================================================================
-! 9010  DRAW — the help screen or the board.
+! 8000  A KEY (K$), with a mouse: typing, or the selected card.
+! ======================================================================
+8000 REM ---- a key ----
+IF HELP = 1 THEN
+  LET HELP = 0                     ! any key leaves the help screen
+  RETURN
+END IF
+IF CONFIRMID > 0 THEN              ! Delete was pressed once: again deletes
+  IF K$ = KDEL$ OR K$ = KBS$ OR K$ = KBS2$ THEN
+    LET DELID = CONFIRMID
+    LET CONFIRMID = 0
+    GOSUB 8900
+    RETURN
+  END IF
+  LET CONFIRMID = 0
+  LET MSG$ = "Kept it"
+  IF K$ = KESC$ THEN RETURN
+END IF
+IF MODE > 0 THEN
+  GOSUB 8100                       ! the line being typed
+  RETURN
+END IF
+IF K$ = KENTER$ OR K$ = CHR$(10) THEN
+  IF CARRY = 1 THEN
+    LET CARRY = 0
+    LET MSG$ = "Put it down"
+  ELSE
+    GOSUB 8050                     ! edit the selected card
+  END IF
+ELSEIF K$ = " " THEN
+  IF SELID > 0 THEN
+    LET CARRY = 1 - CARRY
+    IF CARRY = 1 THEN
+      LET MSG$ = "Picked up #" & LTRIM$(STR$(SELID)) & ": the arrow keys move it"
+    ELSE
+      LET MSG$ = "Put it down"
+    END IF
+  END IF
+ELSEIF K$ = KESC$ THEN
+  IF CARRY = 1 THEN
+    LET CARRY = 0
+  ELSE
+    LET SELID = 0
+  END IF
+ELSEIF K$ = KDEL$ OR K$ = KBS$ OR K$ = KBS2$ THEN
+  IF SELID > 0 THEN
+    LET FID = SELID
+    GOSUB 8950
+    LET CONFIRMID = SELID
+    LET CARRY = 0
+    LET MSG$ = "Delete #" & LTRIM$(STR$(SELID)) & " """ & FIT$(TASK$(FI), 28) & """? Press Delete again"
+  END IF
+ELSEIF K$ = KUP$ OR K$ = KDN$ OR K$ = KLT$ OR K$ = KRT$ THEN
+  GOSUB 8200                       ! select, or move the card picked up
+ELSEIF LEN(K$) = 1 AND K$ >= " " AND K$ <> KBS2$ THEN
+  LET MODE = 1                     ! the start of a command
+  LET TYPED$ = K$
+  LET CURP = 1
+  LET CARRY = 0
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8050  EDIT the selected card: its text goes on the typing line.
+! ----------------------------------------------------------------------
+8050 REM ---- edit the selected card ----
+IF SELID = 0 THEN
+  LET MSG$ = "Select a card first: click it, or press an arrow key"
+  RETURN
+END IF
+LET FID = SELID
+GOSUB 8950
+IF FI = 0 THEN
+  LET MSG$ = "There's no card #" & LTRIM$(STR$(SELID))
+  LET SELID = 0
+  RETURN
+END IF
+LET MODE = 2
+LET EDITID = SELID
+LET TYPED$ = TASK$(FI)
+LET CURP = LEN(TYPED$)
+LET CARRY = 0
+RETURN
+
+! ----------------------------------------------------------------------
+! 8100  TYPING — K$ edits TYPED$ at the cursor; Enter finishes, Esc cancels.
+! ----------------------------------------------------------------------
+8100 REM ---- typing ----
+IF K$ = KENTER$ OR K$ = CHR$(10) THEN
+  GOSUB 8150
+ELSEIF K$ = KESC$ THEN
+  IF MODE = 2 THEN
+    LET MSG$ = "Left #" & LTRIM$(STR$(EDITID)) & " as it was"
+  ELSE
+    LET MSG$ = "Cancelled"
+  END IF
+  LET MODE = 0
+  LET TYPED$ = ""
+ELSEIF K$ = KBS$ OR K$ = KBS2$ THEN
+  IF CURP > 0 THEN
+    LET TYPED$ = LEFT$(TYPED$, CURP - 1) & MID$(TYPED$, CURP + 1)
+    LET CURP = CURP - 1
+  END IF
+  IF MODE = 1 AND TYPED$ = "" THEN LET MODE = 0   ! a command rubbed out
+ELSEIF K$ = KDEL$ THEN
+  IF CURP < LEN(TYPED$) THEN LET TYPED$ = LEFT$(TYPED$, CURP) & MID$(TYPED$, CURP + 2)
+ELSEIF K$ = KLT$ THEN
+  IF CURP > 0 THEN LET CURP = CURP - 1
+ELSEIF K$ = KRT$ THEN
+  IF CURP < LEN(TYPED$) THEN LET CURP = CURP + 1
+ELSEIF K$ = KHOME$ THEN
+  LET CURP = 0
+ELSEIF K$ = KEND$ THEN
+  LET CURP = LEN(TYPED$)
+ELSEIF LEN(K$) = 1 AND K$ >= " " AND K$ <> KBS2$ AND LEN(TYPED$) < 300 THEN
+  LET TYPED$ = LEFT$(TYPED$, CURP) & K$ & MID$(TYPED$, CURP + 1)
+  LET CURP = CURP + 1
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8150  FINISH TYPING — run the command, change the card, or add the new one.
+! ----------------------------------------------------------------------
+8150 REM ---- finish typing ----
+LET TXT$ = LTRIM$(RTRIM$(TYPED$))
+LET WASMODE = MODE
+LET MODE = 0
+LET TYPED$ = ""
+IF WASMODE = 1 THEN
+  LET RAW$ = TXT$
+  GOSUB 9150
+ELSEIF WASMODE = 2 THEN
+  LET EI = EDITID
+  LET ET$ = TXT$
+  GOSUB 9450
+ELSEIF TXT$ = "" THEN
+  LET MSG$ = "Nothing to add"
+ELSE
+  LET AT$ = TXT$
+  LET AL = ADDLN
+  GOSUB 9400
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8200  ARROWS — select the card above, below or beside; or, picked up, move it.
+! ----------------------------------------------------------------------
+8200 REM ---- arrow keys ----
+IF SELID = 0 THEN                  ! nothing selected: the first card there is
+  FOR ALN = 1 TO 3
+    FOR AI = 1 TO NT
+      IF SELID = 0 AND LANE(AI) = ALN THEN LET SELID = ID(AI)
+    NEXT AI
+  NEXT ALN
+  LET KEEPSEL = 1
+  RETURN
+END IF
+LET FID = SELID
+GOSUB 8950
+IF FI = 0 THEN RETURN
+LET SL = LANE(FI)
+! its place in the lane (SK, from 1), and the cards before and after it
+LET SK = 1
+LET PREVI = 0
+LET NEXTI = 0
+LET NEXT2I = 0
+FOR AI = 1 TO NT
+  IF LANE(AI) = SL THEN
+    IF AI < FI THEN
+      LET SK = SK + 1
+      LET PREVI = AI
+    ELSEIF AI > FI THEN
+      IF NEXTI = 0 THEN
+        LET NEXTI = AI
+      ELSEIF NEXT2I = 0 THEN
+        LET NEXT2I = AI
+      END IF
+    END IF
+  END IF
+NEXT AI
+IF K$ = KUP$ OR K$ = KDN$ THEN
+  IF CARRY = 1 THEN
+    IF K$ = KUP$ AND PREVI > 0 THEN
+      LET SRC = FI
+      LET NL = SL
+      LET BEFORE = PREVI
+      GOSUB 8800
+      LET MSG$ = "Moved #" & LTRIM$(STR$(SELID)) & " up"
+      GOSUB 9790
+    ELSEIF K$ = KDN$ AND NEXTI > 0 THEN
+      LET SRC = FI
+      LET NL = SL
+      LET BEFORE = NEXT2I          ! (0: to the end of the lane)
+      GOSUB 8800
+      LET MSG$ = "Moved #" & LTRIM$(STR$(SELID)) & " down"
+      GOSUB 9790
+    END IF
+  ELSE
+    IF K$ = KUP$ AND PREVI > 0 THEN LET SELID = ID(PREVI)
+    IF K$ = KDN$ AND NEXTI > 0 THEN LET SELID = ID(NEXTI)
+  END IF
+ELSE
+  ! left or right: the lane next door (just selecting, the next one with cards)
+  LET STEPD = 1
+  IF K$ = KLT$ THEN LET STEPD = -1
+  LET TL2 = SL + STEPD
+  IF CARRY = 0 THEN
+    DO WHILE TL2 >= 1 AND TL2 <= 3
+      LET TC = 0
+      FOR AI = 1 TO NT
+        IF LANE(AI) = TL2 THEN LET TC = TC + 1
+      NEXT AI
+      IF TC > 0 THEN EXIT DO
+      LET TL2 = TL2 + STEPD
+    LOOP
+  END IF
+  IF TL2 >= 1 AND TL2 <= 3 THEN
+    ! the card in the same place there (TGT), or its last (TLAST)
+    LET TK = 0
+    LET TGT = 0
+    LET TLAST = 0
+    FOR AI = 1 TO NT
+      IF LANE(AI) = TL2 AND AI <> FI THEN
+        LET TK = TK + 1
+        IF TK = SK THEN LET TGT = AI
+        LET TLAST = AI
+      END IF
+    NEXT AI
+    IF CARRY = 1 THEN
+      LET SRC = FI
+      LET NL = TL2
+      LET BEFORE = TGT
+      GOSUB 8800
+      LET MSG$ = "Moved #" & LTRIM$(STR$(SELID)) & " to " & LANENAME$(TL2)
+      GOSUB 9790
+    ELSE
+      IF TGT = 0 THEN LET TGT = TLAST
+      IF TGT > 0 THEN LET SELID = ID(TGT)
+    END IF
+  END IF
+END IF
+LET KEEPSEL = 1
+RETURN
+
+! ======================================================================
+! 8500  THE MOUSE (MX, MY, MS): select, drag and drop, the buttons, scrolling.
+! ======================================================================
+8500 REM ---- the mouse ----
+IF HELP = 1 THEN
+  IF MS = 2 THEN
+    LET HELP = 0                   ! a click leaves the help screen
+    LET DIRTY = 1
+  END IF
+  RETURN
+END IF
+IF MS = 2 THEN
+  GOSUB 9700                       ! what's under the pointer
+  IF CONFIRMID > 0 THEN
+    LET CONFIRMID = 0
+    LET MSG$ = "Kept it"
+  END IF
+  IF MODE >= 2 THEN GOSUB 8150     ! clicking away keeps what was typed
+  IF HITKIND = 1 THEN
+    IF HITID = LASTID AND FRAME - LASTF <= 12 THEN
+      LET SELID = HITID            ! a double-click: edit it
+      GOSUB 8050
+      LET LASTID = 0
+    ELSE
+      LET SELID = HITID
+      LET CARRY = 0
+      LET PRESSID = HITID          ! it may be the start of a drag
+      LET PRESSX = MX
+      LET PRESSY = MY
+      LET DRAGGING = 0
+      LET LASTID = HITID
+      LET LASTF = FRAME
+    END IF
+  ELSEIF HITKIND = 2 THEN
+    LET TOP(HITLN) = MAX(0, TOP(HITLN) - MAX(1, VISN(HITLN) - 1))
+  ELSEIF HITKIND = 3 THEN
+    LET TOP(HITLN) = TOP(HITLN) + MAX(1, VISN(HITLN) - 1)
+  ELSEIF HITKIND = 4 OR HITKIND = 5 THEN
+    LET ADDLN = HITLN              ! "+ add a card" in a lane, or + Add
+    IF HITKIND = 5 THEN
+      LET ADDLN = 1
+      LET FID = SELID
+      GOSUB 8950
+      IF FI > 0 THEN LET ADDLN = LANE(FI)
+    END IF
+    LET MODE = 3
+    LET TYPED$ = ""
+    LET CURP = 0
+    LET CARRY = 0
+  ELSEIF HITKIND = 6 THEN
+    LET HELP = 1
+  ELSE
+    LET SELID = 0                  ! a click on nothing
+    LET CARRY = 0
+  END IF
+  LET DIRTY = 1
+ELSEIF MS = 1 THEN
+  IF PRESSID > 0 THEN
+    IF DRAGGING = 0 AND (ABS(MX - PRESSX) >= 1 OR ABS(MY - PRESSY) >= 0.6) THEN
+      LET FID = PRESSID
+      GOSUB 8950
+      IF FI > 0 AND CTOPY(FI) >= 0 THEN
+        LET DRAGGING = 1
+        LET GRABDX = PRESSX - LX(LANE(FI))
+        LET GRABDY = PRESSY - CTOPY(FI)
+        LET MSG$ = "Moving #" & LTRIM$(STR$(PRESSID)) & ": drop it in a lane"
+      END IF
+    END IF
+    IF DRAGGING = 1 THEN
+      GOSUB 8700                   ! where it would land
+      LET DIRTY = 1
+    END IF
+  END IF
+ELSEIF MS = 3 THEN
+  IF PRESSID > 0 AND DRAGGING = 1 THEN
+    GOSUB 8700
+    LET FID = PRESSID
+    GOSUB 8950
+    IF DROPLN > 0 AND FI > 0 THEN
+      LET OLDLN = LANE(FI)
+      LET SRC = FI
+      LET NL = DROPLN
+      LET BEFORE = DROPBEFORE
+      GOSUB 8800
+      IF NL <> OLDLN THEN
+        LET MSG$ = "Moved #" & LTRIM$(STR$(PRESSID)) & " to " & LANENAME$(NL)
+      ELSE
+        LET MSG$ = "Moved #" & LTRIM$(STR$(PRESSID))
+      END IF
+      GOSUB 9790
+    ELSE
+      LET MSG$ = "Left #" & LTRIM$(STR$(PRESSID)) & " where it was"
+    END IF
+    LET SELID = PRESSID
+    LET KEEPSEL = 1
+  END IF
+  LET PRESSID = 0
+  LET DRAGGING = 0
+  LET DIRTY = 1
+ELSEIF MS = 0 THEN
+  GOSUB 9700                       ! hover: the card, or the button, under the pointer
+  IF HITKIND <> 1 THEN LET HITID = 0
+  IF HITID <> HOVERID OR HITKIND <> HOVERK OR HITLN <> HOVERL THEN
+    LET HOVERID = HITID
+    LET HOVERK = HITKIND
+    LET HOVERL = HITLN
+    LET DIRTY = 1
+  END IF
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8700  DROP — where the card being dragged would land, from the pointer:
+!        the lane (DROPLN, 0 for none), the card it would go before (DROPBEFORE,
+!        0 for the end of the lane), and the row edge to mark it at (MARKY).
+! ----------------------------------------------------------------------
+8700 REM ---- where it would land ----
+LET DROPLN = 0
+LET DROPBEFORE = 0
+FOR DI = 1 TO 3
+  IF MX >= LX(DI) - 1 AND MX <= LX(DI) + COLW + 1 AND MY >= 1 AND MY <= HEADY + 1 THEN LET DROPLN = DI
+NEXT DI
+IF DROPLN = 0 THEN RETURN
+LET MARKY = -1
+LET LASTVIS = 0
+FOR DI = 1 TO NT
+  IF LANE(DI) = DROPLN AND ID(DI) <> PRESSID AND DROPBEFORE = 0 THEN
+    IF CTOPY(DI) >= 0 THEN
+      IF MY > (CTOPY(DI) + CBOTY(DI) + 1) / 2 THEN
+        LET DROPBEFORE = DI        ! above this card's middle: before it
+        LET MARKY = CTOPY(DI) + 1
+      ELSE
+        LET LASTVIS = DI
+      END IF
+    ELSEIF LASTVIS > 0 THEN
+      LET DROPBEFORE = DI          ! below what shows: after the last card shown
+    END IF
+  END IF
+NEXT DI
+IF MARKY < 0 THEN
+  IF LASTVIS > 0 THEN
+    LET MARKY = CBOTY(LASTVIS)
+  ELSE
+    LET MARKY = CTOP + 1
+  END IF
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8800  MOVE card SRC (an index) to lane NL, before card BEFORE (0: at the
+!        end of the lane). The cards after it shift to close the gap.
+! ----------------------------------------------------------------------
+8800 REM ---- move a card ----
+IF BEFORE = SRC THEN
+  LET LANE(SRC) = NL
+  RETURN
+END IF
+LET MVT$ = TASK$(SRC)
+LET MVID = ID(SRC)
+FOR MI = SRC TO NT - 1
+  LET TASK$(MI) = TASK$(MI + 1)
+  LET LANE(MI) = LANE(MI + 1)
+  LET ID(MI) = ID(MI + 1)
+NEXT MI
+LET NT = NT - 1
+IF BEFORE > SRC THEN LET BEFORE = BEFORE - 1
+LET POSN = NT + 1                  ! the end: last in its lane
+IF BEFORE > 0 THEN LET POSN = BEFORE
+FOR MI = NT TO POSN STEP -1
+  LET TASK$(MI + 1) = TASK$(MI)
+  LET LANE(MI + 1) = LANE(MI)
+  LET ID(MI + 1) = ID(MI)
+NEXT MI
+LET TASK$(POSN) = MVT$
+LET LANE(POSN) = NL
+LET ID(POSN) = MVID
+LET NT = NT + 1
+RETURN
+
+! ----------------------------------------------------------------------
+! 8900  DELETE card number DELID (the selection moves to its neighbour).
+! ----------------------------------------------------------------------
+8900 REM ---- delete a card ----
+LET FID = DELID
+GOSUB 8950
+IF FI = 0 THEN
+  LET MSG$ = "There's no card #" & LTRIM$(STR$(DELID))
+  RETURN
+END IF
+LET DT$ = TASK$(FI)
+LET DL = LANE(FI)
+LET NEXTSEL = 0
+FOR DI = NT TO FI + 1 STEP -1      ! the next card in its lane ...
+  IF LANE(DI) = DL THEN LET NEXTSEL = ID(DI)
+NEXT DI
+IF NEXTSEL = 0 THEN                ! ... or the one before it
+  FOR DI = 1 TO FI - 1
+    IF LANE(DI) = DL THEN LET NEXTSEL = ID(DI)
+  NEXT DI
+END IF
+FOR DI = FI TO NT - 1
+  LET TASK$(DI) = TASK$(DI + 1)
+  LET LANE(DI) = LANE(DI + 1)
+  LET ID(DI) = ID(DI + 1)
+NEXT DI
+LET NT = NT - 1
+IF SELID = DELID THEN LET SELID = NEXTSEL
+IF HASMOUSE = 0 THEN LET SELID = 0
+LET KEEPSEL = 1
+LET MSG$ = "Deleted #" & LTRIM$(STR$(DELID)) & " " & FIT$(DT$, 40)
+GOSUB 9790
+RETURN
+
+! ----------------------------------------------------------------------
+! 8950  FIND card number FID: its index FI (0 if there's no such card).
+! ----------------------------------------------------------------------
+8950 REM ---- find a card ----
+LET FI = 0
+FOR FJ = 1 TO NT
+  IF ID(FJ) = FID THEN LET FI = FJ
+NEXT FJ
+RETURN
+
+! ======================================================================
+! 9010  DRAW — the help screen or the board, scrolled (KEEPSEL) so the
+!        selected card shows.
 ! ======================================================================
 9010 REM ---- draw ----
 IF HELP = 1 THEN
   GOSUB 9050
-ELSE
-  GOSUB 9000
+  RETURN
 END IF
+IF KEEPSEL = 1 AND SELID > 0 THEN
+  LET KEEPSEL = 0
+  LET FID = SELID
+  GOSUB 8950
+  IF FI > 0 THEN
+    LET KL = LANE(FI)
+    LET KK = 0                     ! its place in its lane, from 0
+    FOR KI = 1 TO FI - 1
+      IF LANE(KI) = KL THEN LET KK = KK + 1
+    NEXT KI
+    IF KK < TOP(KL) THEN LET TOP(KL) = KK
+    FOR KTRY = 1 TO MAXT
+      GOSUB 9000
+      IF CTOPY(FI) >= 0 THEN EXIT FOR
+      LET TOP(KL) = TOP(KL) + 1    ! below what shows: scroll down a card
+    NEXT KTRY
+    RETURN
+  END IF
+END IF
+LET KEEPSEL = 0
+GOSUB 9000
 RETURN
 
 ! ======================================================================
@@ -256,295 +781,163 @@ IF COLS < 60 THEN LET COLS = 60    ! floor: any narrower and the board is clippe
 RETURN
 
 ! ======================================================================
-! 9150  EXECUTE — run the command in RAW$ (sets QUIT on Q).
+! 9150  COMMAND — run the one in RAW$ (typed on the board, or one per line).
 ! ======================================================================
-9150 REM ---- execute command ----
-GOSUB 9100                         ! tokenize RAW$ into TOK$(), NTOK
-IF NTOK > 0 THEN
-  LET CMD$ = UCASE$(LEFT$(TOK$(1), 1))
-  LET HELP = 0                     ! any command leaves the help screen
-  IF CMD$ = "Q" THEN
-    LET QUIT = 1
-  ELSEIF CMD$ = "A" THEN
-    GOSUB 9350                     ! parse inline add args
-    GOSUB 9400
-  ELSEIF CMD$ = "M" THEN
-    LET HAVEN = 0
-    LET HAVEL = 0
-    IF NTOK >= 2 THEN
-      LET N = TONUM(TOK$(2))
-      LET HAVEN = 1
+9150 REM ---- a command ----
+GOSUB 9100                         ! RAW$ → TOK$(1 .. NTOK)
+LET HELP = 0
+IF NTOK = 0 THEN RETURN            ! an empty line leaves the help screen
+LET CMD$ = UCASE$(TOK$(1))
+IF CMD$ = "Q" OR CMD$ = "QUIT" THEN
+  LET QUIT = 1
+ELSEIF CMD$ = "A" OR CMD$ = "ADD" THEN
+  ! A text: to To Do ("Call mum at 3" is all text: M moves it on)
+  LET AL = 1
+  LET AT$ = ""
+  FOR CI = 2 TO NTOK
+    IF AT$ = "" THEN
+      LET AT$ = TOK$(CI)
+    ELSE
+      LET AT$ = AT$ & " " & TOK$(CI)
     END IF
-    IF NTOK >= 3 THEN
-      LET L = TONUM(TOK$(3))
-      LET HAVEL = 1
-    END IF
-    GOSUB 9500
-  ELSEIF CMD$ = "D" THEN
-    LET HAVEN = 0
-    IF NTOK >= 2 THEN
-      LET N = TONUM(TOK$(2))
-      LET HAVEN = 1
-    END IF
-    GOSUB 9600
-  ELSEIF CMD$ = "N" THEN
-    IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
-    LET NT = 0
-    LET MSG$ = "New empty board: " & BOARD$
-  ELSEIF CMD$ = "S" THEN
-    IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
-    GOSUB 9800
-  ELSEIF CMD$ = "L" THEN
-    IF NTOK >= 2 THEN LET BOARD$ = TOK$(2)
-    GOSUB 9900
-  ELSEIF CMD$ = "H" THEN
-    LET HELP = 1
+  NEXT CI
+  IF AT$ = "" THEN
+    LET MSG$ = "A needs the card's text, e.g. A Buy milk"
   ELSE
-    LET MSG$ = "Unknown command '" & TOK$(1) & "' — H for help"
+    GOSUB 9400
   END IF
-ELSE
-  LET HELP = 0                     ! empty Enter dismisses the help screen
-END IF
-RETURN
-
-! ======================================================================
-! 9000  RENDER — three outlined lanes (wrapped, bulleted cards + fill gauge)
-!                above three fixed footer lines: quick help, status, prompt.
-!                The window height tracks the device's cell rows (one line per
-!                row) so the footer never overlaps however the canvas is scaled.
-! ======================================================================
-9000 REM ---- graphics render ----
-CLEAR
-ASK DEVICE SIZE DEVW, DEVH, DEVU$  ! re-query each frame so layout follows resizes
-LET ROWS = 24                      ! fallback when the device size is unknown
-IF DEVH >= 4 THEN LET ROWS = INT(DEVH / 4)
-IF ROWS > 40 THEN LET ROWS = 40    ! cap so one line stays about one row
-IF ROWS < 12 THEN LET ROWS = 12    ! floor (degenerate guard)
-GOSUB 9060                         ! COLS: one window unit per column
-SET WINDOW 0, COLS, 0, ROWS
-! Three lanes two columns apart, filling the width (80 columns: at 0, 27 and 54,
-! 25 wide). Whole columns, so lines and text land on cells as the rows do.
-LET COLW = INT((COLS - 5) / 3)
-LET CARDW = COLW - 4
-FOR LN = 1 TO 3
-  LET LX(LN) = (LN - 1) * (COLW + 2)
-NEXT LN
-! Vertical geometry, one text row per window unit. Text sits on its row's baseline
-! (the whole number); a line runs through the middle of its own row (+0.3), so in
-! a terminal a line and text never share a character cell. Top to bottom:
-!   ROWS-1 lane border   ROWS-2 title   ROWS-3 divider   ROWS-4 .. 5 cards
-!   4 "+N more"   3 gauge   2 lane border   1 quick help   0 status
-LET BTOP = ROWS - 0.7              ! lane box top border
-LET BTITLE = ROWS - 2              ! lane title
-LET BDIV = ROWS - 2.7              ! divider under the header
-LET CTOP = ROWS - 4                ! the first card's top border row
-LET CBOT = 5                       ! the lowest row a card's bottom border may use
-LET BBOT = 2.3                     ! lane box bottom border
-FOR I = 1 TO NT
-  LET CTOPY(I) = -1                ! not drawn (yet)
-NEXT I
-! Lane headers. The right-aligned "lane n" labels (the lane argument for
-! "M n lane") go in only if every title leaves a space before its label.
-LET SHOWLBL = 1
-FOR LN = 1 TO 3
-  LET CNT = 0
-  FOR I = 1 TO NT
-    IF LANE(I) = LN THEN LET CNT = CNT + 1
-  NEXT I
-  LET LTITLE$(LN) = LNAME$(LN) & " (" & LTRIM$(STR$(CNT)) & ")"
-  IF 2 + LEN(LTITLE$(LN)) + 1 > COLW - 7 THEN LET SHOWLBL = 0
-NEXT LN
-FOR LN = 1 TO 3
-  LET X0 = LX(LN)
-  LET X1 = X0 + COLW
-  ! lane box (solid outline)
-  SET LINE STYLE 1
-  SET LINE COLOR LCOL(LN)
-  GRAPH LINES: X0, BBOT; X1, BBOT; X1, BTOP; X0, BTOP; X0, BBOT
-  ! divider under the header
-  GRAPH LINES: X0, BDIV; X1, BDIV
-  ! header title with the lane's card count, and its "lane n" label
-  SET TEXT COLOR LCOL(LN)
-  GRAPH TEXT, AT X0 + 2, BTITLE: LTITLE$(LN)
-  LET LANELBL$ = "lane " & LTRIM$(STR$(LN))
-  IF SHOWLBL = 1 THEN GRAPH TEXT, AT X1 - LEN(LANELBL$) - 1, BTITLE: LANELBL$
-  ! cards: word-wrapped boxes, top-down; stop when the lane fills up.
-  ! A card is its top border row, its text rows and its bottom border row.
-  LET ROW = CTOP - 1                 ! the next card's first text line
-  LET USED = 0
-  LET HIDDEN = 0
-  LET FULL = 0
-  FOR I = 1 TO NT
-    IF LANE(I) = LN THEN
-      IF FULL = 1 THEN
-        LET HIDDEN = HIDDEN + 1
-      ELSE
-        LET WRAPSRC$ = "#" & LTRIM$(STR$(I)) & " " & TASK$(I)
-        LET WRAPW = CARDW
-        GOSUB 9200                   ! wrap WRAPSRC$ into WRAP$(1..WRAPN)
-        IF ROW - WRAPN < CBOT THEN
-          LET FULL = 1
-          LET HIDDEN = HIDDEN + 1
-        ELSE
-          LET CTOPY(I) = ROW         ! remember where it is, for clicks
-          LET CBOTY(I) = ROW - WRAPN + 1
-          LET Y0 = ROW
-          LET CARDSTRIPE = LCOL(LN)
-          LET CARDFILL = 0
-          IF I = DRAG THEN
-            LET CARDLINE = 8         ! the card being dragged, greyed
-            LET CARDTEXT = 8
-          ELSEIF I = HOVERCARD THEN
-            LET CARDLINE = 1         ! the card under the pointer
-            LET CARDTEXT = 1
-          ELSE
-            LET CARDLINE = LCOL(LN)
-            LET CARDTEXT = 1
-          END IF
-          GOSUB 9300                 ! draw the card box
-          LET ROW = ROW - WRAPN - 2
-          LET USED = USED + WRAPN + 2
+ELSEIF CMD$ = "M" OR CMD$ = "MOVE" THEN
+  ! M n lane [place]
+  IF NTOK < 3 THEN
+    LET MSG$ = "M needs a card and a lane, e.g. M 4 done (or M 4 3; M 4 2 1 puts it at the top)"
+  ELSE
+    LET FID = TONUM(TOK$(2))
+    GOSUB 8950
+    LET LT$ = TOK$(3)
+    GOSUB 9140
+    LET MP = 0
+    IF NTOK >= 4 THEN LET MP = TONUM(TOK$(4))
+    IF FI = 0 THEN
+      LET MSG$ = "There's no card #" & TOK$(2)
+    ELSEIF LV = 0 THEN
+      LET MSG$ = "Which lane? 1 or todo, 2 or doing, 3 or done"
+    ELSE
+      LET BEFORE = 0               ! the card now in that place there, if any
+      LET TK = 0
+      FOR CI = 1 TO NT
+        IF LANE(CI) = LV AND CI <> FI THEN
+          LET TK = TK + 1
+          IF TK = MP THEN LET BEFORE = CI
         END IF
+      NEXT CI
+      LET MVNUM = ID(FI)
+      LET SRC = FI
+      LET NL = LV
+      GOSUB 8800
+      LET MSG$ = "Moved #" & LTRIM$(STR$(MVNUM)) & " to " & LANENAME$(LV)
+      IF HASMOUSE = 1 THEN
+        LET SELID = MVNUM
+        LET KEEPSEL = 1
+      END IF
+      GOSUB 9790
+    END IF
+  END IF
+ELSEIF CMD$ = "E" OR CMD$ = "EDIT" THEN
+  ! E n text (E n alone, with a mouse: edit it on the typing line)
+  LET EI = -1
+  IF NTOK >= 2 THEN LET EI = TONUM(TOK$(2))
+  LET ET$ = ""
+  FOR CI = 3 TO NTOK
+    IF ET$ = "" THEN
+      LET ET$ = TOK$(CI)
+    ELSE
+      LET ET$ = ET$ & " " & TOK$(CI)
+    END IF
+  NEXT CI
+  IF NTOK = 2 AND HASMOUSE = 1 AND EI > 0 THEN
+    LET SELID = EI
+    LET KEEPSEL = 1
+    GOSUB 8050
+  ELSEIF NTOK < 3 THEN
+    LET MSG$ = "E needs a card and its new text, e.g. E 4 Buy oat milk"
+  ELSE
+    GOSUB 9450
+  END IF
+ELSEIF CMD$ = "D" OR CMD$ = "DEL" OR CMD$ = "DELETE" THEN
+  IF NTOK < 2 THEN
+    LET MSG$ = "D needs a card's number, e.g. D 4"
+  ELSE
+    LET DELID = TONUM(TOK$(2))
+    GOSUB 8900
+  END IF
+ELSEIF CMD$ = "N" OR CMD$ = "NEW" THEN
+  IF NTOK < 2 THEN
+    LET MSG$ = "N needs a name for the new board, e.g. N work"
+  ELSE
+    LET BNAME$ = TOK$(2)
+    GOSUB 9130
+    IF NAMEOK = 1 THEN
+      GOSUB 9120
+      IF EXISTS = 1 THEN
+        LET MSG$ = "There's already a " & BNAME$ & ".board: L " & BNAME$ & " opens it"
+      ELSE
+        LET BOARD$ = BNAME$
+        LET NT = 0
+        LET NEXTID = 1
+        LET SELID = 0
+        LET NOSAVE = 0
+        FOR CI = 1 TO 3
+          LET TOP(CI) = 0
+        NEXT CI
+        LET MSG$ = "A new board, " & BOARD$ & ".board"
+        GOSUB 9790
       END IF
     END IF
-  NEXT I
-  ! "+K more" when cards didn't fit (just above the gauge)
-  IF HIDDEN > 0 THEN
-    SET TEXT COLOR 8
-    GRAPH TEXT, AT X0 + 2.4, CBOT - 1: "+" & LTRIM$(STR$(HIDDEN)) & " more"
-    SET TEXT COLOR 1
   END IF
-  ! fill gauge: thin filled bar, width proportional to rows used, sitting just
-  ! inside the bottom border
-  IF USED > 0 THEN
-    LET GW = (COLW - 2) * USED / (CTOP - CBOT + 1)
-    IF GW > COLW - 2 THEN LET GW = COLW - 2
-    SET AREA COLOR LCOL(LN)
-    GRAPH AREA: X0 + 1, 3.05; X0 + 1 + GW, 3.05; X0 + 1 + GW, 3.55; X0 + 1, 3.55
+ELSEIF CMD$ = "S" OR CMD$ = "SAVE" THEN
+  LET NAMEOK = 1
+  IF NTOK >= 2 THEN
+    LET BNAME$ = TOK$(2)
+    GOSUB 9130
+    IF NAMEOK = 1 THEN LET BOARD$ = BNAME$
   END IF
-NEXT LN
-! --- dragging: outline the lane under the pointer, mark where the card will
-!     land in it (cards keep their # order), and draw the card at the pointer --
-IF DRAG > 0 THEN
-  SET LINE COLOR 1
-  IF HOVERLN > 0 AND HOVERLN <> LANE(DRAG) THEN
-    LET X0 = LX(HOVERLN)               ! the target lane's border turns white
-    LET X1 = X0 + COLW
-    GRAPH LINES: X0, BBOT; X1, BBOT; X1, BTOP; X0, BTOP; X0, BBOT
-    LET MARKY = CTOP + 0.3             ! on the first card's top border ...
-    FOR I = 1 TO DRAG - 1
-      IF LANE(I) = HOVERLN AND CTOPY(I) >= 0 THEN LET MARKY = CBOTY(I) - 0.7   ! ... or the bottom border of the last card before it
-    NEXT I
-    GRAPH LINES: X0 + 1, MARKY; X1 - 1, MARKY
+  IF NAMEOK = 1 THEN
+    GOSUB 9800
+    IF SAVEOK = 1 THEN
+      LET NOSAVE = 0
+      LET MSG$ = "Saved " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+    ELSE
+      LET MSG$ = "Couldn't save " & FILE$
+    END IF
   END IF
-  LET WRAPSRC$ = "#" & LTRIM$(STR$(DRAG)) & " " & TASK$(DRAG)
-  LET WRAPW = CARDW
-  GOSUB 9200
-  LET X0 = MX - GRABDX               ! the card's lane edge, as grabbed
-  LET Y0 = MY - GRABDY               ! its first line
-  LET CARDLINE = 1
-  LET CARDSTRIPE = LCOL(LANE(DRAG))
-  LET CARDTEXT = 1
-  LET CARDFILL = 1                   ! opaque, over whatever it's dragged across
-  GOSUB 9300
-END IF
-! --- footer: two fixed lines, left-aligned to the first lane. Without a mouse
-!     the live input field below the canvas is the prompt line; with one, the
-!     command being typed shows on the status line -----------------------------
-LET FX = LX(1)
-SET TEXT COLOR 6
-! (Text sits on its baseline: 0.2 above the row keeps descenders off the edge of
-! a fine-grained screen, and lands in the same terminal row.)
-IF HASMOUSE = 1 THEN
-  GRAPH TEXT, AT FX, 1.2: "Drag cards · A add  M move  D delete  N new  S save  L load  H help  Q quit"
+ELSEIF CMD$ = "L" OR CMD$ = "LOAD" OR CMD$ = "OPEN" THEN
+  IF NTOK < 2 THEN
+    LET MSG$ = "L needs the board's name, e.g. L work (for work.board)"
+  ELSE
+    LET BNAME$ = TOK$(2)
+    GOSUB 9130
+    IF NAMEOK = 1 THEN
+      LET OLDBOARD$ = BOARD$
+      LET BOARD$ = BNAME$
+      GOSUB 9900
+      IF LOADOK = 1 THEN
+        LET NOSAVE = 0
+        LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+      ELSE
+        IF LOADBAD = 1 THEN
+          LET MSG$ = FILE$ & " isn't a board this can read"
+        ELSE
+          LET MSG$ = "There's no " & FILE$ & " (N " & BNAME$ & " starts one)"
+        END IF
+        LET BOARD$ = OLDBOARD$
+        LET FILE$ = BOARD$ & ".board"
+      END IF
+    END IF
+  END IF
+ELSEIF CMD$ = "H" OR CMD$ = "HELP" OR CMD$ = "?" THEN
+  LET HELP = 1
 ELSE
-  GRAPH TEXT, AT FX, 1.2: "A add  M move  D delete  N new  S save  L load  H help  Q quit"
-END IF
-SET TEXT COLOR 7
-IF TYPED$ <> "" THEN
-  GRAPH TEXT, AT FX, 0.2: "> " & TYPED$ & "_"
-ELSEIF HASMOUSE = 1 THEN
-  GRAPH TEXT, AT FX, 0.2: "Status: " & MSG$ & "   (type a command)"
-ELSE
-  GRAPH TEXT, AT FX, 0.2: "Status: " & MSG$
-END IF
-RETURN
-
-! ======================================================================
-! 9050  HELP — a full-screen command reference. The window height is set
-!              to the device's cell rows (one line per row) so the text
-!              never overlaps however the canvas is scaled.
-! ======================================================================
-9050 REM ---- help screen ----
-CLEAR
-ASK DEVICE SIZE DEVW, DEVH, DEVU$
-LET HROWS = 24                     ! fallback when the device size is unknown
-IF DEVH >= 4 THEN LET HROWS = INT(DEVH / 4)
-IF HROWS > 32 THEN LET HROWS = 32  ! cap so a huge surface keeps 1 line ~ 1 row
-IF HROWS < 10 THEN LET HROWS = 10  ! (never exceed the real rows: no overlap)
-GOSUB 9060
-SET WINDOW 0, COLS, 0, HROWS
-SET LINE STYLE 1
-SET LINE COLOR 6
-GRAPH LINES: 1, 1.3; COLS - 2, 1.3; COLS - 2, HROWS - 0.7; 1, HROWS - 0.7; 1, 1.3
-! It takes 19 lines (22 rows with the box); on a shorter screen leave out the
-! notes, then the blank lines, then the lanes, so what's left fits.
-LET HNOTES = 0
-IF HROWS >= 22 THEN LET HNOTES = 1
-LET HGAP = 0
-IF HROWS >= 18 THEN LET HGAP = 1
-LET HLANES = 0
-IF HROWS >= 16 THEN LET HLANES = 1
-LET Y = HROWS - 2
-SET TEXT COLOR 7
-GRAPH TEXT, AT 4, Y: "KANBAN BOARD  —  HELP"
-LET Y = Y - 1 - HGAP
-SET TEXT COLOR 6
-GRAPH TEXT, AT 3, Y: "COMMANDS"
-LET Y = Y - 1
-SET TEXT COLOR 1
-GRAPH TEXT, AT 4, Y: "A <text> <lane>  add a card to lane 1-3  (A Buy milk 1)"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "M <n> <lane>     move card #n to a lane    (M 4 2)"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "D <n>            delete card #n (others renumber)"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "N [name]         start a new empty board"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "S [name]         save the board to <name>.board"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "L [name]         load a board from <name>.board"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "H                show this help screen"
-LET Y = Y - 1
-GRAPH TEXT, AT 4, Y: "Q                quit"
-LET Y = Y - 1
-IF HLANES = 1 THEN
-  SET TEXT COLOR 6
-  GRAPH TEXT, AT 3, Y: "LANES"
-  LET Y = Y - 1
-  SET TEXT COLOR 1
-  GRAPH TEXT, AT 4, Y: "1 = To-Do      2 = In-Progress      3 = Done"
-  LET Y = Y - 1
-END IF
-IF HNOTES = 1 THEN
-  SET TEXT COLOR 6
-  GRAPH TEXT, AT 3, Y: "NOTES"
-  LET Y = Y - 1
-  SET TEXT COLOR 1
-  GRAPH TEXT, AT 4, Y: "Long card text wraps; a full lane shows ""+N more""."
-  LET Y = Y - 1
-  GRAPH TEXT, AT 4, Y: "Add a trailing 1-3 to set the lane:  A Buy milk 1"
-  LET Y = Y - 1
-  GRAPH TEXT, AT 4, Y: "With a mouse, drag a card onto another lane to move it."
-  LET Y = Y - 1
-END IF
-LET Y = Y - HGAP
-SET TEXT COLOR 8
-IF HASMOUSE = 1 THEN
-  GRAPH TEXT, AT 4, Y: "Press Enter or click to return to the board."
-ELSE
-  GRAPH TEXT, AT 4, Y: "Press Enter to return to the board."
+  LET MSG$ = "There's no command " & TOK$(1) & ": H lists them"
 END IF
 RETURN
 
@@ -555,21 +948,425 @@ RETURN
 LET NTOK = 0
 LET CUR$ = ""
 LET TL$ = LTRIM$(RTRIM$(RAW$))
-FOR I = 1 TO LEN(TL$)
-  LET CH$ = MID$(TL$, I, 1)
+FOR TI = 1 TO LEN(TL$)
+  LET CH$ = MID$(TL$, TI, 1)
   IF CH$ = " " THEN
-    IF CUR$ <> "" THEN
+    IF CUR$ <> "" AND NTOK < 64 THEN
       LET NTOK = NTOK + 1
       LET TOK$(NTOK) = CUR$
-      LET CUR$ = ""
     END IF
+    LET CUR$ = ""
   ELSE
     LET CUR$ = CUR$ & CH$
   END IF
-NEXT I
-IF CUR$ <> "" THEN
+NEXT TI
+IF CUR$ <> "" AND NTOK < 64 THEN
   LET NTOK = NTOK + 1
   LET TOK$(NTOK) = CUR$
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 9120  EXISTS — is there a NAME$.board already?
+! 9130  NAME — is NAME$ a board's name: letters, digits, - and _ (NAMEOK)?
+! 9140  LANE — the lane LT$ names, by number or name (LV; 0 if none).
+! ----------------------------------------------------------------------
+9120 REM ---- is there a board called BNAME$? ----
+LET EXISTS = 0
+WHEN EXCEPTION IN
+  OPEN #2: NAME BNAME$ & ".board", ACCESS INPUT
+  LET EXISTS = 1
+  CLOSE #2
+USE
+  CLOSE #2
+END WHEN
+RETURN
+
+9130 REM ---- a board's name ----
+IF LEN(BNAME$) > 6 THEN
+  IF UCASE$(RIGHT$(BNAME$, 6)) = ".BOARD" THEN LET BNAME$ = LEFT$(BNAME$, LEN(BNAME$) - 6)
+END IF
+LET NAMEOK = 1
+IF BNAME$ = "" OR LEN(BNAME$) > 40 THEN LET NAMEOK = 0
+FOR NI = 1 TO LEN(BNAME$)
+  LET NC$ = UCASE$(MID$(BNAME$, NI, 1))
+  IF (NC$ < "A" OR NC$ > "Z") AND (NC$ < "0" OR NC$ > "9") AND NC$ <> "-" AND NC$ <> "_" THEN LET NAMEOK = 0
+NEXT NI
+IF NAMEOK = 0 THEN LET MSG$ = "A board's name is letters, digits, - and _ (like work or home-jobs)"
+RETURN
+
+9140 REM ---- which lane ----
+LET LV = 0
+LET LU$ = UCASE$(LT$)
+IF LU$ = "1" OR LU$ = "TODO" OR LU$ = "TO-DO" OR LU$ = "TO" THEN LET LV = 1
+IF LU$ = "2" OR LU$ = "DOING" OR LU$ = "IN-PROGRESS" OR LU$ = "PROGRESS" THEN LET LV = 2
+IF LU$ = "3" OR LU$ = "DONE" THEN LET LV = 3
+RETURN
+
+! ======================================================================
+! 9400  ADD a card AT$ to the end of lane AL.
+! 9450  EDIT card number EI: its text becomes ET$.
+! ======================================================================
+9400 REM ---- add a card ----
+IF NT >= MAXT THEN
+  LET MSG$ = "The board is full: " & LTRIM$(STR$(MAXT)) & " cards"
+  RETURN
+END IF
+LET NT = NT + 1
+LET TASK$(NT) = AT$
+LET LANE(NT) = AL
+LET ID(NT) = NEXTID
+LET NEXTID = NEXTID + 1
+IF HASMOUSE = 1 THEN
+  LET SELID = ID(NT)
+  LET KEEPSEL = 1
+END IF
+LET MSG$ = "Added #" & LTRIM$(STR$(ID(NT))) & " to " & LANENAME$(AL)
+GOSUB 9790
+RETURN
+
+9450 REM ---- edit a card ----
+LET FID = EI
+GOSUB 8950
+IF FI = 0 THEN
+  LET MSG$ = "There's no card #" & LTRIM$(STR$(EI))
+ELSEIF ET$ = "" THEN
+  LET MSG$ = "A card needs some text (D " & LTRIM$(STR$(EI)) & " deletes it)"
+ELSEIF ET$ = TASK$(FI) THEN
+  LET MSG$ = "Left #" & LTRIM$(STR$(EI)) & " as it was"
+ELSE
+  LET TASK$(FI) = ET$
+  LET MSG$ = "Changed #" & LTRIM$(STR$(EI))
+  GOSUB 9790
+END IF
+RETURN
+
+! ======================================================================
+! 9000  RENDER — a title bar; three lanes of one-line cards (the selected one
+!       opened up to show all its text), each scrolled by TOP(); then a row of
+!       buttons and hints, and the status (or what's being typed).
+!       One text row per window unit, row 0 at the bottom:
+!         ROWS-1 title   ROWS-2 lane names   ROWS-3 their rule   ROWS-4 .. CBOT cards
+!         2 "+ add a card"   1 buttons and hints   0 status
+! ======================================================================
+9000 REM ---- render ----
+CLEAR
+ASK DEVICE SIZE DEVW, DEVH, DEVU$  ! re-measured every frame: the board follows a resize
+LET ROWS = 24                      ! when the device's size is unknown
+IF DEVH >= 4 THEN LET ROWS = INT(DEVH / 4)
+IF ROWS > 40 THEN LET ROWS = 40    ! a huge surface still gets readable rows
+IF ROWS < 14 THEN LET ROWS = 14
+GOSUB 9060                         ! COLS: one window unit per column
+SET WINDOW 0, COLS, 0, ROWS
+LET COLW = INT((COLS - 4) / 3)     ! three lanes, two columns apart
+FOR LN = 1 TO 3
+  LET LX(LN) = (LN - 1) * (COLW + 2)
+NEXT LN
+LET TITLEY = ROWS - 1
+LET HEADY = ROWS - 2
+LET CTOP = ROWS - 4
+LET CBOT = 3
+IF HASMOUSE = 0 THEN LET CBOT = 2  ! (no "+ add a card" row)
+LET ADDY = 2
+LET HINTY = 1
+LET STATY = 0
+FOR I = 1 TO NT
+  LET CTOPY(I) = -1
+NEXT I
+
+! --- the title bar: the board, and today ---------------------------------
+LET NDONE = 0
+FOR I = 1 TO NT
+  IF LANE(I) = 3 THEN LET NDONE = NDONE + 1
+NEXT I
+SET AREA COLOR CBAR
+GRAPH AREA: 0, TITLEY; COLS, TITLEY; COLS, ROWS; 0, ROWS
+SET TEXT COLOR CTEXT
+GRAPH TEXT, AT 1, TITLEY + 0.25: "KANBAN"
+SET TEXT COLOR CDIM
+GRAPH TEXT, AT 9, TITLEY + 0.25: FIT$(BOARD$ & ".board", COLS - 46)
+LET R$ = DAY$ & "  ·  " & LTRIM$(STR$(NDONE)) & " of " & LTRIM$(STR$(NT)) & " done"
+GRAPH TEXT, AT COLS - 1 - LEN(R$), TITLEY + 0.25: R$
+
+! --- the lanes ------------------------------------------------------------
+FOR LN = 1 TO 3
+  LET X0 = LX(LN)
+  LET X1 = X0 + COLW
+  LET LCNT(LN) = 0
+  FOR I = 1 TO NT
+    IF LANE(I) = LN THEN LET LCNT(LN) = LCNT(LN) + 1
+  NEXT I
+  IF DRAGGING = 1 AND DROPLN = LN THEN
+    SET AREA COLOR CPANEL2
+  ELSE
+    SET AREA COLOR CPANEL
+  END IF
+  ! (from just under its rule, so on a character screen the rule stays a thin line;
+  ! edges just inside whole columns, so a character screen fills whole cells)
+  GRAPH AREA: X0, 1.95; X1 - 0.02, 1.95; X1 - 0.02, HEADY - 1; X0, HEADY - 1
+  ! its name and how many cards it has, over a thin rule in its colour
+  SET TEXT COLOR LACC(LN)
+  GRAPH TEXT, AT X0 + 1, HEADY + 0.25: LNAME$(LN)
+  SET TEXT COLOR CDIM
+  GRAPH TEXT, AT X0 + 2 + LEN(LNAME$(LN)), HEADY + 0.25: LTRIM$(STR$(LCNT(LN)))
+  SET AREA COLOR LACC(LN)
+  GRAPH AREA: X0 + 1, HEADY - 0.32; X1 - 1, HEADY - 0.32; X1 - 1, HEADY - 0.17; X0 + 1, HEADY - 0.17
+  ! its cards, from TOP(LN) on, while they fit
+  LET SKIPN = TOP(LN)
+  IF SKIPN > LCNT(LN) - 1 THEN LET SKIPN = MAX(0, LCNT(LN) - 1)
+  LET TOP(LN) = SKIPN
+  LET UPAT(LN) = -1
+  LET DNAT(LN) = -1
+  LET VISN(LN) = 0
+  LET ROW = CTOP
+  IF SKIPN > 0 THEN
+    SET TEXT COLOR CDIM
+    IF HOVERK = 2 AND HOVERL = LN THEN SET TEXT COLOR CTEXT
+    GRAPH TEXT, AT X0 + 2, ROW + 0.25: "▲ " & LTRIM$(STR$(SKIPN)) & " more"
+    LET UPAT(LN) = ROW
+    LET ROW = ROW - 1
+  END IF
+  LET K = 0
+  LET FULL = 0
+  LET HID = 0
+  FOR I = 1 TO NT
+    IF LANE(I) = LN THEN
+      LET K = K + 1
+      IF K > SKIPN AND FULL = 0 THEN
+        ! its lines: one, or — selected — all of its text; and its number, when it's
+        ! needed (typing commands) or pointed at, else the room goes to the text
+        LET CIDS$ = ""
+        IF HASMOUSE = 0 OR ID(I) = SELID OR ID(I) = HOVERID THEN LET CIDS$ = LTRIM$(STR$(ID(I)))
+        LET TW = COLW - 3
+        IF CIDS$ <> "" THEN LET TW = COLW - 4 - LEN(CIDS$)
+        IF ID(I) = SELID AND DRAGGING = 0 THEN
+          LET WRAPSRC$ = TASK$(I)
+          LET WRAPW = TW
+          GOSUB 9200
+          LET MAXH = CTOP - CBOT - 1
+          IF WRAPN > MAXH THEN
+            LET WRAPN = MAXH
+            LET WRAP$(MAXH) = FIT$(WRAP$(MAXH) & "…", TW)
+          END IF
+          LET H = WRAPN
+        ELSE
+          LET WRAP$(1) = FIT$(TASK$(I), TW)
+          LET H = 1
+        END IF
+        LET NEED = H
+        IF K < LCNT(LN) THEN LET NEED = H + 1   ! (room for "▼ n more" after it)
+        IF NEED > ROW - CBOT + 1 THEN
+          LET FULL = 1
+          LET HID = LCNT(LN) - K + 1
+        ELSE
+          ! draw it
+          LET CXL = X0
+          LET CROW = ROW
+          LET CH = H
+          LET CSTRIPE = LACC(LN)
+          LET CTCOL = CTEXT
+          IF LN = 3 THEN LET CTCOL = CDIM    ! done: quieter
+          LET CFILL = CCARD
+          IF ID(I) = HOVERID THEN LET CFILL = CHOVER
+          IF ID(I) = SELID THEN
+            LET CFILL = CSEL
+            LET CTCOL = CTEXT
+            IF CARRY = 1 THEN LET CSTRIPE = CTEXT
+          END IF
+          IF ID(I) = PRESSID AND DRAGGING = 1 THEN   ! the card being dragged, left behind
+            LET CFILL = CPANEL2
+            LET CTCOL = CDIM
+          END IF
+          GOSUB 9300
+          LET CTOPY(I) = ROW
+          LET CBOTY(I) = ROW - H + 1
+          LET VISN(LN) = VISN(LN) + 1
+          LET ROW = ROW - H
+        END IF
+      END IF
+    END IF
+  NEXT I
+  IF HID > 0 THEN
+    SET TEXT COLOR CDIM
+    IF HOVERK = 3 AND HOVERL = LN THEN SET TEXT COLOR CTEXT
+    GRAPH TEXT, AT X0 + 2, CBOT + 0.25: "▼ " & LTRIM$(STR$(HID)) & " more"
+    LET DNAT(LN) = CBOT
+  END IF
+  IF HASMOUSE = 1 THEN
+    SET TEXT COLOR CDIM
+    IF HOVERK = 4 AND HOVERL = LN THEN SET TEXT COLOR CTEXT
+    IF MODE = 3 AND ADDLN = LN THEN SET TEXT COLOR LACC(LN)
+    GRAPH TEXT, AT X0 + 2, ADDY + 0.25: "+ add a card"
+  END IF
+NEXT LN
+
+! --- dragging: mark where it would land, and draw it at the pointer --------
+IF DRAGGING = 1 THEN
+  IF DROPLN > 0 THEN
+    SET AREA COLOR LACC(DROPLN)
+    GRAPH AREA: LX(DROPLN) + 1, MARKY - 0.07; LX(DROPLN) + COLW - 1, MARKY - 0.07; LX(DROPLN) + COLW - 1, MARKY + 0.07; LX(DROPLN) + 1, MARKY + 0.07
+    SET TEXT COLOR LACC(DROPLN)
+    GRAPH TEXT, AT LX(DROPLN), MARKY - 0.35: "▶"
+  END IF
+  LET FID = PRESSID
+  GOSUB 8950
+  IF FI > 0 THEN
+    LET CIDS$ = LTRIM$(STR$(ID(FI)))
+    LET WRAP$(1) = FIT$(TASK$(FI), COLW - 4 - LEN(CIDS$))
+    LET CXL = MX - GRABDX
+    LET CROW = MY - GRABDY
+    LET CH = 1
+    LET CFILL = CSEL
+    LET CSTRIPE = LACC(LANE(FI))
+    LET CTCOL = CTEXT
+    GOSUB 9300
+  END IF
+END IF
+
+! --- the buttons and hints, then the status (or what's being typed) --------
+IF MODE = 1 THEN
+  LET HINT$ = "Enter runs the command  ·  Esc cancels  ·  H Enter: help"
+ELSEIF MODE = 2 THEN
+  LET HINT$ = "Enter saves  ·  Esc cancels  ·  ← → Home End move the cursor"
+ELSEIF MODE = 3 THEN
+  LET HINT$ = "Type the card, then Enter  ·  Esc cancels"
+ELSEIF CONFIRMID > 0 THEN
+  LET HINT$ = "Delete again deletes it  ·  any other key keeps it"
+ELSEIF CARRY = 1 THEN
+  LET HINT$ = "↑ ↓ ← → move the card  ·  Space or Enter puts it down"
+ELSEIF SELID > 0 THEN
+  LET HINT$ = "Enter edit  ·  Space pick up  ·  Del delete  ·  ↑ ↓ ← → select"
+ELSE
+  LET HINT$ = "Click a card, or ↑ ↓ ← →  ·  or type a command (H: help)"
+END IF
+IF HASMOUSE = 1 THEN
+  LET BADD0 = 0.5
+  LET BADD1 = 6.5
+  LET BHELP0 = 7.5
+  LET BHELP1 = 12.5
+  SET AREA COLOR CCARD
+  IF HOVERK = 5 THEN SET AREA COLOR CHOVER
+  GRAPH AREA: BADD0, HINTY + 0.08; BADD1, HINTY + 0.08; BADD1, HINTY + 0.92; BADD0, HINTY + 0.92
+  SET AREA COLOR CCARD
+  IF HOVERK = 6 THEN SET AREA COLOR CHOVER
+  GRAPH AREA: BHELP0, HINTY + 0.08; BHELP1, HINTY + 0.08; BHELP1, HINTY + 0.92; BHELP0, HINTY + 0.92
+  SET TEXT COLOR CTEXT
+  GRAPH TEXT, AT 1, HINTY + 0.25: "+ Add"
+  GRAPH TEXT, AT 8, HINTY + 0.25: "Help"
+  SET TEXT COLOR CDIM
+  GRAPH TEXT, AT 14, HINTY + 0.25: FIT$(HINT$, COLS - 15)
+ELSE
+  SET TEXT COLOR CDIM
+  GRAPH TEXT, AT 1, HINTY + 0.25: FIT$("A add  M move  E edit  D delete  N new  S save  L open  H help  Q quit", COLS - 2)
+END IF
+IF MODE > 0 THEN
+  IF MODE = 1 THEN
+    LET P$ = "> "
+    SET TEXT COLOR CTEXT
+  ELSEIF MODE = 2 THEN
+    LET P$ = "Edit #" & LTRIM$(STR$(EDITID)) & ": "
+    SET TEXT COLOR LACC(2)
+  ELSE
+    LET P$ = "Add to " & LANENAME$(ADDLN) & ": "
+    SET TEXT COLOR LACC(ADDLN)
+  END IF
+  GRAPH TEXT, AT 1, STATY + 0.25: P$
+  ! the text, with the cursor; scrolled so the cursor shows
+  LET AVAIL = COLS - 2 - LEN(P$)
+  LET LT$ = LEFT$(TYPED$, CURP)
+  LET RT$ = MID$(TYPED$, CURP + 1)
+  LET CUR$ = "|"
+  IF RT$ = "" THEN LET CUR$ = "_"
+  IF LEN(LT$) > AVAIL - 2 AND AVAIL > 3 THEN LET LT$ = "…" & RIGHT$(LT$, AVAIL - 3)
+  SET TEXT COLOR CTEXT
+  GRAPH TEXT, AT 1 + LEN(P$), STATY + 0.25: FIT$(LT$ & CUR$ & RT$, AVAIL)
+ELSE
+  SET TEXT COLOR CDIM
+  IF CONFIRMID > 0 THEN SET TEXT COLOR CWARN
+  GRAPH TEXT, AT 1, STATY + 0.25: FIT$(MSG$, COLS - 2)
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 9300  CARD — a filled box from column CXL + 1, CH rows down from row CROW,
+!        a stripe in CSTRIPE down its left side, its lines WRAP$(1 .. CH) in
+!        CTCOL, and its number CIDS$ (if any) at the right of the first one, dim.
+! ----------------------------------------------------------------------
+9300 REM ---- one card ----
+LET BX0 = CXL + 1
+LET BX1 = CXL + COLW - 1.02
+LET BYT = CROW + 0.92
+LET BYB = CROW - CH + 1.08
+SET AREA COLOR CFILL
+GRAPH AREA: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT
+SET AREA COLOR CSTRIPE
+GRAPH AREA: BX0, BYB; BX0 + 0.35, BYB; BX0 + 0.35, BYT; BX0, BYT
+SET TEXT COLOR CTCOL
+FOR WJ = 1 TO CH
+  GRAPH TEXT, AT BX0 + 1, CROW - WJ + 1.25: WRAP$(WJ)
+NEXT WJ
+IF CIDS$ <> "" THEN
+  SET TEXT COLOR CDIM
+  GRAPH TEXT, AT BX1 - LEN(CIDS$), CROW + 0.25: CIDS$
+END IF
+RETURN
+
+! ======================================================================
+! 9050  HELP — what the mouse, the keys and the commands do.
+! ======================================================================
+9050 REM ---- help screen ----
+CLEAR
+ASK DEVICE SIZE DEVW, DEVH, DEVU$
+LET HROWS = 24
+IF DEVH >= 4 THEN LET HROWS = INT(DEVH / 4)
+IF HROWS > 40 THEN LET HROWS = 40
+IF HROWS < 14 THEN LET HROWS = 14
+GOSUB 9060
+SET WINDOW 0, COLS, 0, HROWS
+SET AREA COLOR CPANEL
+GRAPH AREA: 0, 0; COLS, 0; COLS, HROWS; 0, HROWS
+LET Y = HROWS - 2
+SET TEXT COLOR CTEXT
+GRAPH TEXT, AT 2, Y + 0.25: "KANBAN  ·  HELP"
+LET Y = Y - 2
+IF HASMOUSE = 1 AND HROWS >= 23 THEN
+  SET TEXT COLOR LACC(1)
+  GRAPH TEXT, AT 2, Y + 0.25: "MOUSE"
+  GRAPH TEXT, AT 42, Y + 0.25: "KEYBOARD"
+  SET TEXT COLOR CTEXT
+  GRAPH TEXT, AT 2, Y - 0.75: "Click a card      select it"
+  GRAPH TEXT, AT 2, Y - 1.75: "Double-click      edit it"
+  GRAPH TEXT, AT 2, Y - 2.75: "Drag a card       move or reorder it"
+  GRAPH TEXT, AT 2, Y - 3.75: "+ add a card      add one to a lane"
+  GRAPH TEXT, AT 2, Y - 4.75: "▲ / ▼ more        scroll a lane"
+  GRAPH TEXT, AT 42, Y - 0.75: "↑ ↓ ← →   select a card"
+  GRAPH TEXT, AT 42, Y - 1.75: "Enter     edit it"
+  GRAPH TEXT, AT 42, Y - 2.75: "Space     pick it up: ↑ ↓ ← → move it"
+  GRAPH TEXT, AT 42, Y - 3.75: "Delete    delete it (press it twice)"
+  GRAPH TEXT, AT 42, Y - 4.75: "Esc       cancel, or let go"
+  LET Y = Y - 7
+END IF
+SET TEXT COLOR LACC(2)
+IF HASMOUSE = 1 THEN
+  GRAPH TEXT, AT 2, Y + 0.25: "COMMANDS  (type one on the board; Enter runs it)"
+ELSE
+  GRAPH TEXT, AT 2, Y + 0.25: "COMMANDS"
+END IF
+SET TEXT COLOR CTEXT
+GRAPH TEXT, AT 2, Y - 0.75: "A text             add a card to To Do"
+GRAPH TEXT, AT 2, Y - 1.75: "M n lane [place]   move card n to a lane: 1-3, todo, doing or done"
+GRAPH TEXT, AT 2, Y - 2.75: "                   (place 1: the top of the lane)"
+GRAPH TEXT, AT 2, Y - 3.75: "E n text           change card n's text"
+GRAPH TEXT, AT 2, Y - 4.75: "D n                delete card n"
+GRAPH TEXT, AT 2, Y - 5.75: "N name  /  L name  start a new board  /  open another (name.board)"
+GRAPH TEXT, AT 2, Y - 6.75: "S [name]           save now  /  save as name.board, and carry on there"
+GRAPH TEXT, AT 2, Y - 7.75: "H  /  Q            this help  /  quit"
+SET TEXT COLOR CDIM
+GRAPH TEXT, AT 2, Y - 9.75: FIT$("The board saves itself to " & BOARD$ & ".board after every change.", COLS - 4)
+IF HASMOUSE = 1 THEN
+  GRAPH TEXT, AT 2, Y - 10.75: "Press any key, or click, to go back."
+ELSE
+  GRAPH TEXT, AT 2, Y - 10.75: "Press Enter to go back."
 END IF
 RETURN
 
@@ -593,7 +1390,7 @@ FOR WI = 1 TO LEN(WS$)
     LET WWORD$ = WWORD$ & WC$
   END IF
 NEXT WI
-IF WLINE$ <> "" THEN
+IF WLINE$ <> "" AND WRAPN < 64 THEN
   LET WRAPN = WRAPN + 1
   LET WRAP$(WRAPN) = WLINE$
 END IF
@@ -607,7 +1404,7 @@ RETURN
 ! 9250  WRAP-PLACE — add WWORD$ to the current wrapped line, breaking as needed.
 ! ----------------------------------------------------------------------
 9250 REM ---- wrap place ----
-DO WHILE LEN(WWORD$) > WRAPW
+DO WHILE LEN(WWORD$) > WRAPW AND WRAPN < 62
   ! word wider than a whole line: flush, then emit a full-width chunk
   IF WLINE$ <> "" THEN
     LET WRAPN = WRAPN + 1
@@ -622,7 +1419,7 @@ IF WLINE$ = "" THEN
   LET WLINE$ = WWORD$
 ELSEIF LEN(WLINE$) + 1 + LEN(WWORD$) <= WRAPW THEN
   LET WLINE$ = WLINE$ & " " & WWORD$
-ELSE
+ELSEIF WRAPN < 63 THEN
   LET WRAPN = WRAPN + 1
   LET WRAP$(WRAPN) = WLINE$
   LET WLINE$ = WWORD$
@@ -630,223 +1427,199 @@ END IF
 RETURN
 
 ! ----------------------------------------------------------------------
-! 9350  Parse inline ADD args: "A <text...> <lane>" (trailing 1-3 = lane).
+! 9700  HIT — what's under the pointer (MX, MY): HITKIND (0 nothing, 1 a card,
+!        2 "▲ more", 3 "▼ more", 4 "+ add a card", 5 the + Add button, 6 Help),
+!        the card's number HITID and the lane HITLN.
 ! ----------------------------------------------------------------------
-9350 REM ---- parse inline add ----
-LET HAVET = 0
-LET HAVEL = 0
-IF NTOK >= 2 THEN
-  LET HITOK = NTOK
-  LET LASTV = TONUM(TOK$(NTOK))
-  IF NTOK >= 3 AND LASTV >= 1 AND LASTV <= 3 THEN
-    LET L = LASTV
-    LET HAVEL = 1
-    LET HITOK = NTOK - 1
-  END IF
-  LET T$ = ""
-  FOR I = 2 TO HITOK
-    IF T$ = "" THEN
-      LET T$ = TOK$(I)
-    ELSE
-      LET T$ = T$ & " " & TOK$(I)
+9700 REM ---- what's under the pointer ----
+LET HITKIND = 0
+LET HITID = 0
+LET HITLN = 0
+FOR HI = 1 TO 3
+  IF MX >= LX(HI) AND MX <= LX(HI) + COLW THEN LET HITLN = HI
+NEXT HI
+LET HROW = INT(MY)
+IF HROW = HINTY THEN
+  IF MX >= BADD0 AND MX <= BADD1 THEN LET HITKIND = 5
+  IF MX >= BHELP0 AND MX <= BHELP1 THEN LET HITKIND = 6
+  RETURN
+END IF
+IF HITLN = 0 THEN RETURN
+IF HROW = ADDY AND HASMOUSE = 1 THEN
+  LET HITKIND = 4
+ELSEIF HROW = UPAT(HITLN) THEN
+  LET HITKIND = 2
+ELSEIF HROW = DNAT(HITLN) THEN
+  LET HITKIND = 3
+ELSEIF MX >= LX(HITLN) + 1 AND MX <= LX(HITLN) + COLW - 1 THEN
+  FOR HI = 1 TO NT
+    IF CTOPY(HI) >= 0 AND LANE(HI) = HITLN THEN
+      IF MY >= CBOTY(HI) AND MY < CTOPY(HI) + 1 THEN
+        LET HITKIND = 1
+        LET HITID = ID(HI)
+      END IF
     END IF
-  NEXT I
-  IF T$ <> "" THEN LET HAVET = 1
+  NEXT HI
 END IF
 RETURN
 
 ! ======================================================================
-! 9400  ADD — needs text + lane inline (e.g. "A Buy milk 1").
+! 9790  CHANGED — the board changed: save it (unless the file there
+!        couldn't be read, so as not to lose it).
+! 9800  SAVE — write the board to BOARD$.board (SAVEOK = 1 if it worked):
+!        "ARCADE-KANBAN 2", the next card number, how many cards, then a
+!        line per card, "<lane> <number> <text>".
 ! ======================================================================
-9400 REM ---- add ----
-IF NT >= MAXT THEN
-  LET MSG$ = "Board is full"
+9790 REM ---- changed ----
+IF NOSAVE = 1 THEN
+  LET MSG$ = MSG$ & " (not saved: S name saves it)"
   RETURN
 END IF
-IF HAVET = 0 THEN
-  LET MSG$ = "Add needs text, e.g. A Buy milk 1"
-  RETURN
-END IF
-IF HAVEL = 0 THEN
-  LET MSG$ = "Add needs a lane 1-3, e.g. A " & T$ & " 1"
-  RETURN
-END IF
-LET L = INT(L)
-IF L < 1 OR L > 3 THEN
-  LET MSG$ = "Lane must be 1, 2 or 3"
-  RETURN
-END IF
-LET NT = NT + 1
-LET TASK$(NT) = T$
-LET LANE(NT) = L
-LET MSG$ = "Added #" & LTRIM$(STR$(NT)) & " to " & LANENAME$(L)
+GOSUB 9800
+IF SAVEOK = 0 THEN LET MSG$ = MSG$ & " (couldn't save " & FILE$ & ")"
 RETURN
 
-! ======================================================================
-! 9500  MOVE — "M n lane".
-! ======================================================================
-9500 REM ---- move ----
-IF HAVEN = 0 OR HAVEL = 0 THEN
-  LET MSG$ = "Move needs a task # and lane, e.g. M 1 3"
-  RETURN
-END IF
-LET N = INT(N)
-IF N < 1 OR N > NT THEN
-  LET MSG$ = "No such task #" & LTRIM$(STR$(N))
-  RETURN
-END IF
-LET L = INT(L)
-IF L < 1 OR L > 3 THEN
-  LET MSG$ = "Lane must be 1, 2 or 3"
-  RETURN
-END IF
-LET LANE(N) = L
-LET MSG$ = "Moved #" & LTRIM$(STR$(N)) & " to " & LANENAME$(L)
-RETURN
-
-! ======================================================================
-! 9600  DELETE — "D n"; remaining tasks renumber.
-! ======================================================================
-9600 REM ---- delete ----
-IF HAVEN = 0 THEN
-  LET MSG$ = "Delete needs a task #, e.g. D 4"
-  RETURN
-END IF
-LET N = INT(N)
-IF N < 1 OR N > NT THEN
-  LET MSG$ = "No such task #" & LTRIM$(STR$(N))
-  RETURN
-END IF
-FOR I = N TO NT - 1
-  LET TASK$(I) = TASK$(I + 1)
-  LET LANE(I) = LANE(I + 1)
-NEXT I
-LET NT = NT - 1
-LET MSG$ = "Deleted (remaining renumbered)"
-RETURN
-
-! ----------------------------------------------------------------------
-! 9300  CARD — draw one card: a box around WRAP$(1..WRAPN) with a colour stripe
-!        down its left side; it takes WRAPN + 2 rows (borders above and below).
-!        X0 = the lane's left edge, Y0 = the first line's baseline; colours in
-!        CARDLINE / CARDSTRIPE / CARDTEXT; CARDFILL = 1 blacks out what's underneath first.
-! ----------------------------------------------------------------------
-9300 REM ---- card box ----
-LET BX0 = X0 + 1
-LET BX1 = X0 + COLW - 1
-LET BYT = Y0 + 1.3                 ! through the middle of the row above the first line
-LET BYB = Y0 - WRAPN + 0.3         ! and of the row below the last
-IF CARDFILL = 1 THEN
-  SET AREA COLOR 0
-  GRAPH AREA: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT
-END IF
-SET LINE COLOR CARDLINE
-GRAPH LINES: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT; BX0, BYB
-SET AREA COLOR CARDSTRIPE            ! the stripe runs beside the text rows only,
-LET SYB = Y0 - WRAPN + 1.05          ! (down to the last baseline), leaving the box's corners alone
-GRAPH AREA: BX0, SYB; BX0 + 0.6, SYB; BX0 + 0.6, Y0 + 0.7; BX0, Y0 + 0.7
-SET TEXT COLOR CARDTEXT
-FOR WJ = 1 TO WRAPN
-  GRAPH TEXT, AT X0 + 2.4, Y0 - WJ + 1: WRAP$(WJ)
-NEXT WJ
-RETURN
-
-! ----------------------------------------------------------------------
-! 9700  HIT — the drawn card under the pointer (MX, MY) -> HIT, or 0.
-! ----------------------------------------------------------------------
-9700 REM ---- card under pointer ----
-LET HIT = 0
-FOR I = 1 TO NT
-  IF CTOPY(I) >= 0 THEN
-    LET X0 = LX(LANE(I))
-    IF MX >= X0 AND MX <= X0 + COLW AND MY >= CBOTY(I) - 1.2 AND MY <= CTOPY(I) + 1.8 THEN LET HIT = I
-  END IF
-NEXT I
-RETURN
-
-! ----------------------------------------------------------------------
-! 9750  LANE — the lane under the pointer (MX, MY) -> HOVERLN, or 0.
-! ----------------------------------------------------------------------
-9750 REM ---- lane under pointer ----
-LET HOVERLN = 0
-FOR LN = 1 TO 3
-  IF MX >= LX(LN) AND MX <= LX(LN) + COLW AND MY >= BBOT AND MY <= BTOP THEN LET HOVERLN = LN
-NEXT LN
-RETURN
-
-! ======================================================================
-! 9800  SAVE — write the board to <name>.board. The file is self-identifying
-!              (magic + version line), then a card count, then one card per
-!              line as "<lane> <task>".
-! ======================================================================
 9800 REM ---- save ----
 LET FILE$ = BOARD$ & ".board"
-OPEN #1: NAME FILE$, ACCESS OUTPUT
-PRINT #1: "ARCADE-KANBAN 1"
-PRINT #1: LTRIM$(STR$(NT))
-FOR I = 1 TO NT
-  PRINT #1: LTRIM$(STR$(LANE(I))) & " " & TASK$(I)
-NEXT I
-CLOSE #1
-LET MSG$ = "Saved " & LTRIM$(STR$(NT)) & " task(s) to " & FILE$
+LET SAVEOK = 0
+WHEN EXCEPTION IN
+  OPEN #1: NAME FILE$, ACCESS OUTPUT
+  PRINT #1: "ARCADE-KANBAN 2"
+  PRINT #1: LTRIM$(STR$(NEXTID))
+  PRINT #1: LTRIM$(STR$(NT))
+  FOR SVI = 1 TO NT
+    PRINT #1: LTRIM$(STR$(LANE(SVI))) & " " & LTRIM$(STR$(ID(SVI))) & " " & TASK$(SVI)
+  NEXT SVI
+  CLOSE #1
+  LET SAVEOK = 1
+USE
+  CLOSE #1                         ! safe no-op if it never opened
+END WHEN
 RETURN
 
 ! ======================================================================
-! 9900  LOAD — replace the board with <name>.board. Reads into staging
-!              buffers and only commits if the whole file parses, so a bad
-!              or foreign file leaves the current board untouched.
+! 9900  OPEN — replace the board with BOARD$.board. It reads into staging
+!        arrays and only takes them if the whole file reads, so a bad or
+!        foreign file leaves the board as it was. LOADOK = 1 if it worked;
+!        LOADBAD = 1 if there's a file but it isn't a board. (Version 1 files,
+!        "<lane> <text>" a line, get their cards numbered as they come.)
 ! ======================================================================
-9900 REM ---- load ----
+9900 REM ---- open a board ----
 LET FILE$ = BOARD$ & ".board"
 LET LOADOK = 0
+LET LOADBAD = 0
+LET LOPEN = 0
 LET TN = 0
+LET TNEXT = 1
+LET LVER = 1
 WHEN EXCEPTION IN
   OPEN #1: NAME FILE$, ACCESS INPUT
+  LET LOPEN = 1
   LINE INPUT #1: LN$
-  IF LEFT$(LN$, 13) = "ARCADE-KANBAN" THEN
-    LINE INPUT #1: LN$
-    LET TN = INT(VAL(LN$))
-    IF TN < 0 THEN LET TN = 0
-    IF TN > MAXT THEN LET TN = MAXT
-    FOR I = 1 TO TN
+  GOSUB 9940
+  IF LEFT$(LN$, 14) = "ARCADE-KANBAN " THEN
+    LET LVER = TONUM(MID$(LN$, 15))
+    IF LVER >= 2 THEN
       LINE INPUT #1: LN$
-      GOSUB 9950                   ! parse "<lane> <task>" -> TLANE(I), TTASK$(I)
-    NEXT I
-    LET LOADOK = 1
+      GOSUB 9940
+      LET TNEXT = TONUM(LN$)
+    END IF
+    LINE INPUT #1: LN$
+    GOSUB 9940
+    LET TN = TONUM(LN$)
+    IF LVER < 1 OR TN < 0 THEN
+      LET LOADBAD = 1
+    ELSE
+      IF TN > MAXT THEN LET TN = MAXT
+      FOR LI = 1 TO TN
+        LINE INPUT #1: LN$
+        GOSUB 9940
+        GOSUB 9950                 ! "<lane> <number> <text>" → TLANE(LI), TID(LI), TTASK$(LI)
+      NEXT LI
+      LET LOADOK = 1
+    END IF
   ELSE
-    LET MSG$ = FILE$ & " is not a kanban board file"
+    LET LOADBAD = 1
   END IF
   CLOSE #1
 USE
-  CLOSE #1                         ! safe no-op if it never opened
-  LET MSG$ = "Could not load " & FILE$
+  CLOSE #1
+  IF LOPEN = 1 THEN LET LOADBAD = 1     ! it's there, but cut short
 END WHEN
 IF LOADOK = 1 THEN
   LET NT = TN
-  FOR I = 1 TO NT
-    LET LANE(I) = TLANE(I)
-    LET TASK$(I) = TTASK$(I)
-  NEXT I
-  LET MSG$ = "Loaded " & LTRIM$(STR$(NT)) & " task(s) from " & FILE$
+  LET MAXID = 0
+  FOR LI = 1 TO NT
+    LET LANE(LI) = TLANE(LI)
+    LET TASK$(LI) = TTASK$(LI)
+    LET ID(LI) = TID(LI)
+    ! a number that's missing or taken: a new one, after the others
+    FOR LJ = 1 TO LI - 1
+      IF ID(LJ) = ID(LI) THEN LET ID(LI) = 0
+    NEXT LJ
+    IF ID(LI) > MAXID THEN LET MAXID = ID(LI)
+  NEXT LI
+  FOR LI = 1 TO NT
+    IF ID(LI) < 1 THEN
+      LET MAXID = MAXID + 1
+      LET ID(LI) = MAXID
+    END IF
+  NEXT LI
+  LET NEXTID = MAX(TNEXT, MAXID + 1)
+  LET SELID = 0
+  LET CARRY = 0
+  FOR LI = 1 TO 3
+    LET TOP(LI) = 0
+  NEXT LI
 END IF
 RETURN
 
+9940 REM ---- a line read from a file written with Windows line ends: drop its CR ----
+IF RIGHT$(LN$, 1) = CHR$(13) THEN LET LN$ = LEFT$(LN$, LEN(LN$) - 1)
+RETURN
+
 ! ----------------------------------------------------------------------
-! 9950  Parse one saved card line "<lane> <task>" into TLANE(I)/TTASK$(I).
-!        The lane is the first token; the task is everything after the first
-!        space (so it may contain spaces and commas). Bad lanes default to 1.
+! 9950  One saved card, LN$: "<lane> <number> <text>" (version 1: "<lane>
+!        <text>") into TLANE(LI), TID(LI), TTASK$(LI). A bad lane is To Do.
 ! ----------------------------------------------------------------------
-9950 REM ---- parse saved card ----
-LET SP = 0
-FOR J = 1 TO LEN(LN$)
-  IF SP = 0 AND MID$(LN$, J, 1) = " " THEN LET SP = J
-NEXT J
+9950 REM ---- one saved card ----
+LET TID(LI) = 0
+LET TLANE(LI) = 1
+LET SP = POS(LN$, " ")
 IF SP = 0 THEN
-  LET TLANE(I) = 1
-  LET TTASK$(I) = LN$
+  LET TTASK$(LI) = LN$
 ELSE
-  LET TLANE(I) = INT(VAL(LEFT$(LN$, SP - 1)))
-  LET TTASK$(I) = MID$(LN$, SP + 1)
+  LET TLANE(LI) = TONUM(LEFT$(LN$, SP - 1))
+  LET RST$ = MID$(LN$, SP + 1)
+  IF LVER >= 2 THEN
+    LET SP = POS(RST$, " ")
+    IF SP = 0 THEN
+      LET TID(LI) = TONUM(RST$)
+      LET RST$ = ""
+    ELSE
+      LET TID(LI) = TONUM(LEFT$(RST$, SP - 1))
+      LET RST$ = MID$(RST$, SP + 1)
+    END IF
+  END IF
+  LET TTASK$(LI) = RST$
 END IF
-IF TLANE(I) < 1 OR TLANE(I) > 3 THEN LET TLANE(I) = 1
+IF TLANE(LI) < 1 OR TLANE(LI) > 3 THEN LET TLANE(LI) = 1
+RETURN
+
+! ----------------------------------------------------------------------
+! 9990  TODAY — DAY$, as "Thu 29 Oct", from DATE$ (YYYYMMDD); the weekday by
+!        Sakamoto's method (0 = Sunday).
+! ----------------------------------------------------------------------
+9990 REM ---- today ----
+LET DS$ = DATE$
+LET DYR = TONUM(LEFT$(DS$, 4))
+LET DMO = TONUM(MID$(DS$, 5, 2))
+LET DDY = TONUM(RIGHT$(DS$, 2))
+LET DAY$ = ""
+IF DYR > 0 AND DMO >= 1 AND DMO <= 12 AND DDY >= 1 THEN
+  LET DYY = DYR
+  IF DMO < 3 THEN LET DYY = DYR - 1
+  LET DWK = (DYY + INT(DYY / 4) - INT(DYY / 100) + INT(DYY / 400) + TONUM(MID$("032503514624", DMO, 1)) + DDY) MOD 7
+  LET DAY$ = MID$("SunMonTueWedThuFriSat", 3 * DWK + 1, 3) & " " & LTRIM$(STR$(DDY)) & " " & MID$("JanFebMarAprMayJunJulAugSepOctNovDec", 3 * DMO - 2, 3)
+END IF
 RETURN

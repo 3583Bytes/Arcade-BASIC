@@ -226,7 +226,8 @@ internal sealed class BrailleCanvas : View
                 for (var cx = 0; cx < cols; cx++)
                 {
                     var cell = _front[cx, cy];
-                    driver.SetAttribute(Attr(driver, _palette.Nearest16(cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color)));
+                    var back = cell.Kind == CellSurface.CellKind.Text && cell.Back != 0 ? _palette.Nearest16(cell.Back) : -1;
+                    driver.SetAttribute(Attr(driver, _palette.Nearest16(cell.Kind == CellSurface.CellKind.Empty ? 1 : cell.Color), back));
                     AddRune(cx, cy, new Rune(_front.Glyph(cx, cy)));
                 }
             }
@@ -241,6 +242,9 @@ internal sealed class BrailleCanvas : View
         Color.Magenta, Color.Cyan, Color.Brown, Color.White,
     ];
 
-    private static Attribute Attr(ConsoleDriver driver, int index) =>
-        driver.MakeAttribute(Palette[index < 0 || index >= Palette.Length ? 1 : index], Color.Black);
+    /// <summary>A colour on black — or, for text written over a filled area, on that
+    /// area's colour (<paramref name="back"/>; -1 for none).</summary>
+    private static Attribute Attr(ConsoleDriver driver, int index, int back = -1) =>
+        driver.MakeAttribute(Palette[index < 0 || index >= Palette.Length ? 1 : index],
+            back < 0 || back >= Palette.Length ? Color.Black : Palette[back]);
 }

@@ -1004,6 +1004,19 @@ public class VmTests
         Run(src).Output.Trim().Should().Be("caught\nafter");
     }
 
+    [Theory]
+    [InlineData("", "a\nin 200\nb\ncaught\nend")]
+    [InlineData("  CONTINUE\n", "a\nin 200\nb\ncaught\nnot reached\nend")]
+    public void AnExceptionInASubroutineTheBlockCalledEndsTheSubroutine(string inHandler, string expected)
+    {
+        // The handler leaves the block (or CONTINUE goes on after the GOSUB that raised):
+        // the subroutine's RETURN address mustn't be left for the outer RETURN to use.
+        var src = "GOSUB 100\nPRINT \"end\"\nEND\n100 REM\nWHEN EXCEPTION IN\n  PRINT \"a\"\n  GOSUB 200\n  PRINT \"b\"\n" +
+                  "  GOSUB 300\n  PRINT \"not reached\"\nUSE\n  PRINT \"caught\"\n" + inHandler +
+                  "END WHEN\nRETURN\n200 PRINT \"in 200\"\nRETURN\n300 LET X = 1 / 0\nRETURN\n";
+        Run(src).Output.Trim().Should().Be(expected);
+    }
+
     [Fact]
     public void WhenExposesExtypeAndExline()
     {

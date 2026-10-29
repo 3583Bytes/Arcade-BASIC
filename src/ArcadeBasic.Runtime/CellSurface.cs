@@ -11,7 +11,9 @@ namespace ArcadeBasic.Runtime;
 /// cell arrays (MAT GRAPH CELLS) too, each quadrant the colour under its middle;</item>
 /// <item>anything else (slanted lines, points) → Braille dots, 2 × 4 per cell;</item>
 /// <item>text → its characters, in the cell that holds the middle of the letters (the
-/// point is the text's baseline, as in ECMA-116's default LEFT, BASE alignment).</item>
+/// point is the text's baseline, as in ECMA-116's default LEFT, BASE alignment). Text
+/// written over a filled cell keeps the fill's colour behind it (<see cref="Cell.Back"/>),
+/// as text drawn on a filled area looks on a pixel screen.</item>
 /// </list>
 /// A cell shows one of these at a time. Lines merge with lines (making corners and
 /// junctions), blocks with blocks and dots with dots; anything else drawn later
@@ -32,6 +34,7 @@ public sealed class CellSurface
         public int Color;
         public int Style;   // Line: 1 solid, 2 dashed, 3 dotted
         public char Char;   // Text
+        public int Back;    // Text: the colour behind it — what it was written over — or 0, none
     }
 
     private const int L = 1, R = 2, U = 4, D = 8;
@@ -243,7 +246,14 @@ public sealed class CellSurface
         {
             if (col < 0) continue;
             if (col >= Cols) break;
-            _cells[row * Cols + col] = new Cell { Kind = CellKind.Text, Char = text[i], Color = color };
+            ref var cell = ref _cells[row * Cols + col];
+            var back = cell.Kind switch
+            {
+                CellKind.Block when cell.Bits == 15 => cell.Color,   // a filled cell
+                CellKind.Text => cell.Back,
+                _ => 0,
+            };
+            cell = new Cell { Kind = CellKind.Text, Char = text[i], Color = color, Back = back };
             IsEmpty = false;
         }
     }

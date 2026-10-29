@@ -40,7 +40,7 @@ public sealed class BasicVm
     /// <summary>PC at which CONTINUE should resume — the start of the statement immediately after the one that raised. Set by <see cref="Dispatch"/> from the catching frame's StmtEndPc.</summary>
     private int _currentContinuePc;
 
-    private readonly record struct HandlerFrame(int UsePc, int StackBaseline);
+    private readonly record struct HandlerFrame(int UsePc, int StackBaseline, int GosubDepth);
 
     /// <summary>Current column of the output line, for PRINT's comma zones and TAB.
     /// Program-wide rather than per chunk: a PRINT ending in ';' or ',' inside a SUB
@@ -454,8 +454,12 @@ public sealed class BasicVm
         _stack.Truncate(top.StackBaseline);
         _currentException = new BasicException(ex.TypeCode, _currentLine, ex.Message);
         // A CONTINUE inside the USE body resumes at the statement after the one
-        // that raised — in the catching frame, so after a CALL that raised.
-        _currentContinuePc = cf.StmtEndPc;
+        // that raised — in the catching frame, so after a CALL that raised. And after a
+        // GOSUB that raised: a subroutine the protected block called is over (its
+        // RETURN addresses go), as in the interpreter.
+        var continuePc = cf.StmtEndPc;
+        while (cf.Gosubs is { } gosubs && gosubs.Count > top.GosubDepth) continuePc = gosubs.Pop();
+        _currentContinuePc = continuePc;
         cf.Pc = top.UsePc;
         return true;
     }
@@ -1106,7 +1110,7 @@ public sealed class BasicVm
                     {
                         var useOffset = ReadI32(code, ref pc);
                         var usePc = pc + useOffset;
-                        _handlerStack.Push(new HandlerFrame(usePc, stack.Count));
+                        _handlerStack.Push(new HandlerFrame(usePc, stack.Count, cf.Gosubs?.Count ?? 0));
                         break;
                     }
                 case Opcode.PopHandler:

@@ -23,6 +23,9 @@ public sealed partial class BasicInterpreter
             for (var pc = 0; pc < w.InBody.Count; pc++)
             {
                 var fc = ExecStmt(w.InBody[pc], frame);
+                // A subroutine called from the protected block runs within it: its RETURN
+                // comes back here, and an exception in it reaches this handler.
+                if (fc is FlowControl.Gosub gs) fc = RunGosubAtLabel(gs.Label, frame);
 
                 if (fc is FlowControl.Cause c)
                 {
