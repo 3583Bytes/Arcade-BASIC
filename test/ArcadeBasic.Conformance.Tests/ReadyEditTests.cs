@@ -106,6 +106,10 @@ public sealed class ReadyEditTests : IDisposable
     private const string Enter = "\r", Tab = "\t", Backspace = "\b", Escape = "\x1b";
     private const string F2 = "\0<", F3 = "\0=", F4 = "\0>", F7 = "\0A", F8 = "\0B";
     private const string Up = "\0H", Insert = "\0R", Delete = "\0S", CtrlX = "\x18", CtrlV = "\x16";
+    private const string Right = "\0M", Down = "\0P", End = "\0O", CtrlB = "\x02", CtrlK = "\x0b";
+
+    /// <summary>Esc, then <paramref name="letter"/>: a command.</summary>
+    private static string[] Esc(char letter) => [Escape, letter.ToString()];
 
     /// <summary>Click the menu bar's button <paramref name="label"/>.</summary>
     private static void ClickButton(Screen screen, BasicVm vm, string label)
@@ -171,6 +175,9 @@ public sealed class ReadyEditTests : IDisposable
         Assert.Equal("→   This line starts with a tab,", screen.Line(6));
         Assert.StartsWith("→   →   and this one with two.", screen.Line(7));
         Assert.StartsWith("READY. Type away", screen.Status);
+        // the keys bar: Esc, then a letter
+        Assert.Equal("Esc, then  S Save  E Save as  O Open  N New  W Close  T Next tab  P Prev tab", screen.Row(21).Trim());
+        Assert.Equal("B Select  A Select all  X Cut  C Copy  V Paste  G Help  Q Quit", screen.Row(22).Trim());
         Assert.EndsWith("Ln 1, Col 1   Tabs: 4", screen.Status);
     }
 
@@ -354,6 +361,63 @@ public sealed class ReadyEditTests : IDisposable
         Assert.True(screen.Shows("untitled-1"));
         Assert.Equal(["pha beta", "delta", ""], [screen.Line(0), screen.Line(1), screen.Line(2)]);
         Assert.StartsWith("Pasted 2 lines", screen.Status);
+    }
+
+    [Fact]
+    public void TheKeyboardAloneSelectsCopiesPastesAndRunsTheCommands()
+    {
+        File.WriteAllLines("notes.txt", ["alpha beta", "gamma"]);
+        OpenLastTime("notes.txt");
+        var screen = new Screen();
+        var vm = Start(screen);
+
+        // Esc: the status bar waits for a letter
+        screen.Type(Escape);
+        NextFrame(vm);
+        Assert.StartsWith("Esc: now a letter", screen.Status);
+
+        // B starts selecting, and moving selects; C copies, V pastes
+        screen.Type("b", Right, Right, Right, Right, Right);
+        NextFrame(vm);
+        Assert.StartsWith("Selecting:", screen.Status);
+        screen.Type([.. Esc('c'), End, .. Esc('v')]);
+        NextFrame(vm);
+        Assert.Equal("alpha betaalpha", screen.Line(0));
+
+        // a letter that isn't a command isn't typed either
+        screen.Type([.. Esc('z')]);
+        NextFrame(vm);
+        Assert.StartsWith("Esc Z isn't a command", screen.Status);
+        Assert.Equal("alpha betaalpha", screen.Line(0));
+
+        // A selects everything, X cuts it, S saves
+        screen.Type([.. Esc('a')]);
+        NextFrame(vm);
+        Assert.StartsWith("Selected all 2 lines", screen.Status);
+        screen.Type([.. Esc('x'), .. Esc('s')]);
+        NextFrame(vm);
+        Assert.Equal([""], File.ReadAllLines("notes.txt"));
+
+        // in a terminal Ctrl and the letter: Ctrl+V pastes it all back; Ctrl+B and
+        // Down select a line, Ctrl+K copies it
+        screen.Type(CtrlV, Up, Up, CtrlB, Down, CtrlK);
+        NextFrame(vm);
+        Assert.StartsWith("Copied 1 line", screen.Status);
+        Assert.Equal(["alpha betaalpha", "gamma"], [screen.Line(0), screen.Line(1)]);
+
+        // the keys bar can be clicked: Select all
+        var all = screen.Frame.First(t => t.Text == "Select all").At;
+        screen.Click(all with { X = all.X + 0.005, Y = all.Y + 0.01 });
+        NextFrame(vm, 2);
+        Assert.StartsWith("Selected all 2 lines", screen.Status);
+
+        // Esc W closes the tab (twice, with unsaved changes)
+        screen.Type([.. Esc('w')]);
+        NextFrame(vm);
+        Assert.StartsWith("notes.txt has changes that aren't saved", screen.Status);
+        screen.Type([.. Esc('w')]);
+        NextFrame(vm);
+        Assert.False(screen.Shows("notes.txt"));
     }
 
     [Fact]

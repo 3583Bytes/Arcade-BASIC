@@ -22,4 +22,9 @@
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- A game's Info.plist, for the desktop build on macOS; the IDE's Export uses the same file. -->
+    <EmbeddedResource Include="..\..\desktop\player\app-Info.plist" LogicalName="app-Info.plist" />
+  </ItemGroup>
+
 </Project>

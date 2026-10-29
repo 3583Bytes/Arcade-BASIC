@@ -6,6 +6,8 @@ import { findPictures } from './pictures.js';
 
 export async function ideSelftest({ P, editor, documents, pack, openAddress, $, audio }) {
   const pause = (ms = 300) => new Promise(r => setTimeout(r, ms));
+  /** Until `test()` holds (checking every 50 ms, at most `tries` times): whether it does. */
+  const waitUntil = async (test, tries = 200) => { for (let i = 0; i < tries && !test(); i++) await pause(50); return test(); };
   const view = editor.view;
   const result = {};
   const step = async (name, fn) => {
@@ -189,6 +191,7 @@ export async function ideSelftest({ P, editor, documents, pack, openAddress, $, 
       let data = bytes.subarray(start, start + size);
       if (method === 8)
         data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      data.mode = (at.getUint32(entry + 38, true) >>> 16) & 0o7777;   // (its Unix permissions)
       files.set(name, data);
       entry += 46 + nameLength + at.getUint16(entry + 30, true) + at.getUint16(entry + 32, true);
     }
@@ -196,41 +199,63 @@ export async function ideSelftest({ P, editor, documents, pack, openAddress, $, 
   }
 
   await step('export', async () => {
-    // File → Export: maze3d (and its two libraries) compiled and packed with the player — a
-    // page titled with the name given; a program with an error isn't exported.
+    // File → Export: maze3d (and its two libraries) compiled and packed, as each kind this
+    // site offers — a web page titled with the name given; a Mac app with the program in its
+    // Resources; Windows and Linux players with it appended — and a program with an error
+    // isn't exported.
     const dialog = $('exportDialog'), nameInput = dialog.querySelector('input[name="name"]');
+    const same = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
     const before = downloads.length;
     documents.openExample('maze3d.bas');
     document.querySelector('[data-action="export"]').click();
-    await pause(300);
-    const opened = { open: dialog.open, heading: dialog.querySelector('h2').textContent, name: nameInput.value,
-                     status: dialog.querySelector('.status').textContent };
-    nameInput.value = 'Maze 3D';
-    dialog.querySelector('[value="export"]').click();
-    for (let i = 0; i < 400 && downloads.length === before; i++) await pause(50);
-    const exported = downloads[before];
-    const bytes = new Uint8Array(await (await fetch(exported.href)).arrayBuffer());
-    const files = await unzip(bytes);
-    const bytecode = P.ExportedBytecode();
-    const game = files.get('game.bin');
+    await waitUntil(() => dialog.querySelector('.kinds input'));
     const result = {
-      opened, file: exported.name, megabytes: +(bytes.length / 1048576).toFixed(2), entries: files.size,
-      has: ['index.html', 'player.js', 'screen.js', '_framework/dotnet.js', 'game.bin'].filter(n => files.has(n)),
-      title: /<title>(.*?)<\/title>/.exec(new TextDecoder().decode(files.get('index.html')))?.[1],
-      gameIsTheProgram: !!game && game.length === bytecode.length && game.every((b, i) => b === bytecode[i]),
-      after: !dialog.querySelector('.after').hidden && dialog.querySelector('.after .file').textContent,
-      logged: document.querySelector('#log li:last-child .text')?.textContent,
+      opened: { open: dialog.open, heading: dialog.querySelector('h2').textContent, name: nameInput.value,
+                kinds: [...dialog.querySelectorAll('.kinds input')].map(i => i.value + (i.checked ? ' (chosen)' : '')) },
     };
-    if (location.search.includes('keepzip')) {     // (for a test server to unpack and play)
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      result.zip = btoa(binary);
+    for (const kind of [...dialog.querySelectorAll('.kinds input')].map(i => i.value)) {
+      if (!dialog.open) { document.querySelector('[data-action="export"]').click(); await waitUntil(() => dialog.querySelector('.kinds input')); }
+      dialog.querySelector(`.kinds input[value="${kind}"]`).checked = true;
+      nameInput.value = 'Maze 3D';
+      const count = downloads.length;
+      dialog.querySelector('[value="export"]').click();
+      await waitUntil(() => downloads.length > count, 600);
+      const exported = downloads[count];
+      const bytes = new Uint8Array(await (await fetch(exported.href)).arrayBuffer());
+      const files = await unzip(bytes), bytecode = P.ExportedBytecode();
+      const out = { file: exported.name, megabytes: +(bytes.length / 1048576).toFixed(2), entries: [...files.keys()].length,
+                    after: !dialog.querySelector('.after').hidden && [...dialog.querySelectorAll('.after [data-kind]')].find(d => !d.hidden)?.dataset.kind };
+      if (kind === 'web') {
+        out.has = ['index.html', 'player.js', 'screen.js', '_framework/dotnet.js', 'game.bin'].filter(n => files.has(n));
+        out.title = /<title>(.*?)<\/title>/.exec(new TextDecoder().decode(files.get('index.html')))?.[1];
+        out.gameIsTheProgram = same(files.get('game.bin'), bytecode);
+      } else if (kind === 'macos') {
+        const app = 'Maze 3D.app/Contents/';
+        out.has = ['Info.plist', 'MacOS/Maze 3D', 'Resources/game.bin', '_CodeSignature/CodeResources'].filter(n => files.has(app + n));
+        out.executableMode = files.get(app + 'MacOS/Maze 3D')?.mode.toString(8);
+        out.named = new TextDecoder().decode(files.get(app + 'Info.plist')).includes('<key>CFBundleExecutable</key><string>Maze 3D</string>');
+        out.gameIsTheProgram = same(files.get(app + 'Resources/game.bin'), bytecode);
+      } else {
+        const name = kind === 'windows' ? 'Maze 3D.exe' : 'Maze 3D', exe = files.get(name);
+        const n = exe?.length ?? 0, trailer = exe && new TextDecoder().decode(exe.subarray(n - 8));
+        const length = exe ? new DataView(exe.buffer, exe.byteOffset).getUint32(n - 12, true) : 0;
+        out.has = files.has(name) ? [name] : [];
+        out.mode = exe?.mode.toString(8);
+        out.appended = trailer === 'FB-BCEND' && same(exe.subarray(n - 12 - length, n - 12), bytecode);
+      }
+      if (location.search.includes('keepzip')) {     // (for a test server to unpack and run)
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        out.zip = btoa(binary);
+      }
+      result[kind] = out;
+      dialog.close();
     }
-    dialog.close();
+    result.logged = document.querySelector('#log li:last-child .text')?.textContent;
     documents.newProgram();
     setText('PRINT "fine"\nPRINT (1\n');
     document.querySelector('[data-action="export"]').click();
-    await pause(200);
+    await waitUntil(() => dialog.querySelector('.kinds input'));
     dialog.querySelector('[value="export"]').click();
     await pause(300);
     result.withAnError = { dialogOpen: dialog.open, view: document.documentElement.dataset.view, cursorLine: lineAtCursor(),

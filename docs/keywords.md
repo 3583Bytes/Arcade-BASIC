@@ -100,11 +100,14 @@ END
 100 PRINT A + B                  ! 100 labels this line, for GOSUB 100
 RETURN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bc7BCoJAFAXQ_XzF1W0SY8vAhZZUEBamH_CSCYfGGXAe2OfH5EIC7-ot7jvcCAc3DMqyh2caGZPmHmShPp2hgVg7i4HG91bc60vVID4rY1yMlUSggLAKXgLulQWhm31xLRvkyJBij3AXyLD7f-fJLYCHs3BWwWirxOn2aAukUoqyOgqRSol5T44NirUtoWLoqYwH99r_mAQvN2Kx6rJp60p8AQ)
 
 ### Variables
 
 A name starts with a letter, then letters, digits or `_`. A name ending in `$` holds
-a string; any other name holds a number. Numbers start at 0 and strings at `""`, though
+a string; any other name holds a number. A name can't be a reserved word, and some
+everyday ones are — `AREA`, `NAME`, `SIZE`, `TEXT`, `POINT`, `KEY`, `TYPE`, `COLOR` —
+so if a name won't work, check whether the IDE colours it as a keyword. Numbers start at 0 and strings at `""`, though
 the IDE underlines a name read before anything was put in it, as that's usually a typo.
 An array needs a [`DIM`](#dim) first; its subscripts start at 1 (see
 [`OPTION BASE`](#option-base)).
@@ -116,6 +119,7 @@ DIM HI(5)                        ! an array of five numbers, HI(1) to HI(5)
 LET HI(1) = SCORE
 PRINT PLAYER$; " scored"; HI(1)  ! Ada scored 10
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bY69DoIwAIT3PsXRMEjiAIOLpAPRJpKgEmRxrLRoB0rSVhPf3mjRBW-83M9X8RanzbHhYMhSzBVBwNyHi7Kk4i3qqjjzJgYDLaSg86zzVpvrGv6mYMSgoIx00AYx2ZZ77MrFKvlz8-0bCGvFE2OPXj_UdO2W72KWwI9h4cMSLBb4Sd2Uhx9fDgrXjVZJmk85RCikmFxkKXkB)
 
 ### Numbers
 
@@ -130,6 +134,7 @@ PRINT 0.1 + 0.2                  !  0.3
 PRINT 10 / 4; 2 ^ 10; 1.5E3      !  2.5  1024  1500
 PRINT 1 / 3                      !  0.33333333
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=ZYwrDoAwEAV9TzFoku3bflQ1AkMagub-xyAhfERHz0zf1-1A5szIEgMTyHLot-ciUhqJE1fDrS7585JVcKUCXqW3IZLH7_9-CBc)
 
 ### Strings
 
@@ -142,6 +147,7 @@ LET S$ = "Arcade" & " " & "BASIC"
 PRINT S$; LEN(S$)                ! Arcade BASIC 12
 PRINT "She said ""hello"""       ! She said "hello"
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=83ENUQhWUbBVUHIsSk5MSVVSUFNQUgCTTo7Bns5KXAFBnn4gNdYKPq5-GsEqmgpoQFEBolUBrEHB0AiqRSk4I1WhODEzRUFJKSM1JydfSUkJrgUhB5HiAgA)
 
 ### True and false
 
@@ -154,6 +160,7 @@ PRINT 3 > 2; 3 < 2               ! -1  0
 LET READY = 5 > 1
 IF READY THEN PRINT "ready"
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRMFawUzCyVjBWsFEwUkAFigq6hgoKBlw-riEKQa6OLpEKtgqmCnYKhlyeblCBEA9XP4UAsEFKRamJKZVKXAA)
 
 ### Procedures
 
@@ -164,17 +171,18 @@ the program's variables. In a [`MODULE`](#module) or a [`LIBRARY`](#library) fil
 procedures keep to their own variables.
 
 ```basic
-FUNCTION SIZE(W, H)
-  LET SIZE = W * H
+FUNCTION PRODUCT(W, H)
+  LET PRODUCT = W * H
 END FUNCTION
 
 SUB SHOW(LABEL$, VALUE)
   PRINT LABEL$; ":"; VALUE
 END SUB
 
-CALL SHOW("size", SIZE(3, 4))    ! size: 12
+CALL SHOW("product", PRODUCT(3, 4))   ! product: 12
 END
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=PY69DsIgGEX37ymuxKEYFn-mNg5AaWhCoCkgD6C7xuj7m0p1PSfn5g7Z6zQGj2kOfdapKQKWE-BM-jGcUbCDJeN7DGtAFLNCtKE0TirjtgIX6bJZ2mkefULFHVjLuuq-AzErIi2dqzF7PO-39_XFxP_CUeDEOYANVtlif1hi-gA)
 
 ---
 
@@ -194,6 +202,7 @@ DIM GRID(8, 8)         ! 2-D numeric array (rows × cols)
 DIM NAMES$(3)          ! 1-D string array
 DIM CUBE(2, 2, 2)      ! N-dimensional, up to 7 dims
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=XY5NDoIwFIT3nmJMXLQJmoILdQlCDAvA-HMAhEZfAi1pIehJPJAXM2JM1MksZvHNexPGCXzmCo4fjeFOQ6iuloYK5MbkNwekSiqkhTubuQJMG4gh9dRekG0PcZYi8PcRBB-FcYKACRwyrPj3XXltKiqoRaV7aXDSnSoHerOLQ7Z0sORftPe_Aszo3uJxR6Er-_6T-km0n7A5_99vW0Pq_C4O5PoYRMxz8DL_kOm0pFoqS1rllYOuQauxQEm1HT0B)
 
 ### `REDIM`
 
@@ -210,6 +219,7 @@ LET HIST(2) = 8
 MAT REDIM HIST(10)     ! grow the array; HIST(1)=7, HIST(2)=8 preserved
 PRINT HIST(1); HIST(2); HIST(3)   !  7   8   0
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_H0VfDwDA7RMNXk8nENgbANNRVsFcwRfCMQ34KLy9cxRCHI1QWmxdBAUwEEFBXSi_LLFUoyUhUSi4oSK61hptia68AMsLVQKChKLU4tKktN4QoI8vSDW2UNUwJlGGuCjVQwV1BQsFBQUDDgAgA)
 
 ### `DEF`
 
@@ -230,6 +240,7 @@ DEF GUARD(X)                ! multi-line form
   PRINT "non-negative:"; X
 END DEF
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Xc9Li8IwFAXgfX7FqatxBkFBkXF0ISTVUilaI2Tr49oJtElJqui_FyvFx1mfez4uFyHWq800FV-qjQkUvqHwSACvTZZTJ9eGRqBL6ch7bQ129nBlyzRKZHM8bOM1Afq_jC2ERIwJel3G7848CmXD_CB-lj2RR4yjswWqf4I9VeRQOpu5bQG_tyU1XL0xeNcQoDdgtTHbTFN-N_DZKE55petXcLSuYEAUQmGMLuRcJBAqkuAiZMCDahlrOoaybaXPNGr9QTGR8LpyAw)
 
 ### `FUNCTION`
 
@@ -248,6 +259,7 @@ END FUNCTION
 
 PRINT FACT(6)               ! 720
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=cwv1cw7x9PdTcHN0DtHw01RAAooKRanJpUXFmWWpCmmJySX5RZmJOVwKCp5uCn4KNrYKhgohHq5-XCClIN0KtgqGXAoKrj7BrshifgpaUMMVdBUMNUEq_FwUPN24QJQb1HouroAgT78QiEIzFFeAHWJuZMAFAA)
 
 ### `SUB`
 
@@ -260,6 +272,7 @@ END SUB
 
 CALL GREET("Adam")          ! hi Adam
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cw51UnAPcnUN0fBz9HVV0eRSUAgI8vQLUVDKyFRQslYAi3K5-rkoBIc6cXE5O_r4QNUrOaYk5ippKsCBokJGpgJIkAsA)
 
 ### `CALL`
 
@@ -272,6 +285,7 @@ END SUB
 
 CALL DOUBLE(21)             !  21 *2 = 42
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=TcsxDoAgEADB_l6xUokdFztiIUJhQk4j8v-vGAsTp5_WE_noqZbRvMB57XZjETcpi4sYEyrFMq0nkW2t9QsaPH8DaOB9zCoP)
 
 ### `MODULE`
 
@@ -295,6 +309,7 @@ END MODULE
 
 PRINT POLY(3)                    ! 20
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Xc9fC4IwFAXw932K01sZQX_ehB5KFwlzSijY49JVg9lkzejjhwZl3bcL9_C7J07CnFHEm2zPoi0BdjkPsijh2FOW0sO4mGA4IzRWPYSTPm7GoRRai5OWOFtTw7TuripJusN3HGsU8FBgigUBKA8_ACFAmm9ZFHzNNGHHgThC0560Kn1YOZPPxlgnKzgDd5WohbqhseZiRd2LXRjrwd8elv9mt8R9ZULSQ8SzN7n6Lfnhl3PyAg)
 
 A module that sets itself up, sharing a variable:
 
@@ -313,6 +328,7 @@ DECLARE PUBLIC COUNT
 CALL BUMP
 PRINT COUNT                      ! 15
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dZCxDsIwDER3f8UxMbDQgZGBppGolIaqNB9QIEAlSFCait9HaUAgKF5OsvzubBebTAkOtlGy5hUBpUpFzmIDvzWB9Wft0JvWd9g3BhlnYlXxF9h6Arbr0MklG3EYTPxZ42oP_UVPO9i7IUDw-pm6RDIfYVxvOuz00Tod-aY1uDl7cs31yYfEJRbvM7YqRaqKkoLFZ0LUWSAI4DILoxS0GD5C9HXXABBbCRENyyqX9d83DQsnC3oA)
 
 ### `PUBLIC`
 
@@ -367,6 +383,7 @@ WHEN EXCEPTION IN
 USE LOGGER                 ! reference the named handler instead of inlining
 END WHEN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Xc3BCoJAFIXh_TzFyReo1tIi8qIDwyg2kS0HvToDdgOb3j-yVp3lD4evOtrCUAtTlyW1CmhabR2y3r-mkLIc1LlbQzkynzBH4TUZbUmRLVB970pdK7Kg7kSN07WFtgow5NDhgD222KnLmX4K_rfBwiMvLD0jBYb4Ow8IXoaZF0R5JvYDHiOizFGiTKv9IdUb)
 
 ### `OPTION BASE`
 
@@ -381,6 +398,7 @@ LET A(0) = 10
 LET A(2) = 30
 PRINT A(0); A(2)           !  10   30
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=8w8I8fT3U3ByDHZVMOBy8fRVcNQw0lTABIoKmXkpmcmpxQoGenpGXD6uIQqOGgaaCrYKhgZQnhGIZ2zAFRDk6QeRtUY3TVFBwdBAQQGkCgA)
 
 ### `OPTION ARITHMETIC`
 
@@ -400,6 +418,7 @@ NEXT A
 PRINT
 IF 0.1 + 0.2 = 0.3 THEN PRINT "equal" ELSE PRINT "not equal"   ! not equal (binary)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=PY2xCsJAFAT7-4oxVVSIL4kRRSwOOfFALyF5iG0EC0EURQv_XpRos7ADu1NW6suArb2ut079kmDV75xZlTWWBYKWzIRGXUUuBqraB6XxIbYMqDwj0qn059ADASQpvjmdTCQrxkBqgtsr1ny3xq-QJGWIJNlHkeTo2oXuOTrenu05wm0a90OX64MOfzT_Snw4Xdr7q2_e)
 
 ---
 
@@ -418,6 +437,7 @@ LET A$ = "hi"              ! string targets end in $
 DIM G(3)
 LET G(2) = 99              ! array-element target
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=83ENUYhQsFUwMVJAB4oKqRUFOZnJmSVckQq2ChEK2gqGGIoUFBUSc4rzFdIy81IVHjVMUfBxDVHIzC3IyUxN4QKxHVUUbBWUMjKV0LUVlxRl5qUrlCQWpaeWFCuk5qUoZOYpqHC5ePoquGsYa4J1u2sYaSrYKlhaYlhaVJRYqZuak5qbmlcCNYQLAA)
 
 ### `REM`
 
@@ -429,6 +449,7 @@ REM This is a comment.
 ! This is also a comment.
 PRINT 1 + 2                ! inline comment after a statement
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=C3L1VQjJyCxWyCxWSFRIzs_NTc0r0eNSRAjmFOcjywQEefqFKBgqaCsYKaABRYXMvJzMvFSYYoXEtJLUIoVEheKSxJJUkAgXAA)
 
 ---
 
@@ -449,6 +470,7 @@ PRINT "a", "b", "c"        ! a               b               c   (16-col zones)
 PRINT "x ="; X             ! x = 5   (semicolon: no zone padding)
 PRINT "no newline";        ! suppresses the trailing newline
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=XY3BCoJAEIbvPsXfnCrqUJSB4gN0CYkOXdd10IVtVlwj6elDyaSdw8D8fP83-fV8uYFqttYR_maBMY3yEYmxxgkIERz2X4AUbUDFsDTNgAoqRXBrAMtdvNXO4u2E_Wry9cgoxT142CPDceh4fhjtrJME4sYqGlWWRqqfQRyEX9YIUzob_LNpWvaePbqa0bXKWCPVhEYf)
 
 ### `PRINT USING`
 
@@ -468,6 +490,7 @@ PRINT USING "$$,$$$.##": 12345.67           ! $12,345.67
 PRINT USING "*****": 42                       ! ***42
 PRINT USING ">###########": "TABULATED"     ! right-aligned string field
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=fdDRCoIwFAbge5_itO1qrNXm5siLwChCCBHTBwg0G4gX5vsTaSEz6b89fJyfP83iJIfiGidnQBhjFIKSsJwVgJJeOhN8QD4XSujdrxguLgKMAb7QMDCwAekiM0C9nX9jY0UhfaWXCgrJfKVdRQgjhPAJ8sA4iIyKB8aF9J3_g1BK55Ps8RQUAsqjQ3GJ8tMRfUxn60e_vjW2bqsSnn1n2xrutmpK7wU)
 
 ### `TAB`
 
@@ -479,6 +502,7 @@ back or insert a newline).
 PRINT "x"; TAB(10); "y"    ! x        y     ← 'y' begins at column 10
 PRINT "hello"; TAB(3); "!" ! hello!         ← TAB(3) is past current col → no-op
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRUKpQslYIcXTSMDTQtFZQqlRSUFBQUFSoUICCSjD5qG2CgnqlukJSanpmXrFCYolCcn5OaW6egqEBVwDEnIzUnJx8qFnGIKMUlRQUFcCiijDDwOZAFChkFisUJBaXKCSXFhWl5oENVHjUNkkhL183v4ALAA)
 
 ### Comma and semicolon in PRINT lists
 
@@ -503,9 +527,10 @@ INPUT N                    ! prompt: "? "
 INPUT "Name: ", N$         ! prompt: "Name: ? "
 INPUT "Age: "; A           ! prompt: "Age: "  (no ?)
 INPUT X, Y, Z              ! one line, comma-separated values
-DIM A(3)
-INPUT A(2)                 ! array element target
+DIM SCORES(3)
+INPUT SCORES(2)            ! array element target
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bY49C8JAEET7_IrxsEjgbLSLRQhqkcJTjILaLXEJwn2Eyyn470UTQSXTLfP2MYXaHvZQGMgIjXemCSlEBhEVb1IoMpxCSKjxENnVX3xev_A58mFzVwOxdciS_ukocZI4_89xlqGvliUqZwxNWm7IU-AL7qRv3EbLYo1ysdmtynj2cfX3NPl1kff0AGs2bAMC-ZpD9AQ)
 
 ### `LINE INPUT`
 
@@ -517,6 +542,7 @@ LINE INPUT A$              ! prompt: "? "
 LINE INPUT "Quote: "; Q$   ! prompt: "Quote: "
 PRINT "you said: "; Q$
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=8_H0c1Xw9AsIDVFwVFFAAYoKBUX5uQUlVgpK9gpKXD4IlUqBpfklqVYKStYKgSqoKmEyXAFBnn4hCkqV-aUKxYmZKVDFXAA)
 
 ### `READ`
 
@@ -530,6 +556,7 @@ DATA 10, 20, 30
 READ A, B, C
 PRINT A; B; C              !  10   20   30
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=VcQrDsAgEEVRP6u49SMeIFHDR9Q0DWH_a2kqOeKM2EGSk-UU2ZoxCKc53d51P5uotErncEESkP-K7AM)
 
 ### `DATA`
 
@@ -544,6 +571,7 @@ DATA 1, 2, 3               ! numbers
 READ NAME1$, NAME2$, X, Y, Z
 PRINT NAME2$; Z            ! beta 3
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c3EMcVRQSswpyEhU0lFQSkotSVRSgABFheKSosy89GIuF5AiQx0FIx0FYwVUoKiQV5qblFpUzBXk6uii4Ofo62qoogOmjVR0FCJ0FCJ1FKK4AoI8_UKgotYKUagmgCxVMOYCAA)
 
 ### `RESTORE`
 
@@ -557,6 +585,7 @@ RESTORE
 READ C, D
 PRINT A; B; C; D           !  1   2   1   2
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=RcghDoAwDEBR31N8fM2GrOrWCQwjZfc_CwISvnnJD19OUaqySw4PXGmS414zx3u6EnLlcS7caEY3gr8NClD5lAc)
 
 ---
 
@@ -608,6 +637,7 @@ SELECT CASE GRADE
     PRINT "?"
 END SELECT
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=XdDBCoJAEAbg-z7F354T7JIKQZgOIYiF6wssstbCZotu7x9tJeqc_jl8_8AIKilrkKWCcK7TnBi-SxKiuWAXhljMBoPsb4p98rUuqgY85X8TexMnW0Q-RcnPPF7GaWsURqvaEVYNHsxbTkE29RQCB-xXl_1tZaTTz16aOe2kNpOlUtAaettK194DaRb0yBlVOYT_AnsD)
 
 ---
 
@@ -627,6 +657,7 @@ FOR I = 0 TO 10 STEP 2     ! 0, 2, 4, 6, 8, 10
   PRINT I
 NEXT I
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bcwxDoAgEETRnlN8-w3ZRWNsLDGhAYIU3v8kRkNh4TS_enOURmLH6AVTPpswIQiz4L0XTB3UlnInuRyvJ-4YXoc_e6yE4fX1i7AK2__BDQ)
 
 ### `DO` / `LOOP` / `WHILE` / `UNTIL`
 
@@ -646,6 +677,7 @@ DO
 LOOP UNTIL Y >= 3          ! post-test: always run once
 PRINT Y                    ! 3
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bY7BCsIwEETv-xXTswhK6UWsJwsGlqZIxeRYJEKhJJJEpH8vwSAKndsuu-8NNz0UamzoKHE9CW6gsEeF3xR4eLOOJsQdjI3Gw9lpxnj_3BLAGaOwwpZYyo66s2jTciEFKqL0orM5E9KovwRc2l4wNA41yr8yLsTcZphewxzgnxbO3kyW6mVpSW8)
 
 ### `EXIT`
 
@@ -665,6 +697,7 @@ SUB GREET(N$)
   PRINT N$
 END SUB
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bY67DoIwAEX3fsWhYdANBkYWYtEuxZSSsDJgMEFLah38eyMkxsE7ntxX3Vg0JTmuIc8yAbpeSYE7KYPqtaNuLJDwiH4hTiOz9wtDRJeFMKp3aHG22jg0f5RQCNF2FUerlNuZdC9g88vpKrdNk1Ii5c_qJ5EQxvgMd8YhzC8uwd_WA21XfTtMKpQ5rOgN)
 
 ---
 
@@ -683,6 +716,7 @@ GOTO 200
 PRINT "skipped"
 200 PRINT "landed"
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_cP8VcwMjDgCgjy9AtRUCrOziwoSE1R4jIyMFCAiuUk5qWAhAA)
 
 ### `GOSUB` / `RETURN`
 
@@ -697,6 +731,7 @@ STOP
 100 PRINT "inside"
 RETURN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRUEpKTcsvSlXicvcPDnVSMDQw4AqASCSmlaQWKXEFh_gHcBkaGChAhTPzijNTUpW4glxDQoP8uAA)
 
 ### `ON ... GOTO / GOSUB`
 
@@ -729,6 +764,7 @@ STOP
 100 PRINT "subroutine"
 RETURN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRUMpNzMxTSMnPS1XiCg7xD-AyNDBQCIBIFZcmFeWXlmSC5IJcQ0KD_LgA)
 
 ### `END`
 
@@ -742,12 +778,14 @@ keyword).
 PRINT "hello"
 END                        ! explicit halt at the end of main
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRUMpIzcnJV-Jy9XNRwAEUFVIrCnIykzNLFDISc0oUEksUSjJSFVLzUhTy0xRyEzPzuAA)
 
 ### `RUN`
 
 Restart the program from the top, clearing all variable state. Rarely used
 in modern style.
 
+<!-- fragment -->
 ```basic
 PRINT "boot"
 RUN                        ! starts over (clears X, etc.)
@@ -781,6 +819,7 @@ PRINT -2 ^ 2; 7 / 2              ! -4  3.5
 PRINT "Arcade" & " BASIC"        ! Arcade BASIC
 PRINT 3 > 2 AND "b" > "a"        ! -1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Vcq7CoNAEIXh3qf4nSJowkadXUkhCJuksRFR64CJvoDvXwQvYHKqc2a-pq3qHuWC5YwriNYeL4MlIWQONA2alRrlhRbcSFD-EmIc2Gu-U_HzZxgn4YRw9131kINuv-28e0uJ4usn8hZKZPjxJgu-)
 
 ### Logical operators
 
@@ -797,6 +836,7 @@ PRINT A XOR B              ! exclusive-or
 PRINT A IMP B              ! A → B  (false only if A true and B false)
 PRINT A EQV B              ! A ≡ B  (true iff both sides agree)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bYzBCoJAEIbvPsWfpzwEdo9gJS2hVhMJr5azuiArrBr1AkHX3qBX60miDQSpuc1833xhgAxLuGB8hQwLzF2kG58jTkKewpYKOlcl2VYYgEcpgi1bj4xGCAMZogTeCJHsKtK29V0ZMmOMZgK6nOq-lWeaNXoww138azK8bo_PeSryuiU0qr5CCjB0uifkqoAHg5wh5O8Pf0P3pwmZRykEjk1XoZUFtchLTeRYbw)
 
 ### `MOD` / `REMAINDER`
 
@@ -810,6 +850,7 @@ PRINT -7 MOD 3             !  2   (floor-division)
 PRINT 7 REMAINDER 3        !  1
 PRINT -7 REMAINDER 3       ! -1   (truncated)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRMFfw9XdRMFZAAYoKCoZcAWB5XWwKFBUUjBQUFDTScvLzi3RTMssyizPz8zShWswVglx9HT39XFyDEPpQjcRUoKigawgysqSoNC85sSQ1RZMLAA)
 
 ### Bitwise operators
 
@@ -822,6 +863,7 @@ PRINT 12 BOR 10            ! 14   (1100 | 1010 = 1110)
 PRINT 12 BXOR 10           !  6   (1100 ^ 1010 = 0110)
 PRINT BNOT 0               ! -1   (bitwise complement)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Xc2xCsJAFAXRPl8x24gphHdFxMbCkMZmE0IKKwtli4CJQgI2frwouLpOf5i62fsWLSl2vkTGNwcbYC6ZMUMmY4vMLM_qyKomVTi0iuwRmZSww79zsI7s-GH2wwpftSSrN1voxU7ddO_GwPna3y6hD8OUZ08)
 
 ---
 
@@ -856,6 +898,7 @@ PRINT ROUND(2.5); ROUND(3.5); ROUND(2.567)       !  2  4  3
 PRINT EXP(1); LOG10(1000); LOG2(8)               !  2.71828183  3  3
 PRINT MAX(3, 9, 4); MIN(3, 9, 4)                 !  9  3
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bY_JCoMwFEX3_YrbXQJGMjhEsrJWJKDRxgj-_5cUG7Wl7VudC--8YfLWBdS3mTBFDebO7fDwRBQUP3UFFJgAssv0cq0LhMk0pwbBL66pQ3vkprV95MNlCkyCyd314-LuJDZHVh8s07wo6XuvBDJA7W67TkRQg37sBCeCcx6DJPr77M1NS6GlFlpt959DhnolKkGVIKMGg3Vn-vd4tYlP)
 
 ### Trigonometry
 
@@ -867,6 +910,7 @@ and `TAN`. Angles are in radians: multiply degrees by `PI / 180`.
 PRINT SIN(PI / 2); COS(0); ATN(1) * 4            !  1  1  3.14159265
 PRINT SIN(30 * PI / 180)                         !  0.5   (30 degrees)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dYwxDoMwEMB2XmG2HAPNQYJaZUKdsqQR8IRG3eH_EoIBdcHyaucppoU5JpMjDzoJvD-zsRIYl2RUaHD8UYOe9q069a9u8FW-Jr2l4Tzp0wp31GBbDxzBt_zWUjapdg)
 
 ### `RND`
 
@@ -881,6 +925,7 @@ FOR I = 1 TO 5
   PRINT INT(RND * 6) + 1;        ! five rolls of a die
 NEXT I
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=C3L0c_H39Yxy5XLzD1LwVLBVMFQI8Vcw5VJQCAjy9AtR8PQL0Qjyc1HQUjDTVNBWMLRWgAJFhbTMslSFovycnGKF_DSFRIWUzFQuP9eIEAVPLgA)
 
 ### `RANDOMIZE`
 
@@ -896,6 +941,7 @@ RANDOMIZE                  ! time-seeded: different every run
 RANDOMIZE 42               ! deterministic — useful for reproducibility
 PRINT RND
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=C3L0c_H39YxyVcAAigolmbmpusWpqSmpKVYKKZlpaalFqXklCqllqUWVCkWleVxBcN0mRhi6U1JLUotyM_Myi0sykxUeNUxRKC1OTSvNUUjLL1IoSi0oyk8pTc5MyszJLKnkCgjy9AtRCPJz4QIA)
 ### String functions
 
 Positions start at 1 and count characters.
@@ -923,6 +969,7 @@ PRINT "["; LTRIM$("  hi  "); "]["; RTRIM$("  hi  "); "]"       ! [hi  ][  hi]
 PRINT VAL("3.25") * 2; "<"; STR$(42); ">"                       !  6.5 <42>
 PRINT CHR$(65); ORD("A")                                        ! A 65
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dZBPSwMxEMXv_RTPIYdEdgvuP4TUQrpd7ULaLkla1GUPtQp69aTSDy_ZTQvSOofAvJn3y_B05WAZ7kDqc797fcNM2bqkUWPqlYOuVtwyIdGsLbcsAg1jgbO6Am4S4PbkvHestxRCgg4ksazng5JGyI6iqR8WYTEXPWa449A__W-BuCmVrRin3cuehIQO7ePTs29N1VTKMU4xRUjFn8PUrPz6_onjOJCoJQntTL1knID3D8AjqPO6uaDTCdV6sWv9sAu0rdKc0nGSk8A1EgmakIR1hvEs8fYpnad1jKwY55hkyTSwyoVhvMiFxNrMOalLQf_HUijy0S8)
 
 ### Date and time
 
@@ -933,6 +980,7 @@ PRINT CHR$(65); ORD("A")                                        ! A 65
 PRINT DATE$; " "; TIME$                          ! 20261029 14:05:09, say
 PRINT "This year is "; LEFT$(DATE$, 4)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cwjy9AtRcHEMcVWxVlBSULJWCPH0dVVRwAkUFYwMjMwMDYwsFQxNrAxMrQwsdRSKEyu5AsAmKYVkZBYrVKYmFilkFoOM83F1C1HRAFugo2CiyQUA)
 
 ### Exception information
 
@@ -976,6 +1024,7 @@ MAT C = TRN(A)             ! transpose
 MAT C = INV(A)             ! inverse (square, non-singular)
 MAT PRINT C                ! print with row-per-line layout
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=ZZA7b4NAEIR7fsW4OxwowGldgJMCKUaRhdKf8Mo-6V65R4j_fQR2TGK2mtF82h3tS7NHxcoMZZqh_hW7q0jeXjtUrMhQpNiimH05-vLmy1u-mf2UPyfJvupQY4sKi1mhN_YyEbuJeEL9SJAkRTrkg_AEH9Ufer2kFQ9OfMM6c4x9ABNak8NRKA8VfRjz_pzed7BNivX_Ziv4nkvuoKIMwsq5XndoWZU-HAyOa2-NpzvWtB9LTOgvcp7A_GfkjjJoo3Mv9ClK7q593g9NO25Y_Mg6oQMGEc5wZsgtuVwKTZD8YmJIfgA)
 
 ### `ZER`
 
@@ -986,6 +1035,7 @@ target's current bounds.
 DIM A(3, 3)
 MAT A = ZER                ! all elements = 0
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_H0VXDUMNZRMNbk8nUMUXBUsFWIcg1SQAOKCok5OQqpOam5qXklxQq2CgZcAA)
 
 ### `IDN`
 
@@ -996,6 +1046,7 @@ elsewhere). Requires a square target.
 DIM I(3, 3)
 MAT I = IDN                ! diag = 1, else 0
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_H0VfDUMNZRMNbk8nUMUfBUsFXwdPFTQAOKCimZiekKtgqGOgqpOcWpCgZcAA)
 
 ### `CON`
 
@@ -1005,6 +1056,7 @@ In a MAT RHS, produces an array of all-ones shaped like the target.
 DIM A(4)
 MAT A = CON                ! 1, 1, 1, 1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_H0VXDUMNHk8nUMUXBUsFVw9vdTQAOKCoY6MMQFAA)
 
 ### `NUL$`
 
@@ -1016,6 +1068,7 @@ DIM S$(2)
 LET S$(1) = "stale"
 MAT S$ = NUL$              ! S$(1) = "", S$(2) = ""
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_H0VQhW0TDS5PJxDQGxDDUVbBWUiksSc1KVuHwdQWIKtgp-oT4qCihAEaFYSQdiBJjNBQA)
 
 ### `TRN`
 
@@ -1027,6 +1080,7 @@ DIM A(2, 3), T(3, 2)
 ! ... populate A ...
 MAT T = TRN(A)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_H0VXDUMNJRMNbUUQjRMNZRMNLkUlTQ09NTKMgvKM1JLElVcARxuXwdQxRCFGwVQoL8NBw1uQA)
 
 ### `INV`
 
@@ -1042,6 +1096,7 @@ LET A(2, 1) = 2
 LET A(2, 2) = 6
 MAT B = INV(A)             ! [[0.6, -0.7], [-0.2, 0.4]]
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Tcm9CoAgFMXx3ac4bQo3sYvo1HClBqGapEV8_9eIPsDOdH78l7xDNBPYENJ71LYWiJ4Ik8EM382342f-Onc_PahdChJm5OPUYvDfgFqdDYTR2dgIdXSWCc761tQF)
 
 ---
 
@@ -1074,6 +1129,7 @@ LINE INPUT #1: A$
 LINE INPUT #1: B$
 CLOSE #1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dY3BCoJAFEX38xXX0WUlbosWJrMQbBzSPkDqBYLOiD7R_j4KoSi6ywP3nEyVMAH2kCG3XWgd07DhmaXIjdLwoy10fFQwwQpxkqiiQH4uzbnExzxMfc20dra578D9aC8V0wBn4TqywpxSXb5csqktwVmSP5AnJ0WS5YWCH4n_-VR_1eGhp-q61G91Q2jHgUFzPbDIUq2Wz9MWB9_kELyrDw)
 
 `ACCESS` values: `INPUT`, `OUTPUT`, `OUTIN` (read+write).
 `ORGANIZATION` values: `SEQUENTIAL`, `STREAM`.
@@ -1089,6 +1145,7 @@ Release the file behind a channel and flush any pending writes.
 ```basic
 CLOSE #1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c_bxD3ZVUDbkAgA)
 
 ### `PRINT #`
 
@@ -1101,6 +1158,7 @@ PRINT #1: "name", "score"      ! tab-separated via zone padding
 PRINT #1: "Adam", 42
 CLOSE #1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=8w9w9VNQNrRS8HP0dVVQKk7OL0ot1iupKFHSUXB0dnYNDlbwDw0JCA3hCgjy9AsBK1XKS8xNVdKBqlZSAANFhZLEJN3i1ILEosSS1BSFssxEhar8vFSFgsSUlMy8dGT9jimJuUo6CiZGXM4-_sGuCsqGXAA)
 
 ### `INPUT #`
 
@@ -1113,6 +1171,7 @@ INPUT #1: NAME$, SCORE
 CLOSE #1
 PRINT NAME$; "scored"; SCORE
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=8w9w9VNQNrRS8HP0dVVQSkksSdRLLi5T0lFwdHZ2DQ5W8PQLCA3hApNwdSo6CsHO_kGuXM4-_sGuCsqGXAFBnn4hEDlrBaXi5Pyi1BQla6gqAA)
 
 ### `LINE INPUT #`
 
@@ -1125,6 +1184,7 @@ LINE INPUT #1: ENTRY$
 CLOSE #1
 PRINT ENTRY$
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=8w9w9VNQNrRS8HP0dVVQyslP1yupKFHSUXB0dnYNDlbw9AsIDeHy8fRzhTDBal39QoIiVbicffyDXRWUDbkCgjz9QmCiAA)
 
 ### `WRITE #`
 
@@ -1138,6 +1198,7 @@ OPEN #1: NAME "save.dat", ACCESS OUTPUT, RECTYPE INTERNAL
 WRITE #1: HISCORE, PLAYER$        ! HISCORE round-trips exactly, not as rounded text
 CLOSE #1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=NYw9C8IwGAb3_IrH6hgFV7cQXjAQk5CkSMdgMxSklSZK_ffi163HnXVksN4fYMSJ0JT0yLs-1YZDSEkhwLbRtZHDk4ydIygTyRuh2dmrSJ_0qIK0njicFh35DX6s_gbzdB_7bZ2HW0Fe0qVenxzjVJHK1-UeNS-VSW3De8pe)
 
 ### `READ #`
 
@@ -1150,6 +1211,7 @@ OPEN #1: NAME "save.dat", ACCESS INPUT, RECTYPE INTERNAL
 READ #1: HISCORE, PLAYER$
 CLOSE #1
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=HcsxCoQwEAXQPqf46JZBsN1umP2wgTgJk2xhKegJVjy_4OtfqTSM8xsmCzH8t-uY9u0cIkSVrSFZ_fUIp_a1Esk63SQHp3ye-E1NizOiZlnpr6C5NGKcww0)
 
 ---
 
@@ -1177,6 +1239,7 @@ USE
   PRINT "caught at line"; EXLINE; "type"; EXTYPE
 END WHEN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dcixDsIgFEbhnaf45QWEuXHSm5SkuRLFFEeiREm1EqCDb-_g4OTZvjP2xCC_JevMnmFYAAM5eGygsYbC31YoIdVYUZa5pWdELOVVoJXSArAHww6yTinneJXidKTfvYTldm8IDY80R9mB_GCYOsj2zl-7syVBvMPYE4sP)
 
 ### `CAUSE EXCEPTION`
 
@@ -1192,6 +1255,7 @@ USE
   PRINT "user error type"; EXTYPE        !  9001
 END WHEN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=TYsxCsJAFAX7PcWYE6yliIXEJ1mQ72J-SDzA1spGC28vkhRONcXM2MnQ1Cp7uhrJAlzkGAdigHReFP-F7XHo9ZfvYtyGoVeAfEvmNO-5VEqtj8rr8yzNHk1-z2JlwzLJToydLHwB)
 
 ### `RETRY`
 
@@ -1209,6 +1273,7 @@ USE
   RETRY                                  ! restart the IN body
 END WHEN
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=hY8xC8IwFIT3_Iozq0vESaqD6BMDNYb2iTrW9kkFUUkj0n8vXapO3nQcdx9cSow5M20855jBqP2aHOiwIM9262CdAtLfUm-HGCnArj7JFGNwR1jMdzl9cSbGGAX4zDqGbp5lKVJJheIcJeikJyTQMVyk0WqX02cA1MWtukpAU7wQ24foBHTgo-9KGXF2xF8NEKSJRYiItcA6nO5Vq8gt0Z1Wbw)
 
 ### `CONTINUE`
 
@@ -1226,6 +1291,7 @@ USE
 END WHEN
 PRINT "done"
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=hY6xDoJAEET7_Yrhegs_wZybcM1C5Ai2F104jCCB4_-NUaOJha-cTN5Mk7OAj5ZL7wqBEwLsrq74K9wSUB6ceJjQJp03beiv_dgZ_JDBFuKd1IzLOkwLos5KdcUfxSmsXUzmsfOu_iHDrMs6KKawJKSoz4fEskeTs9DLfL6NaugO)
 
 ---
 
@@ -1263,6 +1329,7 @@ ASK WINDOW L, R, B, T           ! read back current settings into variables
 ASK DEVICE SIZE W, H, U$        ! device width/height + unit ("METERS"/"OTHER")
 ASK MAX COLOR M                 ! capability queries; optional " STATUS s" clause
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bZPNctowFIX3PMWJJwuYKhN-0i5g5RKnYUqAsZ2Qdiesi9FESK4kIPQN-iB9sT5Jx8ZtSIgW8uae7xxd35tEKeajyfV0jjZD71Ob4aLD0EF9zrAzVglkxlghNfcEy3VOaCpaemZlvvJsYbw3a-ZN0WokUYqHUTSfTeO0RHZYdeMIuCJLkB6Ka-EgNbSxa67kTxIQtJUZwRU8o4p1HT2MhtFRxiPgGZpcbLnOSLTgNosLS5nnOlcEs4RfEdzGLt-Q3g33iuS5zcnjCKYr2CFbxRqORzME00mA03OGTMkCwvKd1Dm8qcRbSbvCWI9mKbsMpjc3QatRwcajSYQk_TaO0D2FdeCMkoKhC8HdigRDD8J4T6JSz6ajSVrLe6diYXwpLdTGlULuPFnpnl6Mh9PxNMbViS9XztTwS6TRY_kJ4yg8CBrDcRTG77z-qAnE7aFv0hWK7xuNL3E4u61ckz7arD1Ap80-DtBts_ZBY7SmzJOAo3xN2js0__z63UVhpPauVROqVEkfHdYZoMu6x7Zrbp_IurqyDFxbXZVXl_X-Vy6lUiRQGLXPja6Mem-MymczhGnp1Eeg-IJUUMs9PftB1aU-3lQ_sz3DfTKafIFc5-d9bBuNMPn6b4jHDDHDZ4b0VcMscYEFz56Qbawl7eHIe6nzcke8wZZbyReKXMWqpzkZfY8wZ7hluD9_YdVrtJPCry5XVG4pPmCjZTl_d1EaxUk5g-ltFAetincXPtajcPfez-QFX0gl_R4_NmQluQFM4aXRXCFAkobpfQIXIFN846jxFw)
 
 To build a curve or any shape with a variable number of vertices, drive `GRAPH`
 from a loop (coordinate expressions may reference variables) — see
@@ -1286,6 +1353,7 @@ MAT GRAPH CELLS, IN 10, 20; 18, 12: SPRITE   ! top-left (10,20) to bottom-right 
 SET COLOR MIX (20) 0.6, 0.3, 0.1   ! colour 20 is now brown: red, green, blue, each 0-1
 ASK COLOR MIX (20) R, G, B      ! read it back; optional " STATUS s" (11086: no such colour)
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=XY_NisJAEITveYrSUwKtzGRBhngaNbhh1UgmC3vNz6hhY0YmI65vvyiKYB_6UF31UZ1u8yTdYCZVDO4tkjXUNkvy2BcEEeBtBs_rH-EaRBAoKmv6niBQm0vnrWWOLJaLh-89jwH8XdO2usbOmiMWMpeEvrgG9-Qyk9tPzOPVShGSDTgjhGwKLgg8jF7QAZw5jVq9c_A5o5AFcAalcc4cR7bZH266IB4GnqfiHPN0lWZYJz_wb142nhDY-OO2-B1XmdacLUKGpkdnLiituXQRrK4Je6t1RyjbsyboojqAjbgn1dc7NyMsCbPnq1YXNRqHsqh-pzAn15iuaDGEymX-rdAP4XPOxCRCZ9Cfq8OjR-D9Aw)
 
 There are 256 colours, 0–255 (`ASK MAX COLOR`): 0 is the background (black), 1
 white, 2–15 the bright and dark primaries, and 16–255 the xterm 256-colour palette
@@ -1346,6 +1414,7 @@ DO
   SLEEP 0.02
 LOOP UNTIL K$ = "q"
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=VY2xCsIwGIT3PMXxE6RdJHZxKJ000pCQxhoHx4KdHBKTFunbi2RyO477vnOjsh7k0pwzXvOWW1yRlxAzsfPAACM9NEcHZbV8cAaoSylO_cgrUWNX0rGp4Xtp4YpyjZhSCh8qiJG20rxGh8PfbAsrli3OT1AL_fPfjJQOYi8aZobB4W69MuWS3sS-)
 
 ### `KEYDOWN`
 
@@ -1369,6 +1438,7 @@ DO
   SLEEP 0.02
 LOOP UNTIL INKEY$ = "q"
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bc7LCsIwFATQfb5iCC4Uq6TSLrRWCOZqiyEpaaTtB_haiUXw98XiA9TV3MWcy5TkUeVG2QoiQChE8EymyaNGilgwZRmQr7ChRtnK9Lls2_NN7_ZXPoA0CjUWiOEzMnixGiOE_5g7HY4fN8f0Bw47uNQkHQPWThYZpCM5657Gj3lJV_s6o-RdiBhQaqICYiwmTFtbYGt8rpGbDTU9pOAXzu4)
 
 ### `SLEEP`
 
@@ -1388,6 +1458,7 @@ DO
   SLEEP 0.05               ! ~20 frames/second
 LOOP
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=bY3BSsNAFEX38xWnQ0GlGFPBZRdCphgaMkUDTZfBvLRDbaKT2NCN3y4xIgi9y3vfOyeyChKTsZqyIE5XZjvlLxO0xlXUDQc541r6wnWu3imIl-OP_tBkTybF5HFGZH8ns43sJr3Wj943fSJVp2_Gs0GWsyDnlvmP49icpEVO4s9UvjgKrrtq2ctbeQn27Hb7C7QZczXQgiDg870sOmGGl9IX_dApeEmMWRMG4QP_M-HrPhzV7V0rr01dqsTatfoG)
 ### The mouse
 
 `GET MOUSE x, y, s` reads where the pointer is and what its button is doing, without
@@ -1413,6 +1484,7 @@ audio with `arcade-basic run file.bas --wav out.wav`.
 ```basic
 SOUND 440, 9               ! 440 Hz (concert A) for about half a second
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=C_YP9XNRMDEx0FGwVEAFiiBhBY8qBY3k_Lzk1KISBUdNhbT8IoXEpPzSEoWMxJw0hUSF4tTk_LwULgA)
 
 ### `BEEP`
 
@@ -1422,6 +1494,7 @@ SOUND 440, 9               ! 440 Hz (concert A) for about half a second
 ```basic
 BEEP
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=c3J1DeACAA)
 
 ### `PLAY`
 
@@ -1443,6 +1516,7 @@ BASIC (GW-BASIC/QuickBASIC). Commands (case-insensitive, spaces ignored):
 PLAY "T120 O4 L8 CDEFGAB>C"      ! a C major scale
 PLAY "MS T140 O5 L16 C C G G"    ! staccato
 ```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=C_BxjFRQCjE0MlDwN1HwsVBwdnF1c3d0snNWUgADRYVEBWeF3MSs_CKF4uTEnFSuALAW32CFEEMTAwV_UwUfQzMFZwVnBXcFdyWIluKSxOTkxJJ8LgA)
 
 ---
 

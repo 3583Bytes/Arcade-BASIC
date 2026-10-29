@@ -1,9 +1,11 @@
 name: Playground (GitHub Pages)
 
-# Builds the browser IDE (src/ArcadeBasic.Web, the VM compiled ahead of time to
-# WebAssembly), with the player that File → Export packs programs with
-# (src/ArcadeBasic.Player, in player/), and publishes them to GitHub Pages. Needs Pages
-# turned on with "GitHub Actions" as the source (Settings → Pages).
+# Builds the website and publishes it to GitHub Pages: the browser IDE
+# (src/ArcadeBasic.Web, the VM compiled ahead of time to WebAssembly), the player that
+# File → Export packs programs with (src/ArcadeBasic.Player, in player/), and the desktop
+# players for its Mac, Windows and Linux apps (desktop/player, in desktop/) — all from the
+# same commit, so what the IDE compiles is what the players run. Needs Pages turned on
+# with "GitHub Actions" as the source (Settings → Pages).
 
 on:
   push:
@@ -11,6 +13,7 @@ on:
     paths:
       - 'src/**'
       - 'examples/**'
+      - 'desktop/**'
       - 'global.json'
       - 'Directory.Build.props'
       - 'Directory.Packages.props'
@@ -28,8 +31,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build the playground
+  site:
+    name: Build the IDE and the player
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -46,6 +49,93 @@ jobs:
       - name: Build the site (the IDE, and the player in player/)
         run: bash src/ArcadeBasic.Web/build-site.sh publish/site
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: publish/site
+          include-hidden-files: true      # (.nojekyll)
+
+  # The desktop players, each built on its own OS around the site's player page. One that
+  # fails to build is left out — the IDE offers apps for the players there are — rather
+  # than holding up the site.
+  desktop:
+    name: Desktop player (${{ matrix.os }})
+    needs: site
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos
+            runner: macos-latest
+          - os: windows
+            runner: windows-latest
+          - os: linux
+            runner: ubuntu-22.04          # (an older glibc and WebKitGTK: runs on more Linuxes)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: publish/site
+
+      - name: What Tauri builds against on Linux (WebKitGTK)
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev
+
+      - name: Both Mac processors (one universal app)
+        if: matrix.os == 'macos'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/player
+
+      - name: Build the player
+        shell: bash
+        run: |
+          bash desktop/player/build.sh --page publish/site/player ${{ matrix.os == 'macos' && '--universal' || '' }} | tee build.log
+          mkdir -p out
+          cp "$(tail -n 1 build.log | sed 's/^built //')" out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: out/
+
+  publish:
+    name: Put the site together
+    needs: [site, desktop]
+    if: ${{ !cancelled() && needs.site.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: publish/site
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: publish/players
+        continue-on-error: true           # (none built: the site without desktop apps)
+
+      - name: Add the desktop players (desktop/)
+        shell: bash
+        run: |
+          shopt -s nullglob
+          players=(publish/players/*/*)
+          bash desktop/player/add-to-site.sh publish/site "${players[@]}"
+          cat publish/site/desktop/players.json
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
@@ -54,7 +144,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: build
+    needs: publish
     runs-on: ubuntu-latest
     environment:
       name: github-pages

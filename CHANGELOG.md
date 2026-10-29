@@ -14,8 +14,14 @@ the last one. Releases before 2.0.0 are on the
   what it prints, its input line) and **Console** (problems, and what each run did).
   Running shows Output; a pause or an error shows the code at its line; Alt+1, 2 and 3
   switch.
-- **Export**: *File → Export…* makes your program a web page — a zip of the player and
-  the compiled program, no source — to upload to itch.io or put on any website.
+- **Export**: *File → Export…* makes your program a **Mac, Windows or Linux app**, or a
+  **web page** to upload to itch.io or put on any website — a zip of a player and the
+  compiled program, no source. The Mac app is signed ad hoc in the browser, so a Mac
+  that downloads it offers Open Anyway; the dialog says how to open each the first time.
+- `arcade-basic build --desktop` on a Mac signs the Mac app ad hoc, so it opens on other
+  Macs (after Open Anyway) rather than being called damaged.
+- The desktop player passes the app's name to the page as its title, and doesn't open a
+  console window on Windows.
 
 ## 2.0.0
 

@@ -197,24 +197,42 @@
     </form>
   </dialog>
 
-  <!-- File → Export…: the program, compiled, with the player (export.js). -->
+  <!-- File → Export…: the program, compiled, with a player (export.js fills in the kinds this
+       site has players for). -->
   <dialog id="exportDialog" class="export" aria-labelledby="exportHeading">
     <form method="dialog">
       <h2 id="exportHeading">Export</h2>
       <p>The program, ready to give to people: compiled, without its source.</p>
       <label class="name">Name <input type="text" name="name" spellcheck="false" autocomplete="off"></label>
-      <fieldset class="kinds">
-        <label class="kind"><input type="radio" name="kind" value="web" checked>
-          <span><b>Web page</b><small>A zip to put on itch.io or any website. It plays in every browser, on any computer.</small></span></label>
-      </fieldset>
+      <fieldset class="kinds"></fieldset>
       <p class="status" aria-live="polite"></p>
       <div class="after" hidden>
         <p><b class="file"></b> is in your downloads.</p>
-        <p><b>itch.io:</b> make a new project, choose <i>HTML</i> as its kind, upload the zip and tick
-          <i>This file will be played in the browser</i>. Or put its files on any website (GitHub Pages, Netlify…).</p>
-        <p class="note">Opening its <code>index.html</code> straight from your disk won't work: browsers run it only
-          from a website. To try it on your computer, unzip it and run <code>python3 -m http.server</code> in
-          its folder, then open <code>localhost:8000</code>.</p>
+        <div data-kind="macos">
+          <p>Unzip it (double-click it), and move <b class="app"></b> to Applications if you like.</p>
+          <p>The first time you open it, macOS says it can't check it for malicious software, because Apple
+            hasn't checked it (notarized it). Choose <i>Done</i>, then in <i>System Settings → Privacy &amp; Security</i>
+            choose <i>Open Anyway</i> beside its name. After that it opens like any app.</p>
+          <p class="note">On macOS 14 or earlier: right-click it, choose <i>Open</i>, then <i>Open</i> again.</p>
+        </div>
+        <div data-kind="windows">
+          <p>Unzip it (right-click → <i>Extract All</i>), then double-click <b class="app"></b>.</p>
+          <p>Windows may say it protected your PC, because the app isn't signed: choose <i>More info</i>, then
+            <i>Run anyway</i>.</p>
+          <p class="note">It shows the game with Microsoft Edge WebView2, which Windows 10 and 11 have.</p>
+        </div>
+        <div data-kind="linux">
+          <p>Unzip it, then run <b class="app"></b> (double-click it, or start it from a terminal).</p>
+          <p class="note">It shows the game with WebKitGTK, which most Linux desktops have; if yours doesn't, on
+            Debian or Ubuntu: <code>sudo apt install libwebkit2gtk-4.1-0</code>.</p>
+        </div>
+        <div data-kind="web">
+          <p><b>itch.io:</b> make a new project, choose <i>HTML</i> as its kind, upload the zip and tick
+            <i>This file will be played in the browser</i>. Or put its files on any website (GitHub Pages, Netlify…).</p>
+          <p class="note">Opening its <code>index.html</code> straight from your disk won't work: browsers run it only
+            from a website. To try it on your computer, unzip it and run <code>python3 -m http.server</code> in
+            its folder, then open <code>localhost:8000</code>.</p>
+        </div>
       </div>
       <div class="buttons"><span class="spacer"></span><button type="button" class="close">Close</button><button class="primary" value="export">Export</button></div>
     </form>

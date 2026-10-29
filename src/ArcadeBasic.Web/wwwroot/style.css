@@ -244,7 +244,8 @@ dialog.files { width: min(520px, calc(100vw - 32px)); }
 dialog.export { width: min(520px, calc(100vw - 32px)); }
 dialog.export .name { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
 dialog.export .name input { flex: 1; }
-dialog.export .kinds { border: 0; padding: 0; margin: 0 0 8px; }
+dialog.export .kinds { border: 0; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
+dialog.export .kinds[hidden], dialog.export .after [hidden] { display: none; }
 dialog.export .kind { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 dialog.export .kind:has(input:checked) { border-color: var(--accent); }
 dialog.export .kind input { margin-top: 3px; }

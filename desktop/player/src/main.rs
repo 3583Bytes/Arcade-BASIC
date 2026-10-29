@@ -3,7 +3,11 @@
 // see build.sh) on arcade://localhost, which also serves the page the program, game.bin —
 // from a macOS app's Resources, or appended to this executable the way `arcade-basic build`
 // appends one ([program][u32 length]["FB-BCEND"]) — and `quit`, which the page asks for
-// once the program has ended. `arcade-basic build --desktop` makes the apps.
+// once the program has ended. `arcade-basic build --desktop`, and the IDE's File → Export,
+// make the apps.
+
+// A window, not a console program, on Windows.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -42,6 +46,13 @@ fn program(exe: &Path) -> Option<Vec<u8>> {
     appended(exe).or_else(|| std::fs::read(exe.parent()?.parent()?.join("Resources").join("game.bin")).ok())
 }
 
+/// `text` for a URL's query: anything but letters, digits and -._~ as %XX.
+fn query_text(text: &str) -> String {
+    text.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
 fn main() {
     let exe = std::env::current_exe().unwrap_or_default();
     let title = exe.file_stem().and_then(|s| s.to_str()).unwrap_or("Arcade BASIC").to_string();
@@ -68,10 +79,12 @@ fn main() {
             Response::builder().status(status).header("Content-Type", mime).body(body).unwrap()
         })
         .setup(move |app| {
-            // (Windows serves custom schemes as http://<scheme>.localhost)
+            // (Windows serves custom schemes as http://<scheme>.localhost.) The page takes the
+            // app's name for its title, which also keeps each game's saved files apart.
             let mut page = String::from(if cfg!(windows) { "http://arcade.localhost/index.html" } else { "arcade://localhost/index.html" });
+            page += &format!("?title={}", query_text(&title));
             if let Ok(report) = std::env::var("ARCADE_PLAYER_REPORT") {
-                page += &format!("?report={report}");   // (tests: where the page posts what happened)
+                page += &format!("&report={}", query_text(&report));   // (tests: where the page posts what happened)
             }
             WebviewWindowBuilder::new(app, "main", WebviewUrl::CustomProtocol(page.parse()?))
                 .title(&title)

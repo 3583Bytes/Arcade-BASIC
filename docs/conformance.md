@@ -127,7 +127,7 @@ Cross-section jumps (e.g. into an `END IF` label from inside an `ELSE` arm) are 
 |---|---|---|
 | `^` | numeric ^ numeric | Integer exponents are exact under `DECIMAL` (a negative one is a reciprocal rounded like `/`); non-integer exponents go through `double`. A negative base with a non-integer exponent raises 3002, zero to a negative power 3003 |
 | `*` `/` | numeric only | `*` capped at 40 significant digits, `/` at 30 (see Numeric representation) |
-| `MOD` `REMAINDER` | numeric, both as operators and as 2-arg builtins | `MOD` follows mathematical modulo (result has sign of divisor); `REMAINDER` has sign of dividend, per spec |
+| `MOD` `REMAINDER` | numeric, as operators (the 2-arg function form doesn't parse yet) | `MOD` follows mathematical modulo (result has sign of divisor); `REMAINDER` has sign of dividend, per spec |
 | `+` `-` | numeric only | **`+` is rejected for strings** (see DEVIATION above) |
 | `&` | string only | The only string concat operator |
 | `=` `<>` `<` `<=` `>` `>=` | numeric or string | String comparison is `string.CompareOrdinal` |
@@ -148,18 +148,24 @@ Numeric → numeric:   ABS SGN INT TRUNCATE CEIL ROUND
                      SIN COS TAN ATN ASIN ACOS SEC CSC COT
                      RND  (0 or 1 arg; argument ignored)
 Variadic numeric:    MAX MIN
-Binary numeric:      MOD REMAINDER  (also operator forms)
+Binary numeric:      MOD REMAINDER  (operator forms only: see below)
 String → numeric:    LEN VAL ORD POS
 Numeric → string:    STR$ CHR$ REPEAT$
 String → string:     LCASE$ UCASE$ UPRC$ LTRIM$ RTRIM$
                      MID$ LEFT$ RIGHT$
 System:              DATE$ TIME$
-Array introspection: LBOUND UBOUND
+Array introspection: LBOUND UBOUND  (registered, not callable yet: see below)
 Exception accessors: EXTYPE EXLINE EXTEXT$
 Constants:           PI EPS INF MAXNUM
 
 Extensions (non-ISO): INKEY$   ← Microsoft BASIC (see "Extensions" below)
 ```
+
+**Known gaps:** `LBOUND(A)` and `UBOUND(A)` are registered but can't be called — the
+analyzer rejects an array name passed as an argument ("'A' is an array; index it with
+parentheses"). `MOD` and `REMAINDER` work as operators (`7 MOD 3`) but the standard's
+function form `MOD(7, 3)` doesn't parse, since both are reserved words. And `DATA`
+takes numbers and quoted strings only, not the standard's unquoted strings.
 
 `STR$(x)` is the string `PRINT` shows for `x` without its leading and trailing spaces (§6.4), so it rounds to the same 9 significant digits: `STR$(1/3)` is `"0.33333333"`.
 

@@ -17,7 +17,8 @@ const store = {
   get(key) { try { return localStorage.getItem(key); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* no storage */ } },
 };
-const report = new URLSearchParams(location.search).get('report');   // (tests: where to post what happened)
+const query = new URLSearchParams(location.search);
+const report = query.get('report');   // (tests: where to post what happened)
 
 const audio = createAudio();
 audio.muted = !!report;     // (tests run silent)
@@ -112,6 +113,7 @@ function finish(error) {
 function sendReport(extra = {}) {
   if (!report) return;
   const state = { title: document.title, running: !!run, frames: run?.frames, drawn: root.classList.contains('drawn'),
+                  visible: document.visibilityState, ticks: run?.ticks,
                   texts: screen.texts.map(t => t.text), output: output.textContent.slice(-500), audio: audio.state, ...extra };
   fetch(report, { method: 'POST', body: JSON.stringify(state, null, 2) }).catch(() => {});
 }
@@ -130,8 +132,9 @@ try {
   throw e;
 }
 
-// An exported page comes with its name as its title (export.js); else the program's file's.
-const title = document.title !== 'Arcade BASIC' ? document.title : P.Title() || 'Arcade BASIC';
+// The app's name, from the desktop player (?title=) or an exported page's title (export.js);
+// else the program's file's.
+const title = query.get('title') || (document.title !== 'Arcade BASIC' ? document.title : P.Title()) || 'Arcade BASIC';
 document.title = title;
 files = createFiles({ store, key: `arcade-basic.files.${title}` });
 files.attach(P);

@@ -259,12 +259,35 @@ static int BuildDesktop(string source, string? output, byte[] payload, string? p
     {
         var written = Bundles.WriteDesktopApp(player, output, Path.GetFileNameWithoutExtension(source), payload);
         Console.WriteLine($"wrote {written} (program {payload.Length:N0} bytes)");
+        if (Bundles.OsOf(player) == Bundles.Os.MacOS && OperatingSystem.IsMacOS()) SignAdHoc(written);
         return 0;
     }
     catch (InvalidOperationException ex)
     {
         Console.Error.WriteLine($"build error: {ex.Message}");
         return 1;
+    }
+}
+
+/// <summary>Sign a Mac app ad hoc, so its signature covers its Info.plist and its program:
+/// a copy downloaded elsewhere then opens once allowed (System Settings → Privacy &amp;
+/// Security), where one signed by the linker alone is "damaged". The IDE's Export signs its
+/// Mac apps the same way, itself (wwwroot/macsign.js).</summary>
+static void SignAdHoc(string app)
+{
+    try
+    {
+        using var codesign = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("codesign", ["--force", "--sign", "-", app])
+        {
+            RedirectStandardError = true,
+        })!;
+        var error = codesign.StandardError.ReadToEnd();
+        codesign.WaitForExit();
+        if (codesign.ExitCode != 0) Console.Error.WriteLine($"note: couldn't sign {app}: {error.Trim()}");
+    }
+    catch (System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine($"note: couldn't sign {app} (no codesign); it runs here, but a copy downloaded elsewhere won't open");
     }
 }
 

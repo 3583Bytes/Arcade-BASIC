@@ -105,28 +105,14 @@ public static class Bundles
         catch { /* best effort — chmod failure is non-fatal */ }
     }
 
-    /// <summary>The Info.plist of a game's app bundle; its identifier keeps each game's data apart.</summary>
+    /// <summary>The Info.plist of a game's app bundle: desktop/player/app-Info.plist (built
+    /// in), which the IDE's File → Export fills in too.</summary>
     private static string InfoPlist(string name)
     {
-        var text = System.Security.SecurityElement.Escape(name);
+        using var stream = typeof(Bundles).Assembly.GetManifestResourceStream("app-Info.plist")
+            ?? throw new InvalidOperationException("app-Info.plist isn't built in");
+        var template = new StreamReader(stream).ReadToEnd();
         var id = new string(name.ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray());
-        return $"""
-            <?xml version="1.0" encoding="UTF-8"?>
-            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-            <plist version="1.0">
-            <dict>
-              <key>CFBundleName</key><string>{text}</string>
-              <key>CFBundleDisplayName</key><string>{text}</string>
-              <key>CFBundleExecutable</key><string>{text}</string>
-              <key>CFBundleIdentifier</key><string>io.github.arcadebasic.game.{id}</string>
-              <key>CFBundlePackageType</key><string>APPL</string>
-              <key>CFBundleShortVersionString</key><string>1.0</string>
-              <key>CFBundleVersion</key><string>1</string>
-              <key>LSMinimumSystemVersion</key><string>10.15</string>
-              <key>NSHighResolutionCapable</key><true/>
-            </dict>
-            </plist>
-
-            """;
+        return template.Replace("__NAME__", System.Security.SecurityElement.Escape(name)).Replace("__ID__", id);
     }
 }

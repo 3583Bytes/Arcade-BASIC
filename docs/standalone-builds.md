@@ -207,5 +207,30 @@ in the window's storage, per game.
 Build the player for the computer you're on with `desktop/player/build.sh` (it needs
 the .NET `wasm-tools` workload and Rust); see [building.md](building.md).
 
-The apps aren't signed: a Mac that downloads one will want it cleared before it opens
-(`xattr -dr com.apple.quarantine game.app`), as for the other binaries here.
+On a Mac, `build --desktop` signs a Mac app **ad hoc** (`codesign --sign -`): signed,
+but not by a developer Apple knows. A Mac that downloads it asks before opening it the
+first time — open it, then System Settings → Privacy & Security → **Open Anyway** (on
+macOS 14 or earlier, right-click the app → Open) — or clear it with
+`xattr -dr com.apple.quarantine game.app`. A Mac app made on Windows or Linux has only
+the linker's signature, which doesn't cover its Info.plist or program, so a Mac that
+downloads it calls it damaged: make Mac apps on a Mac, or with the IDE's Export (below).
+Windows apps aren't signed: SmartScreen warns about them — More info → **Run anyway**.
+
+### From the IDE (File → Export…)
+
+The web IDE makes the same apps, in the browser: *File → Export…* offers a **Mac,
+Windows or Linux app** (and a web page), whichever its site carries players for. The
+Pages workflow (`.github/workflows/pages.yml`) builds the player on each OS — the Mac
+one universal, for Apple Silicon and Intel — and `desktop/player/add-to-site.sh` puts
+them in the site's `desktop/`, listed in `players.json`. Exporting compiles the program
+in the page, then:
+
+- **Mac**: `name.app` with the program in `Contents/Resources/game.bin`, its Info.plist
+  filled from `desktop/app-Info.plist`, and the app signed ad hoc by `wwwroot/macsign.js`
+  — as `codesign --sign -` would (a code directory per architecture, sealing the
+  Info.plist and resources), so it opens with the Open Anyway step above, not as
+  damaged.
+- **Windows, Linux**: the player with the program appended, as `build --desktop` does.
+
+Each comes as a zip (`Maze 3D (Mac).zip`), keeping the app's executable bit. A desktop
+player that's missing from the site — its build failed — just isn't offered.

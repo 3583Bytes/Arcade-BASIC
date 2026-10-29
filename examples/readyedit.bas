@@ -15,13 +15,15 @@
 ! take the whole line, and Paste puts it back above the cursor's line. The clipboard
 ! is the editor's own — a program can't reach the computer's.
 !
-! Keys: F1 help, F2 save, F3 open, F4 save as, F7 new file, F8 close, F9 next tab
-! (Shift+F9 the one before); Shift+Del cut, Shift+Ins paste (QBasic's keys); the
-! arrows, Home, End, PgUp and PgDn move, and with Shift they select. The IDE keeps
-! Ctrl and ⌘ shortcuts (and F5, F6, F10, F11) for itself — a program never sees them —
-! hence the F keys. A terminal has no mouse here and doesn't pass F keys on, so there
-! Ctrl+N, O, S, E (save as), W, T (next tab), X (cut), K (copy), V (paste), G (help)
-! and Q (quit) do the same, where the terminal lets them through (Ctrl+C never does).
+! Keys: every command is Esc, then a letter — S save, E save as, O open, N new, W close
+! the tab, T and P the next and previous tab, B select, A select all, X cut, C copy,
+! V paste, G help, Q quit — and the bar at the bottom lists them. In a terminal Ctrl and
+! the letter does it straight away (Ctrl+K copies: Ctrl+C never reaches a program). B
+! starts selecting without a mouse or Shift: then the arrows, Home, End, PgUp and PgDn
+! select as they move. Shift and the arrows select too, where Shift can be seen (the
+! browser, not a terminal); and the F keys still work: F1 help, F2 save, F3 open, F4
+! save as, F7 new, F8 close, F9 next tab, Shift+Del cut, Shift+Ins paste. (The IDE
+! keeps Ctrl and ⌘ for itself, so a program in the browser never sees them: hence Esc.)
 !
 ! The screen is a grid of character cells, one window unit each (from ASK DEVICE SIZE,
 ! as in kanban.bas), and text is drawn in a monospace font, so the columns of the text
@@ -66,6 +68,12 @@ DIM BX0(10)
 DIM BX1(10)
 DIM OBX0(2)             ! the Open box's buttons
 DIM OBX1(2)
+DIM FKEY$(16)           ! the keys bar at the bottom: each key, what it does, its
+DIM FLAB$(16)           ! command (8800's ACT), and where it was drawn ("/" starts
+DIM FACT(16)            ! its second row)
+DIM FX0(16)
+DIM FX1(16)
+DIM FROW(16)
 
 ! S$ cut to W columns, ending in "…" when it doesn't fit.
 FUNCTION FIT$(S$, W)
@@ -289,9 +297,14 @@ LET HOVK = 0            ! what the pointer is over (9700's HITK, HITN)
 LET HOVN = 0
 LET TIPOFF = 0          ! 1: a click or key since it got there, so the status bar shows
                         !    what came of it, not what the button does
+LET CMDKEY = 0          ! 1 after Esc: the next key is a command's letter
+LET MARK = 0            ! 1 while selecting from the keyboard (B): moving extends it
+LET C$ = ""             ! 8050: a command's letter
+LET NFOOT = 0
 LET HITK = 0            ! 1 a menu button, 2 a tab, 3 a tab's ×, 4 +, 5 the text,
 LET HITN = 0            ! 6 the scroll bar, 7 Tabs/Spaces, 8 a file in the Open box,
-LET DRAG = 0            ! 9 its buttons, 10 the rest of it; DRAG 1 text, 2 scroll bar
+                        ! 9 its buttons, 10 the rest of it, 11 a key in the keys bar
+LET DRAG = 0            ! 1 selecting text, 2 the scroll bar
 LET THGRAB = 0          ! where the scroll bar was grabbed, from its top
 LET LASTCF = -100       ! the last click on the text: its frame, line, place (a double-click)
 LET LASTCL = 0
@@ -357,20 +370,19 @@ DATA "Click         put the cursor there"
 DATA "Drag          select (Shift+click: from the cursor to there)"
 DATA "Double-click  select a word"
 DATA "Tabs          click one to show it, × to close it, + for a new file"
-DATA "Scroll bar    drag it, or click above or below it"
 DATA ""
-DATA "F2  save          F3  open         F4  save as"
-DATA "F7  new file      F8  close        F9  next tab (Shift: back)"
-DATA "Arrows, Home, End, PgUp, PgDn move; hold Shift to select"
-DATA "Tab           a tab (or spaces: the status bar's Tabs button)"
-DATA "Tab, Shift+Tab with lines selected: indent or undent them all"
+DATA "Esc, then a letter (in a terminal, Ctrl and the letter):"
+DATA "  S save   E save as   O open   N new   W close the tab"
+DATA "  T next tab   P previous tab   G this help   Q quit"
+DATA "  B select: then the arrows, Home, End, PgUp, PgDn select"
+DATA "  A select all   X cut   C copy (Ctrl+K)   V paste"
+DATA "Esc Esc       no selection"
+DATA "Shift+arrows  select too; Shift+Del cut, Shift+Ins paste"
+DATA "Cut or copy with nothing selected: the whole line"
+DATA "Tab           indent (lines selected: all of them); Shift+Tab undent"
 DATA "Enter         a new line, indented like this one"
-DATA "Esc           no selection"
-DATA "Cut, Copy     the selection (none: the whole line); Paste"
-DATA "Shift+Del     cut         Shift+Ins   paste"
+DATA "F keys: F1 help, F2 save, F3 open, F4 save as, F7 new, F8 close"
 DATA ""
-DATA "In a terminal: Ctrl+N new, O open, S save, E save as, W close,"
-DATA "T next tab, X cut, K copy, V paste, G help, Q quit"
 DATA "Any key or click goes back"
 DATA "*"
 
@@ -380,18 +392,28 @@ IF MS >= 0 THEN LET HASMOUSE = 1
 FOR BI = 1 TO 10
   READ BLAB$(BI), BTIP$(BI)
 NEXT BI
-DATA "New", "A new file  ·  F7", "Open", "Open a file  ·  F3"
-DATA "Save", "Save this file  ·  F2", "Save as", "Save it under a new name  ·  F4"
-DATA "Close", "Close this tab  ·  F8"
-DATA "Cut", "Cut what's selected, or the whole line  ·  Shift+Del"
-DATA "Copy", "Copy what's selected, or the whole line"
-DATA "Paste", "Paste what was cut or copied  ·  Shift+Ins"
-DATA "Help", "The keys and clicks  ·  F1", "Quit", "Close Ready Edit"
-IF HASMOUSE = 1 THEN
-  LET HINT$ = "F1 help · F2 save · F3 open · F4 save as"
-ELSE
-  LET HINT$ = "Ctrl+S save · Ctrl+O open · Ctrl+Q quit"
-END IF
+DATA "New", "A new file  ·  Esc N", "Open", "Open a file  ·  Esc O"
+DATA "Save", "Save this file  ·  Esc S", "Save as", "Save it under a new name  ·  Esc E"
+DATA "Close", "Close this tab  ·  Esc W"
+DATA "Cut", "Cut what's selected, or the whole line  ·  Esc X"
+DATA "Copy", "Copy what's selected, or the whole line  ·  Esc C"
+DATA "Paste", "Paste what was cut or copied  ·  Esc V"
+DATA "Help", "The keys and clicks  ·  Esc G", "Quit", "Close Ready Edit  ·  Esc Q"
+! the keys bar: in the browser the letters (after Esc), in a terminal Ctrl and the letter
+DO
+  READ K$, L$, A
+  IF K$ = "*" THEN EXIT DO
+  LET NFOOT = NFOOT + 1
+  LET FKEY$(NFOOT) = K$
+  LET FLAB$(NFOOT) = L$
+  LET FACT(NFOOT) = A
+  IF HASMOUSE = 0 AND K$ <> "/" THEN LET FKEY$(NFOOT) = "^" & K$
+  IF HASMOUSE = 0 AND K$ = "C" THEN LET FKEY$(NFOOT) = "^K"
+LOOP
+DATA "S", "Save", 3, "E", "Save as", 4, "O", "Open", 2, "N", "New", 1, "W", "Close", 5
+DATA "T", "Next tab", 11, "P", "Prev tab", 12, "/", "", 0
+DATA "B", "Select", 13, "A", "Select all", 14, "X", "Cut", 6, "C", "Copy", 7
+DATA "V", "Paste", 8, "G", "Help", 9, "Q", "Quit", 10, "*", "", 0
 
 GOSUB 7700                         ! readyedit.files: the files open last time, and recent ones
 FOR SI = 1 TO SNR
@@ -403,8 +425,7 @@ LET MSGW = 0
 IF NTABS = 0 THEN
   GOSUB 7200
   GOSUB 7250                       ! a few words on how it works
-  LET MSG$ = "READY. Type away, or F1 for the keys"
-  IF HASMOUSE = 0 THEN LET MSG$ = "READY. Type away (Ctrl+Q quits)"
+  LET MSG$ = "READY. Type away; the keys are in the bar above"
 ELSE
   FOR SI = 1 TO NTABS
     IF TNAME$(SI) = SACT$ THEN LET NEWT = SI
@@ -597,6 +618,7 @@ IF CLIPLN = 1 THEN
   LET CLD$ = "the line"
 ELSEIF NCLIP > 1 THEN
   LET CLD$ = NLINES$(NCLIP)
+  IF CLIP$(NCLIP) = "" THEN LET CLD$ = NLINES$(NCLIP - 1)   ! (to the start of a line: the ones before it)
 ELSEIF LEN(CLIP$(1)) = 1 THEN
   LET CLD$ = "1 character"
 ELSE
@@ -676,10 +698,38 @@ RETURN
 !        ↑ and ↓ aim for now.
 ! ----------------------------------------------------------------------
 7090 REM ---- changed ----
+LET MARK = 0
 LET TCHG(CT) = 1
 LET WANTC = DCOL(TX$(CT, CY), CX)
 LET FOLLOW = 1
 LET MSG$ = ""
+RETURN
+
+! ----------------------------------------------------------------------
+! 7095  SELECT (B): start selecting from the cursor — moving then extends the
+!        selection, as Shift does — or stop.  7097  SELECT ALL.
+! ----------------------------------------------------------------------
+7095 REM ---- start or stop selecting ----
+IF MARK = 1 THEN
+  LET MARK = 0
+  LET MSG$ = "Stopped selecting"
+ELSE
+  LET MARK = 1
+  LET SELON = 1
+  LET AY = CY
+  LET AX = CX
+END IF
+RETURN
+
+7097 REM ---- select all ----
+LET MARK = 0
+LET SELON = 1
+LET AY = 1
+LET AX = 0
+LET CY = NL
+LET CX = LEN(TX$(CT, NL))
+LET WANTC = DCOL(TX$(CT, CY), CX)
+LET MSG$ = "Selected all " & NLINES$(NL)
 RETURN
 
 ! ======================================================================
@@ -730,6 +780,7 @@ GOSUB 7100
 LET CT = NEWT
 GOSUB 7110
 LET DRAG = 0
+LET MARK = 0
 GOSUB 7710                         ! (readyedit.files remembers which one shows)
 RETURN
 
@@ -780,7 +831,7 @@ DATA "^^and this one with two. Select lines and press Tab or Shift+Tab."
 DATA "The Tabs button in the status bar makes the Tab key put in spaces."
 DATA ""
 DATA "This file has no name yet: Save as gives it one. Files you open"
-DATA "come back next time. Help (F1) lists the keys."
+DATA "come back next time. The bar at the bottom lists the keys."
 DATA "*"
 
 ! ======================================================================
@@ -1091,6 +1142,10 @@ RETURN
 ! 8000  A KEY (K$).
 ! ======================================================================
 8000 REM ---- a key ----
+IF K$ = KESC$ AND CMDKEY = 0 AND MODE = 0 AND HELP = 0 THEN
+  LET CMDKEY = 1                   ! the next key is a command (and a second go at
+  RETURN                           !  closing or quitting still counts after it)
+END IF
 LET WASCONF = CONFIRM              ! (a second go at closing or quitting counts only
 LET CONFIRM = 0                    !  if it comes next)
 LET MSGW = 0
@@ -1106,27 +1161,26 @@ END IF
 LET SHIFT = 0
 IF KEYDOWN("ShiftLeft") OR KEYDOWN("ShiftRight") THEN LET SHIFT = 1
 LET FOLLOW = 1
-LET ACT = 0                        ! the menu's keys: F keys, or Ctrl in a terminal
-IF K$ = KF7$ OR K$ = CHR$(14) THEN LET ACT = 1
-IF K$ = KF3$ OR K$ = CHR$(15) THEN LET ACT = 2
-IF K$ = KF2$ OR K$ = CHR$(19) THEN LET ACT = 3
-IF K$ = KF4$ OR K$ = CHR$(5) THEN LET ACT = 4
-IF K$ = KF8$ OR K$ = CHR$(23) THEN LET ACT = 5
-IF (K$ = KDEL$ AND SHIFT = 1) OR K$ = CHR$(24) THEN LET ACT = 6
-IF K$ = CHR$(11) THEN LET ACT = 7
-IF (K$ = KINS$ AND SHIFT = 1) OR K$ = CHR$(22) THEN LET ACT = 8
-IF K$ = KF1$ OR K$ = CHR$(7) THEN LET ACT = 9
-IF K$ = CHR$(17) THEN LET ACT = 10
+! a command: Esc then its letter, Ctrl and the letter (a terminal), or an F key
+LET C$ = ""
+LET WASCMD = CMDKEY
+LET CMDKEY = 0
+IF WASCMD = 1 THEN
+  IF K$ = KESC$ THEN               ! Esc Esc: no selection
+    LET SELON = 0
+    LET MARK = 0
+    RETURN
+  END IF
+  IF LEN(K$) = 1 THEN LET C$ = UCASE$(K$)
+ELSEIF LEN(K$) = 1 THEN
+  LET KC = ORD(K$)                 ! (Ctrl+H, I, J and M are Backspace, Tab and Enter)
+  IF KC >= 1 AND KC <= 26 AND KC <> 8 AND KC <> 9 AND KC <> 10 AND KC <> 13 THEN LET C$ = CHR$(KC + 64)
+END IF
+GOSUB 8050
 IF ACT > 0 THEN
   GOSUB 8800
-ELSEIF K$ = KF9$ OR K$ = CHR$(20) THEN
-  LET NEWT = CT + 1
-  IF SHIFT = 1 THEN LET NEWT = CT - 1
-  IF NEWT > NTABS THEN LET NEWT = 1
-  IF NEWT < 1 THEN LET NEWT = NTABS
-  GOSUB 7150
-ELSEIF K$ = KESC$ THEN
-  LET SELON = 0
+ELSEIF WASCMD = 1 AND LEN(K$) = 1 AND K$ >= " " THEN
+  LET MSG$ = "Esc " & UCASE$(K$) & " isn't a command: see the bar above"
 ELSEIF K$ = KUP$ OR K$ = KDN$ OR K$ = KLT$ OR K$ = KRT$ OR K$ = KHOME$ OR K$ = KEND$ OR K$ = KPGUP$ OR K$ = KPGDN$ THEN
   GOSUB 8200
 ELSEIF K$ = KENTER$ OR K$ = CHR$(10) THEN
@@ -1141,6 +1195,27 @@ ELSEIF LEN(K$) = 1 AND K$ >= " " THEN
   LET INS$ = K$
   GOSUB 8380
 END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8050  WHICH COMMAND — ACT (8800) for the letter C$, or for an F key; 0 if none.
+! ----------------------------------------------------------------------
+8050 REM ---- which command ----
+LET ACT = 0
+IF C$ = "N" OR K$ = KF7$ THEN LET ACT = 1
+IF C$ = "O" OR K$ = KF3$ THEN LET ACT = 2
+IF C$ = "S" OR K$ = KF2$ THEN LET ACT = 3
+IF C$ = "E" OR K$ = KF4$ THEN LET ACT = 4
+IF C$ = "W" OR K$ = KF8$ THEN LET ACT = 5
+IF C$ = "X" OR (K$ = KDEL$ AND SHIFT = 1) THEN LET ACT = 6
+IF C$ = "C" OR C$ = "K" THEN LET ACT = 7
+IF C$ = "V" OR (K$ = KINS$ AND SHIFT = 1) THEN LET ACT = 8
+IF C$ = "G" OR C$ = "H" OR K$ = KF1$ THEN LET ACT = 9
+IF C$ = "Q" THEN LET ACT = 10
+IF C$ = "T" OR (K$ = KF9$ AND SHIFT = 0) THEN LET ACT = 11
+IF C$ = "P" OR (K$ = KF9$ AND SHIFT = 1) THEN LET ACT = 12
+IF C$ = "B" THEN LET ACT = 13
+IF C$ = "A" THEN LET ACT = 14
 RETURN
 
 ! ----------------------------------------------------------------------
@@ -1233,7 +1308,7 @@ RETURN
 ! ----------------------------------------------------------------------
 8200 REM ---- move the cursor ----
 GOSUB 7000
-IF SHIFT = 1 THEN
+IF SHIFT = 1 OR MARK = 1 THEN
   IF SELON = 0 THEN
     LET SELON = 1
     LET AY = CY
@@ -1430,6 +1505,7 @@ LET WASCONF = CONFIRM
 LET CONFIRM = 0
 LET MSGW = 0
 LET TIPOFF = 1
+LET CMDKEY = 0
 LET BLINK0 = FRAME
 LET REDRAW = 1
 IF HELP = 1 THEN
@@ -1468,6 +1544,9 @@ ELSEIF HITK = 5 THEN
   GOSUB 8650
 ELSEIF HITK = 6 THEN
   GOSUB 8750
+ELSEIF HITK = 11 THEN
+  LET ACT = FACT(HITN)
+  GOSUB 8800
 ELSEIF HITK = 7 THEN
   LET TABSP = 1 - TABSP
   IF TABSP = 1 THEN
@@ -1483,6 +1562,7 @@ RETURN
 !        and dragging selects; a double-click selects a word (8660).
 ! ----------------------------------------------------------------------
 8650 REM ---- a press on the text ----
+LET MARK = 0
 LET SHIFT = 0
 IF KEYDOWN("ShiftLeft") OR KEYDOWN("ShiftRight") THEN LET SHIFT = 1
 GOSUB 8680
@@ -1539,7 +1619,7 @@ RETURN
 8680 REM ---- the pointer's place in the text ----
 LET PK = ROWS - 1 - INT(MY)        ! its row, from the top
 IF PK < 2 THEN LET PK = 2
-IF PK > ROWS - 2 THEN LET PK = ROWS - 2
+IF PK > ROWS - 4 THEN LET PK = ROWS - 4
 LET PL = TOPL + PK - 2
 LET PCOL = INT(MX - GUT + LEFTC + 0.5)
 IF PCOL < 0 THEN LET PCOL = 0
@@ -1560,7 +1640,7 @@ IF DRAG = 1 THEN
   LET WAS$ = STR$(TOPL) & " " & STR$(LEFTC) & " " & STR$(CY) & " " & STR$(CX)
   LET PK = ROWS - 1 - INT(MY)
   IF PK < 2 AND TOPL > 1 THEN LET TOPL = TOPL - 1
-  IF PK > ROWS - 2 AND TOPL < MAXTOP THEN LET TOPL = TOPL + 1
+  IF PK > ROWS - 4 AND TOPL < MAXTOP THEN LET TOPL = TOPL + 1
   IF MX < GUT AND LEFTC > 0 THEN LET LEFTC = LEFTC - 1
   IF MX >= SCX0 AND LEFTC + TW < DCOL(TX$(CT, CY), LEN(TX$(CT, CY))) THEN LET LEFTC = LEFTC + 1
   GOSUB 8680
@@ -1590,8 +1670,9 @@ END IF
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8800  A MENU BUTTON, ACT: 1 New, 2 Open, 3 Save, 4 Save as, 5 Close, 6 Cut,
-!        7 Copy, 8 Paste, 9 Help, 10 Quit.
+! 8800  A COMMAND, ACT: the menu's 1 New, 2 Open, 3 Save, 4 Save as, 5 Close,
+!        6 Cut, 7 Copy, 8 Paste, 9 Help, 10 Quit; and 11 next tab, 12 previous
+!        tab, 13 select (from the keyboard), 14 select all.
 ! ----------------------------------------------------------------------
 8800 REM ---- a menu button ----
 IF ACT = 1 THEN
@@ -1609,13 +1690,24 @@ ELSEIF ACT = 6 THEN
   GOSUB 7070
 ELSEIF ACT = 7 THEN
   GOSUB 7060
+  LET MARK = 0
   LET MSG$ = "Copied " & CLD$
 ELSEIF ACT = 8 THEN
   GOSUB 7080
 ELSEIF ACT = 9 THEN
   LET HELP = 1
-ELSE
+ELSEIF ACT = 10 THEN
   GOSUB 7900
+ELSEIF ACT = 11 OR ACT = 12 THEN
+  LET NEWT = CT + 1
+  IF ACT = 12 THEN LET NEWT = CT - 1
+  IF NEWT > NTABS THEN LET NEWT = 1
+  IF NEWT < 1 THEN LET NEWT = NTABS
+  GOSUB 7150
+ELSEIF ACT = 13 THEN
+  GOSUB 7095
+ELSE
+  GOSUB 7097
 END IF
 LET FOLLOW = 1
 RETURN
@@ -1624,7 +1716,8 @@ RETURN
 ! 9000  DRAW the screen, measuring the layout as it goes: ROWS x COLS cells,
 !        the menu bar on row 0 (counting from the top), the tabs on row 1, the
 !        text from row 2 (TROWS rows: line numbers in GUT columns, then TW
-!        columns of text, then the scroll bar), and the status bar at the bottom.
+!        columns of text, then the scroll bar), the keys bar's two rows, and the
+!        status bar at the bottom.
 !        Text sits on a row's baseline, a quarter of a row up from its bottom.
 ! ======================================================================
 9000 REM ---- draw ----
@@ -1638,7 +1731,7 @@ LET COLS = 80                      ! one window unit per column (see kanban.bas,
 IF DEVW >= 2 AND DEVH <= 160 THEN LET COLS = INT(DEVW / 2)
 IF COLS < 60 THEN LET COLS = 60
 SET WINDOW 0, COLS, 0, ROWS
-LET TROWS = ROWS - 3
+LET TROWS = ROWS - 5
 LET GUT = MAX(5, LEN(STR$(NL)) + 2)
 LET TW = COLS - GUT - 1
 LET SCX0 = COLS - 1
@@ -1652,6 +1745,7 @@ FOR RI = 0 TO TROWS - 1
   IF LI <= NL THEN GOSUB 9400
 NEXT RI
 GOSUB 9300                         ! the scroll bar
+GOSUB 9460                         ! the keys bar
 GOSUB 9350                         ! the status bar
 IF MODE = 2 THEN GOSUB 9500
 IF HELP = 1 THEN GOSUB 9600
@@ -1772,7 +1866,7 @@ LET THH = MAX(1, TROWS * TROWS / NL)
 LET THTOP = (ROWS - 2) - (TOPL - 1) / (MAXTOP - 1) * (TROWS - THH)
 LET THBOT = THTOP - THH
 SET AREA COLOR CLINE
-GRAPH AREA: SBL, 1; SBR, 1; SBR, ROWS - 2; SBL, ROWS - 2
+GRAPH AREA: SBL, 3; SBR, 3; SBR, ROWS - 2; SBL, ROWS - 2
 SET AREA COLOR CTHUMB
 IF DRAG = 2 OR HOVK = 6 THEN SET AREA COLOR CHOV
 GRAPH AREA: SBL, THBOT; SBR, THBOT; SBR, THTOP; SBL, THTOP
@@ -1814,6 +1908,12 @@ ELSE
   IF HOVK = 1 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! the pointer's on a menu button: what it does
     LET M$ = BTIP$(HOVN)
     SET TEXT COLOR CDIM
+  ELSEIF CMDKEY = 1 THEN
+    LET M$ = "Esc: now a letter from the bar above (Esc: unselect)"
+    SET TEXT COLOR CCUR
+  ELSEIF MARK = 1 AND CONFIRM = 0 THEN
+    LET M$ = "Selecting: move, then X cut or C copy (B: stop)"
+    SET TEXT COLOR CACC
   END IF
   GRAPH TEXT, AT 1, 0.25: FIT$(M$, AV)
 END IF
@@ -1906,6 +2006,48 @@ IF LI = CY AND MODE = 0 AND HELP = 0 THEN
     END IF
   END IF
 END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 9460  THE KEYS BAR — two rows above the status bar: each command's key and
+!        what it does (Esc, then the letter; in a terminal ^ for Ctrl). Clicking
+!        one does it too.
+! ----------------------------------------------------------------------
+9460 REM ---- the keys bar ----
+SET AREA COLOR CBAR
+GRAPH AREA: 0, 1; COLS, 1; COLS, 3; 0, 3
+LET FXX = 1
+IF HASMOUSE = 1 THEN
+  SET TEXT COLOR CDIM
+  IF CMDKEY = 1 THEN SET TEXT COLOR CCUR
+  GRAPH TEXT, AT 1, 2.25: "Esc, then"
+  LET FXX = 12
+END IF
+LET FXS = FXX                      ! (both rows start there)
+LET FRW = ROWS - 3                 ! the row, from the top
+FOR FI = 1 TO NFOOT
+  IF FKEY$(FI) = "/" THEN
+    LET FRW = ROWS - 2
+    LET FXX = FXS
+  ELSE
+    LET FW = LEN(FKEY$(FI)) + 1 + LEN(FLAB$(FI))
+    LET FX0(FI) = FXX - 0.5
+    LET FX1(FI) = FXX + FW + 0.5
+    LET FROW(FI) = FRW
+    LET FYB = ROWS - 1 - FRW
+    IF HOVK = 11 AND HOVN = FI THEN
+      SET AREA COLOR CHOV
+      GRAPH AREA: FX0(FI), FYB + 0.08; FX1(FI), FYB + 0.08; FX1(FI), FYB + 0.92; FX0(FI), FYB + 0.92
+    END IF
+    SET TEXT COLOR CACC
+    IF CMDKEY = 1 THEN SET TEXT COLOR CCUR
+    GRAPH TEXT, AT FXX, FYB + 0.25: FKEY$(FI)
+    SET TEXT COLOR CDIM
+    IF FACT(FI) = 13 AND MARK = 1 THEN SET TEXT COLOR CTEXT
+    GRAPH TEXT, AT FXX + LEN(FKEY$(FI)) + 1, FYB + 0.25: FLAB$(FI)
+    LET FXX = FXX + FW + 2
+  END IF
+NEXT FI
 RETURN
 
 ! ----------------------------------------------------------------------
@@ -2037,6 +2179,13 @@ ELSEIF HK = 1 THEN
   IF MX >= PLX0 AND MX < PLX1 THEN LET HITK = 4
 ELSEIF HK = ROWS - 1 THEN
   IF MX >= SBX0 AND MX < SBX1 THEN LET HITK = 7
+ELSEIF HK >= ROWS - 3 THEN
+  FOR FI = 1 TO NFOOT
+    IF FKEY$(FI) <> "/" AND FROW(FI) = HK AND MX >= FX0(FI) AND MX < FX1(FI) THEN
+      LET HITK = 11
+      LET HITN = FI
+    END IF
+  NEXT FI
 ELSE
   LET HITK = 5
   IF MX >= SCX0 AND NL > TROWS THEN LET HITK = 6

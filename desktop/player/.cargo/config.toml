@@ -1,0 +1,5 @@
+# The Intel half of a universal Mac build is signed ad hoc by the linker, as Apple Silicon
+# builds are by default — so the IDE's File → Export can re-sign both halves the same way
+# (src/ArcadeBasic.Web/wwwroot/macsign.js), in the room that signature leaves.
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-adhoc_codesign"]

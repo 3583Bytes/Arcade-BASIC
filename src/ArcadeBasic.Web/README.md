@@ -98,13 +98,20 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   screen, Sound, Open in the editor), no editor, and doesn't open the program in a
   tab. The screen shows once the program draws, so a program that only prints is
   just its output and input line. An example has a short one: `#play/breakout`.
-- **Export**: *File → Export…* makes the program something to give people — for
-  now a **web page**: a zip of the player (`src/ArcadeBasic.Player`, which the site
-  carries in `player/`) and the program compiled to bytecode (`game.bin`, with its
-  libraries; no source), its page titled with the name you give. Upload it to
-  itch.io as an HTML game, or put its files on any website. A program with errors
-  isn't exported: the code view shows the first. (`wwwroot/export.js` packs it,
-  `wwwroot/zip.js` zips it, `Playground.Export.cs` compiles it.)
+- **Export**: *File → Export…* makes the program something to give people, as a
+  zip: the program compiled to bytecode (`game.bin`, with its libraries; no source)
+  with a player, named with the name you give.
+  - A **Mac, Windows or Linux app**: the desktop player (`desktop/player`, which the
+    site carries in `desktop/`, one per OS) with the program — in a Mac app's
+    Resources, the app signed ad hoc in the browser (`wwwroot/macsign.js`), so a Mac
+    that downloads it offers Open Anyway rather than calling it damaged; appended to
+    the Windows or Linux player. The dialog says how to open each the first time.
+  - A **web page**: the player page (`src/ArcadeBasic.Player`, in `player/`). Upload
+    it to itch.io as an HTML game, or put its files on any website.
+
+  It offers what the site has players for, choosing your own OS. A program with
+  errors isn't exported: the code view shows the first. (`wwwroot/export.js` packs
+  it, `wwwroot/zip.js` zips it, `Playground.Export.cs` compiles it.)
 
 It's live at <https://3583bytes.github.io/Arcade-BASIC/>, published by
 [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) whenever `main`
@@ -194,7 +201,8 @@ npm ci && npm run build
 | `wwwroot/outline.js` | a program's sections, blocks and subroutines: the outline, folding, Go to |
 | `wwwroot/files.js` | the files programs write, kept in the browser; File → Program files… (the player keeps its game's too) |
 | `wwwroot/export.js`, `wwwroot/zip.js` | File → Export…: the dialog, and the program packed with the player into a zip |
+| `wwwroot/macsign.js` | signing a Mac app ad hoc, as `codesign --sign -` does: each architecture's code directory, the sealed resources |
 | `Playground.Export.cs` | Export's compiling: the program as bytecode (`game.bin`) |
-| `build-site.sh` | the site: the IDE, with the player in `player/` (what Pages publishes) |
+| `build-site.sh` | the site: the IDE, with the player in `player/` (what Pages publishes, with the desktop players from `desktop/player/add-to-site.sh`) |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

@@ -105,6 +105,8 @@ Two places to touch:
 
 3. **Test** in `test/ArcadeBasic.Vm.Tests/LanguageTests.cs`. Each test typically runs a tiny `.bas` snippet via `Run("PRINT ATAN2(1, 1)")` and asserts on the trimmed stdout.
 
+4. **Document** it in [`docs/keywords.md`](docs/keywords.md), in its group under *Functions*, with an example (see [Change the docs](#change-the-docs)).
+
 That's it — no parser changes needed. The parser already recognises `Identifier(args)` as a generic call form; sema dispatches based on what the name resolves to.
 
 ### Add a statement keyword
@@ -139,6 +141,20 @@ Append new opcodes at the end of the enum (so saved bytecode keeps its meaning),
 3. If it's a notable program (Star Trek / Lunar Lander tier), also add a one-liner to the "Running the example programs" section of the top-level `README.md`.
 
 Programs must work via `arcade-basic run` and in the browser IDE. If one runs to the end without input or RND, add it to `ExampleTests.DeterministicExamples` and record its output in `test/ArcadeBasic.Conformance.Tests/ExampleOutputs/`.
+
+### Change the docs
+
+- **Examples in the docs are tested.** `DocsTests` compiles every ` ```basic ` block in
+  `README.md` and `docs/*.md`. One that isn't a whole program on its own (it jumps to
+  lines it doesn't include, or needs a library file) gets `<!-- fragment -->` on the line
+  before it, and is skipped.
+- **Every example in the language reference has a *▶ Try it* link** that opens it in the
+  browser IDE. After adding or changing one, run `node tools/docs/try-links.mjs` to write
+  the links again; `DocsTests` fails if a link no longer opens its example.
+- **The pictures** in `docs/images/` are taken from the IDE: `node tools/screenshots/shots.mjs`
+  takes them all again (or `… shots.mjs debugger ide` just those). It needs Node 22 or
+  later and Firefox, and `ffmpeg` for the GIF. The shots, and what each one does in the
+  IDE first, are listed at the top of the script.
 
 ## Debugging tips
 

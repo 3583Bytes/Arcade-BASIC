@@ -172,6 +172,24 @@ Copy `arcade-player` next to `arcade-basic` and `--player` isn't needed. On Linu
 player also needs WebKitGTK (`libwebkit2gtk-4.1`), as every Tauri app does; Windows
 10 and 11 have the web view it uses (WebView2) built in.
 
+`build.sh --page <dir>` uses a player page already published (a site's `player/`)
+instead of publishing one; `--universal` (on a Mac, after
+`rustup target add aarch64-apple-darwin x86_64-apple-darwin`) builds for Apple Silicon
+and Intel both, into `desktop/player/target/universal/arcade-player`. The Intel half
+is linked with an ad hoc signature (`desktop/player/.cargo/config.toml`), as Apple
+Silicon builds are by default, so the web IDE can re-sign it.
+
+For the web IDE's *File → Export…* to offer desktop apps, its site carries the players:
+
+```sh
+src/ArcadeBasic.Web/build-site.sh                       # → publish/site
+desktop/player/build.sh --page publish/site/player --universal
+desktop/player/add-to-site.sh publish/site desktop/player/target/universal/arcade-player
+```
+
+`add-to-site.sh` takes players for any OS (it tells them apart by their first bytes);
+the Pages workflow builds one on each and adds all three.
+
 ---
 
 ## 6. Platform notes
@@ -210,3 +228,4 @@ If AOT linking fails, the usual cause is a missing `clang` or `zlib` dev package
 | Standalone `.bas` | `arcade-basic build foo.bas -o foo` | `foo` | **yes** (uses the AOT CLI) |
 | Desktop player | `desktop/player/build.sh` | `desktop/player/target/release/arcade-player` | Rust, `wasm-tools` |
 | Desktop app | `arcade-basic build foo.bas --desktop` | `foo.app` / `foo.exe` / `foo` | no (uses the player) |
+| Website | `src/ArcadeBasic.Web/build-site.sh`, then `desktop/player/add-to-site.sh` | `publish/site` | `wasm-tools` |
