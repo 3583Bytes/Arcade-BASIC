@@ -10,12 +10,17 @@
 ! faint → — or spaces (the status bar's Tabs button switches). With several lines
 ! selected Tab indents them all and Shift+Tab undents; Enter keeps the line's indent.
 !
+! Cut, Copy and Paste work between all the tabs; with nothing selected, Cut and Copy
+! take the whole line, and Paste puts it back above the cursor's line. The clipboard
+! is the editor's own — a program can't reach the computer's.
+!
 ! Keys: F1 help, F2 save, F3 open, F4 save as, F7 new file, F8 close, F9 next tab
-! (Shift+F9 the one before); the arrows, Home, End, PgUp and PgDn move, and with Shift
-! they select. The IDE keeps Ctrl and ⌘ shortcuts (and F5, F6, F10, F11) for itself —
-! a program never sees them — hence the F keys. A terminal has no mouse here and
-! doesn't pass F keys on, so there Ctrl+N, O, S, E (save as), W, T (next tab), G (help)
-! and Q (quit) do the same, where the terminal lets them through.
+! (Shift+F9 the one before); Shift+Del cut, Shift+Ins paste (QBasic's keys); the
+! arrows, Home, End, PgUp and PgDn move, and with Shift they select. The IDE keeps
+! Ctrl and ⌘ shortcuts (and F5, F6, F10, F11) for itself — a program never sees them —
+! hence the F keys. A terminal has no mouse here and doesn't pass F keys on, so there
+! Ctrl+N, O, S, E (save as), W, T (next tab), X (cut), K (copy), V (paste), G (help)
+! and Q (quit) do the same, where the terminal lets them through (Ctrl+C never does).
 !
 ! The screen is a grid of character cells, one window unit each (from ASK DEVICE SIZE,
 ! as in kanban.bas), and text is drawn in a monospace font, so the columns of the text
@@ -53,10 +58,11 @@ DIM TCLX(8)
 DIM RECENT$(20)         ! files opened or saved, the latest first
 DIM SOPEN$(8)           ! the files open last time
 DIM HLP$(30)            ! the help screen
-DIM BLAB$(7)            ! the menu bar's buttons, their keys, and where they were drawn
-DIM BKEY$(7)
-DIM BX0(7)
-DIM BX1(7)
+DIM CLIP$(3000)         ! the clipboard: CLIP$(1 .. NCLIP)
+DIM BLAB$(10)           ! the menu bar's buttons, what they do (shown when the pointer's
+DIM BTIP$(10)           ! on one), and where they were drawn
+DIM BX0(10)
+DIM BX1(10)
 DIM OBX0(2)             ! the Open box's buttons
 DIM OBX1(2)
 
@@ -224,6 +230,7 @@ LET KEND$ = CHR$(0) & CHR$(79)
 LET KPGUP$ = CHR$(0) & CHR$(73)
 LET KPGDN$ = CHR$(0) & CHR$(81)
 LET KDEL$ = CHR$(0) & CHR$(83)
+LET KINS$ = CHR$(0) & CHR$(82)
 LET KF1$ = CHR$(0) & CHR$(59)
 LET KF2$ = CHR$(0) & CHR$(60)
 LET KF3$ = CHR$(0) & CHR$(61)
@@ -250,6 +257,9 @@ LET SY = 1
 LET SX = 0
 LET EY = 1
 LET EX = 0
+LET NCLIP = 0           ! the clipboard's lines (none yet)
+LET CLIPLN = 0          ! 1: they're whole lines (cut or copied with nothing selected)
+LET CLD$ = ""           ! 7065: what's on it, in words
 
 ! ---- what's going on ----
 LET MSG$ = ""
@@ -276,6 +286,8 @@ LET K$ = ""
 LET ACT = 0             ! a menu button's number (8800)
 LET HOVK = 0            ! what the pointer is over (9700's HITK, HITN)
 LET HOVN = 0
+LET TIPOFF = 0          ! 1: a click or key since it got there, so the status bar shows
+                        !    what came of it, not what the button does
 LET HITK = 0            ! 1 a menu button, 2 a tab, 3 a tab's ×, 4 +, 5 the text,
 LET HITN = 0            ! 6 the scroll bar, 7 Tabs/Spaces, 8 a file in the Open box,
 LET DRAG = 0            ! 9 its buttons, 10 the rest of it; DRAG 1 text, 2 scroll bar
@@ -353,26 +365,27 @@ DATA "Tab           a tab (or spaces: the status bar's Tabs button)"
 DATA "Tab, Shift+Tab with lines selected: indent or undent them all"
 DATA "Enter         a new line, indented like this one"
 DATA "Esc           no selection"
+DATA "Cut, Copy     the selection (none: the whole line); Paste"
+DATA "Shift+Del     cut         Shift+Ins   paste"
 DATA ""
 DATA "In a terminal: Ctrl+N new, O open, S save, E save as, W close,"
-DATA "T next tab, G help, Q quit"
-DATA ""
+DATA "T next tab, X cut, K copy, V paste, G help, Q quit"
 DATA "Any key or click goes back"
 DATA "*"
 
 ! ---- start: the files open last time, or a new one that says how this works ----
 GET MOUSE MX, MY, MS
 IF MS >= 0 THEN LET HASMOUSE = 1
-FOR BI = 1 TO 7
-  READ BLAB$(BI), H$, K2$
-  IF HASMOUSE = 1 THEN
-    LET BKEY$(BI) = H$
-  ELSE
-    LET BKEY$(BI) = K2$
-  END IF
+FOR BI = 1 TO 10
+  READ BLAB$(BI), BTIP$(BI)
 NEXT BI
-DATA "New", "F7", "^N", "Open", "F3", "^O", "Save", "F2", "^S", "Save as", "F4", "^E"
-DATA "Close", "F8", "^W", "Help", "F1", "^G", "Quit", "", "^Q"
+DATA "New", "A new file  ·  F7", "Open", "Open a file  ·  F3"
+DATA "Save", "Save this file  ·  F2", "Save as", "Save it under a new name  ·  F4"
+DATA "Close", "Close this tab  ·  F8"
+DATA "Cut", "Cut what's selected, or the whole line  ·  Shift+Del"
+DATA "Copy", "Copy what's selected, or the whole line"
+DATA "Paste", "Paste what was cut or copied  ·  Shift+Ins"
+DATA "Help", "The keys and clicks  ·  F1", "Quit", "Close the editor"
 IF HASMOUSE = 1 THEN
   LET HINT$ = "F1 help · F2 save · F3 open · F4 save as"
 ELSE
@@ -548,6 +561,113 @@ FOR INI = IY0 TO IY1
   END IF
 NEXT INI
 LET WANTC = DCOL(TX$(CT, CY), CX)
+RETURN
+
+! ----------------------------------------------------------------------
+! 7060  COPY the selection onto the clipboard — or, with nothing selected, the
+!        cursor's whole line (CLIPLN = 1). 7065 describes it in CLD$.
+! 7070  CUT: copy it, then take it out.  7080  PASTE at the cursor (over the
+!        selection); a whole line goes in above the cursor's line.
+! ----------------------------------------------------------------------
+7060 REM ---- copy ----
+GOSUB 7000
+IF HASSEL = 1 THEN
+  LET CLIPLN = 0
+  LET NCLIP = EY - SY + 1
+  IF NCLIP = 1 THEN
+    LET CLIP$(1) = MID$(TX$(CT, SY), SX + 1, EX - SX)
+  ELSE
+    LET CLIP$(1) = MID$(TX$(CT, SY), SX + 1)
+    FOR CPI = 2 TO NCLIP - 1
+      LET CLIP$(CPI) = TX$(CT, SY + CPI - 1)
+    NEXT CPI
+    LET CLIP$(NCLIP) = LEFT$(TX$(CT, EY), EX)
+  END IF
+ELSE
+  LET CLIPLN = 1
+  LET NCLIP = 1
+  LET CLIP$(1) = TX$(CT, CY)
+END IF
+GOSUB 7065
+RETURN
+
+7065 REM ---- what's on the clipboard, in words ----
+IF CLIPLN = 1 THEN
+  LET CLD$ = "the line"
+ELSEIF NCLIP > 1 THEN
+  LET CLD$ = NLINES$(NCLIP)
+ELSEIF LEN(CLIP$(1)) = 1 THEN
+  LET CLD$ = "1 character"
+ELSE
+  LET CLD$ = STR$(LEN(CLIP$(1))) & " characters"
+END IF
+RETURN
+
+7070 REM ---- cut ----
+GOSUB 7060
+IF HASSEL = 1 THEN
+  GOSUB 7010
+ELSE
+  IF NL = 1 THEN                   ! the only line: it's left empty
+    LET TX$(CT, 1) = ""
+  ELSE
+    LET DLY = CY
+    GOSUB 7030
+    IF CY > NL THEN LET CY = NL
+  END IF
+  LET CX = 0
+  LET SELON = 0
+  GOSUB 7090
+END IF
+LET MSG$ = "Cut " & CLD$
+RETURN
+
+7080 REM ---- paste ----
+IF NCLIP = 0 THEN
+  LET MSG$ = "Nothing to paste yet: Cut or Copy something first"
+  RETURN
+END IF
+LET PADD = NCLIP - 1               ! the lines it adds
+IF CLIPLN = 1 THEN LET PADD = NCLIP
+IF NL + PADD > MAXL THEN
+  LET MSG$ = "A file here can have up to " & STR$(MAXL) & " lines"
+  LET MSGW = 1
+  RETURN
+END IF
+GOSUB 7010                         ! (pasting over a selection replaces it)
+LET SELON = 0
+IF CLIPLN = 1 THEN
+  FOR PSI = NL TO CY STEP -1
+    LET TX$(CT, PSI + PADD) = TX$(CT, PSI)
+  NEXT PSI
+  FOR PSI = 1 TO NCLIP
+    LET TX$(CT, CY + PSI - 1) = CLIP$(PSI)
+  NEXT PSI
+  LET NL = NL + PADD
+  LET CY = CY + PADD               ! (the cursor stays with its line)
+ELSE
+  LET L$ = TX$(CT, CY)
+  LET PRT$ = MID$(L$, CX + 1)      ! what comes after the cursor ends up after the paste
+  IF NCLIP = 1 THEN
+    LET TX$(CT, CY) = LEFT$(L$, CX) & CLIP$(1) & PRT$
+    LET CX = CX + LEN(CLIP$(1))
+  ELSE
+    FOR PSI = NL TO CY + 1 STEP -1
+      LET TX$(CT, PSI + PADD) = TX$(CT, PSI)
+    NEXT PSI
+    LET TX$(CT, CY) = LEFT$(L$, CX) & CLIP$(1)
+    FOR PSI = 2 TO NCLIP - 1
+      LET TX$(CT, CY + PSI - 1) = CLIP$(PSI)
+    NEXT PSI
+    LET TX$(CT, CY + PADD) = CLIP$(NCLIP) & PRT$
+    LET NL = NL + PADD
+    LET CY = CY + PADD
+    LET CX = LEN(CLIP$(NCLIP))
+  END IF
+END IF
+GOSUB 7090
+GOSUB 7065
+LET MSG$ = "Pasted " & CLD$
 RETURN
 
 ! ----------------------------------------------------------------------
@@ -973,6 +1093,7 @@ RETURN
 LET WASCONF = CONFIRM              ! (a second go at closing or quitting counts only
 LET CONFIRM = 0                    !  if it comes next)
 LET MSGW = 0
+LET TIPOFF = 1
 IF HELP = 1 THEN
   LET HELP = 0                     ! any key leaves the help box
   RETURN
@@ -990,8 +1111,11 @@ IF K$ = KF3$ OR K$ = CHR$(15) THEN LET ACT = 2
 IF K$ = KF2$ OR K$ = CHR$(19) THEN LET ACT = 3
 IF K$ = KF4$ OR K$ = CHR$(5) THEN LET ACT = 4
 IF K$ = KF8$ OR K$ = CHR$(23) THEN LET ACT = 5
-IF K$ = KF1$ OR K$ = CHR$(7) THEN LET ACT = 6
-IF K$ = CHR$(17) THEN LET ACT = 7
+IF (K$ = KDEL$ AND SHIFT = 1) OR K$ = CHR$(24) THEN LET ACT = 6
+IF K$ = CHR$(11) THEN LET ACT = 7
+IF (K$ = KINS$ AND SHIFT = 1) OR K$ = CHR$(22) THEN LET ACT = 8
+IF K$ = KF1$ OR K$ = CHR$(7) THEN LET ACT = 9
+IF K$ = CHR$(17) THEN LET ACT = 10
 IF ACT > 0 THEN
   GOSUB 8800
 ELSEIF K$ = KF9$ OR K$ = CHR$(20) THEN
@@ -1287,6 +1411,7 @@ GOSUB 9700
 IF HITK <> HOVK OR HITN <> HOVN THEN
   LET HOVK = HITK
   LET HOVN = HITN
+  LET TIPOFF = 0
   LET REDRAW = 1
 END IF
 IF MS = 2 THEN
@@ -1303,6 +1428,7 @@ RETURN
 LET WASCONF = CONFIRM
 LET CONFIRM = 0
 LET MSGW = 0
+LET TIPOFF = 1
 LET BLINK0 = FRAME
 LET REDRAW = 1
 IF HELP = 1 THEN
@@ -1325,6 +1451,7 @@ IF MODE = 1 AND HITK <> 7 THEN     ! a click away from Save as: not saved after 
   LET MODE = 0
   LET MSG$ = "Not saved"
 END IF
+IF HITK <> 5 THEN LET LASTCF = -100   ! (a double-click is two presses in a row on the text)
 IF HITK = 1 THEN
   LET ACT = HITN
   GOSUB 8800
@@ -1462,7 +1589,8 @@ END IF
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8800  A MENU BUTTON, ACT: 1 New, 2 Open, 3 Save, 4 Save as, 5 Close, 6 Help, 7 Quit.
+! 8800  A MENU BUTTON, ACT: 1 New, 2 Open, 3 Save, 4 Save as, 5 Close, 6 Cut,
+!        7 Copy, 8 Paste, 9 Help, 10 Quit.
 ! ----------------------------------------------------------------------
 8800 REM ---- a menu button ----
 IF ACT = 1 THEN
@@ -1477,10 +1605,18 @@ ELSEIF ACT = 5 THEN
   LET CLT = CT
   GOSUB 7300
 ELSEIF ACT = 6 THEN
+  GOSUB 7070
+ELSEIF ACT = 7 THEN
+  GOSUB 7060
+  LET MSG$ = "Copied " & CLD$
+ELSEIF ACT = 8 THEN
+  GOSUB 7080
+ELSEIF ACT = 9 THEN
   LET HELP = 1
 ELSE
   GOSUB 7900
 END IF
+LET FOLLOW = 1
 RETURN
 
 ! ======================================================================
@@ -1535,37 +1671,32 @@ IF LEFTC < 0 THEN LET LEFTC = 0
 RETURN
 
 ! ----------------------------------------------------------------------
-! 9150  THE MENU BAR — New Open Save Save-as Close at the left, Help Quit at
-!        the right, each with its key, dim.
+! 9150  THE MENU BAR — the file's buttons, then Cut Copy Paste, at the left;
+!        Help and Quit at the right. (The status bar says what the one under the
+!        pointer does, and its key.)
 ! ----------------------------------------------------------------------
 9150 REM ---- the menu bar ----
 SET AREA COLOR CBAR
 GRAPH AREA: 0, ROWS - 1; COLS, ROWS - 1; COLS, ROWS; 0, ROWS
 LET BXX = 1
-FOR BI = 1 TO 7
+FOR BI = 1 TO 10
   LET BW = LEN(BLAB$(BI)) + 2
-  IF BKEY$(BI) <> "" THEN LET BW = BW + LEN(BKEY$(BI)) + 1
-  IF BI <= 5 THEN
+  IF BI <= 8 THEN
+    IF BI = 6 THEN LET BXX = BXX + 2   ! (a gap before Cut Copy Paste)
     LET BX0(BI) = BXX
     LET BX1(BI) = BXX + BW
     LET BXX = BX1(BI) + 1
-  ELSE                             ! Help and Quit from the right: Quit first
-    LET BI2 = 13 - BI
-    LET BW2 = LEN(BLAB$(BI2)) + 2
-    IF BKEY$(BI2) <> "" THEN LET BW2 = BW2 + LEN(BKEY$(BI2)) + 1
+  ELSE                             ! Help and Quit from the right
     LET BX1(BI) = COLS - 1
-    IF BI = 6 THEN LET BX1(BI) = COLS - 2 - BW2
+    IF BI = 9 THEN LET BX1(BI) = COLS - 2 - (LEN(BLAB$(10)) + 2)
     LET BX0(BI) = BX1(BI) - BW
   END IF
   SET AREA COLOR CBTN
   IF HOVK = 1 AND HOVN = BI THEN SET AREA COLOR CHOV
   GRAPH AREA: BX0(BI), ROWS - 0.92; BX1(BI), ROWS - 0.92; BX1(BI), ROWS - 0.08; BX0(BI), ROWS - 0.08
   SET TEXT COLOR CTEXT
+  IF BI = 8 AND NCLIP = 0 THEN SET TEXT COLOR CDIM    ! nothing to paste yet
   GRAPH TEXT, AT BX0(BI) + 1, ROWS - 0.75: BLAB$(BI)
-  IF BKEY$(BI) <> "" THEN
-    SET TEXT COLOR CDIM
-    GRAPH TEXT, AT BX0(BI) + 2 + LEN(BLAB$(BI)), ROWS - 0.75: BKEY$(BI)
-  END IF
 NEXT BI
 RETURN
 
@@ -1679,6 +1810,10 @@ ELSE
   IF M$ = "" THEN LET M$ = HINT$
   IF CONFIRM > 0 OR MSGW = 1 THEN SET TEXT COLOR CWARN
   IF MSG$ <> "" AND CONFIRM = 0 AND MSGW = 0 THEN SET TEXT COLOR CTEXT
+  IF HOVK = 1 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! the pointer's on a menu button: what it does
+    LET M$ = BTIP$(HOVN)
+    SET TEXT COLOR CDIM
+  END IF
   GRAPH TEXT, AT 1, 0.25: FIT$(M$, AV)
 END IF
 RETURN
@@ -1884,7 +2019,7 @@ IF MODE = 2 THEN
   RETURN
 END IF
 IF HK = 0 THEN
-  FOR BI = 1 TO 7
+  FOR BI = 1 TO 10
     IF MX >= BX0(BI) AND MX < BX1(BI) THEN
       LET HITK = 1
       LET HITN = BI

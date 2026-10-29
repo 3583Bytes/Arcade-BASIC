@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="midnight">
+<html lang="en" data-theme="midnight" data-view="code">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -89,10 +89,18 @@
     </div>
   </header>
 
+  <!-- Three views of the program: its code (and the debugger), what it shows, and messages. -->
+  <nav id="views" role="tablist" aria-label="Views">
+    <button type="button" role="tab" data-view="code" aria-selected="true" title="Edit and debug the program (Alt+1)">✎ Code</button>
+    <button type="button" role="tab" data-view="output" aria-selected="false" title="What the program shows: its screen, what it prints, and its input (Alt+2)">▶ Output <span class="running" aria-hidden="true"></span></button>
+    <button type="button" role="tab" data-view="console" aria-selected="false" title="Problems, errors and messages (Alt+3)">Console <span id="consoleBadge"></span></button>
+  </nav>
+
   <main>
-    <section id="editorPane" aria-label="Editor">
+    <section id="editorPane" aria-label="Code">
       <div class="tabRow">
         <div id="tabs"></div>
+        <button id="variablesToggle" type="button" aria-pressed="false" title="The running program's variables (shown when it pauses)">◫ Variables</button>
         <button id="outlineToggle" type="button" aria-pressed="false" title="The program's sections, SUBs and FUNCTIONs (⌘/Ctrl+Shift+O: Go to)">☰ Outline</button>
       </div>
       <div id="editorBody">
@@ -105,28 +113,27 @@
           <div class="items"></div>
         </nav>
         <div id="editor"></div>
+        <aside id="variables" aria-label="Variables" hidden></aside>
       </div>
     </section>
-    <div id="divider" role="separator" aria-orientation="vertical" aria-label="Resize the editor" tabindex="0"></div>
-    <section id="runPane" aria-label="Program">
+    <section id="runPane" aria-label="Output" tabindex="-1">
       <button id="playButton" class="playButton" type="button" disabled>Loading…</button>
       <canvas id="screen" width="960" height="576" tabindex="0" aria-label="Program screen (click to give it the keyboard)"></canvas>
-      <p id="hint">Press <b>Run</b> (<kbd>F5</kbd>), then click the screen so it gets your keys.</p>
-      <div class="outputHead" role="tablist">
-        <button class="ptab" type="button" role="tab" data-panel="output" aria-selected="true">Output</button>
-        <button class="ptab" type="button" role="tab" data-panel="variables" aria-selected="false">Variables</button>
-        <span class="spacer"></span>
-        <button id="clearOutput" type="button">Clear</button>
-      </div>
+      <p id="hint">Press <b>Run</b> (<kbd>F5</kbd>): what the program draws and prints shows here, and it reads your keys.</p>
       <pre id="output" aria-live="polite"></pre>
-      <div id="variables" hidden></div>
       <form id="inputRow"><input id="inputLine" autocomplete="off" aria-label="Program input"><button>Enter</button></form>
+    </section>
+    <section id="consolePane" aria-label="Console">
+      <div class="consoleHead"><h2>Problems</h2></div>
+      <ul id="problemList"></ul>
+      <div class="consoleHead"><h2>Messages</h2><button id="clearLog" type="button">Clear</button></div>
+      <ol id="log" aria-live="polite"></ol>
     </section>
   </main>
 
   <footer>
     <span id="cursorPos"></span>
-    <button id="problems" type="button" title="Show the problems (F8 goes to the next one)"></button>
+    <button id="problems" type="button" title="Show the problems in the Console (F8 goes to the next one)"></button>
     <span id="fileInfo"></span>
     <span id="stats"></span>
   </footer>
@@ -154,6 +161,7 @@
         <tr><td><kbd data-key="Mod+O"></kbd></td><td>Open a file (or drop files on the page)</td></tr>
         <tr><td><kbd>Alt+N</kbd> / <kbd>Alt+W</kbd></td><td>New program / Close tab</td></tr>
         <tr><td><kbd>F8</kbd></td><td>Go to the next problem</td></tr>
+        <tr><td><kbd>Alt+1</kbd> / <kbd>Alt+2</kbd> / <kbd>Alt+3</kbd></td><td>The Code, Output or Console view (running shows Output; a pause or an error, Code)</td></tr>
         <tr><td><kbd>F12</kbd> or <kbd data-key="Mod"></kbd>+click</td><td>Go to a line number, SUB or FUNCTION</td></tr>
         <tr><td><kbd data-key="Mod+F"></kbd></td><td>Find and replace</td></tr>
         <tr><td><kbd data-key="Mod+Shift+O"></kbd></td><td>Go to a section, SUB, FUNCTION or line</td></tr>

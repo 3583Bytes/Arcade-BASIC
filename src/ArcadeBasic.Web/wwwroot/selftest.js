@@ -9,6 +9,7 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
   const view = editor.view;
   const result = {};
   const step = async (name, fn) => {
+    document.querySelector('#views [data-view="code"]').click();   // (each step starts in the code, as a person would)
     try { result[name] = await fn(); } catch (e) { result[name] = { error: String(e), stack: e.stack }; }
   };
   const setText = text => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: text.length } });
@@ -75,23 +76,26 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
   });
 
   await step('problemsPanel', async () => {
-    $('problems').click();
+    $('problems').click();                             // the problems, in the Console
     await pause(100);
-    return { open: !!document.querySelector('.cm-panel-lint'), items: [...document.querySelectorAll('.cm-panel-lint li')].map(li => li.textContent) };
+    return { view: document.documentElement.dataset.view, badge: $('consoleBadge').textContent,
+             items: [...document.querySelectorAll('#problemList li')].map(li => li.textContent) };
   });
 
   await step('runtimeError', async () => {
     setText('10 PRINT "hi"\n20 LET A = 1 / 0\n30 END\n');
     $('run').click();
     await pause(600);
-    return { marked: document.querySelector('.cm-runtimeError')?.textContent, cursorLine: lineAtCursor(), output: $('output').textContent.trim() };
+    return { marked: document.querySelector('.cm-runtimeError')?.textContent, cursorLine: lineAtCursor(), output: $('output').textContent.trim(),
+             view: document.documentElement.dataset.view, logged: document.querySelector('#log li:last-child .text')?.textContent };
   });
 
   await step('compileErrorOnRun', async () => {
     setText('PRINT "fine"\nPRINT (1\n');
     $('run').click();
     await pause(400);
-    return { output: $('output').textContent.split('\n')[0], cursorLine: lineAtCursor() };
+    return { logged: document.querySelector('#log li:last-child .text')?.textContent.split('\n').slice(0, 2).join(' / '),
+             view: document.documentElement.dataset.view, cursorLine: lineAtCursor() };
   });
 
   await step('completion', async () => {
@@ -170,6 +174,27 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     const code = await pack(text);
     await openAddress('#code=' + code);
     return { codeLength: code.length, active: documents.active.name, same: view.state.doc.toString() === text };
+  });
+
+  await step('views', async () => {
+    // Running shows the Output view (its screen once it draws, what it prints); when it
+    // ends the Console says so; Alt+1, 2, 3 choose a view.
+    const root = document.documentElement;
+    const alt = digit => window.dispatchEvent(new KeyboardEvent('keydown', { key: String(digit), code: `Digit${digit}`, altKey: true, bubbles: true, cancelable: true }));
+    documents.newProgram();
+    setText('SET WINDOW 0, 1, 0, 1\nGRAPH AREA: 0.2, 0.2; 0.8, 0.2; 0.5, 0.8\nPRINT "drawn"\nSLEEP 0.5\n');
+    const before = { view: root.dataset.view, hint: $('hint').offsetParent !== null };
+    $('run').click();
+    await pause(200);
+    const running = { view: root.dataset.view, running: root.classList.contains('running'), screen: $('screen').offsetParent !== null,
+                      output: $('output').textContent.trim(), focus: document.activeElement?.id };
+    await pause(700);
+    const ended = { running: root.classList.contains('running'), view: root.dataset.view,
+                    log: [...document.querySelectorAll('#log li .text')].slice(-2).map(e => e.textContent) };
+    alt(3); const consoleView = root.dataset.view;
+    alt(1); const codeView = root.dataset.view;
+    alt(2); const outputView = root.dataset.view;
+    return { before, running, ended, keys: [consoleView, codeView, outputView] };
   });
 
   await step('playLink', async () => {
@@ -260,6 +285,7 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     press('F5');
     result.first = await pausedAt();
     result.panel = $('variables').hidden ? 'output' : 'variables';
+    result.view = document.documentElement.dataset.view;
     result.runButton = $('run').textContent;
     press('F10');
     result.stepOver = await pausedAt();
@@ -511,9 +537,7 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     setText('LIBRARY "helper.bas"\nCALL HI\n ');
     await pause(700);
     result.libraryProblem = document.querySelector('.cm-lintRange-error')?.textContent;
-    $('problems').click();
-    await pause(50);
-    result.libraryProblemText = [...document.querySelectorAll('.cm-panel-lint li')].map(li => li.textContent)[0];
+    result.libraryProblemText = [...document.querySelectorAll('#problemList li')].map(li => li.textContent)[0];
     helper.state = helper.state.update({ changes: { from: 0, to: 8 } }).state;
     // A runtime error in the library: its tab, its line.
     setText('LIBRARY "helper.bas"\nCALL OOPS\n');
@@ -521,7 +545,7 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     await waitFor(() => $('stop').disabled && document.querySelector('.cm-runtimeError'));
     result.errorTab = documents.active.name;
     result.errorLine = document.querySelector('.cm-runtimeError')?.textContent.trim();
-    result.errorText = $('output').textContent.trim().split('\n').at(-1);
+    result.errorText = document.querySelector('#log li:last-child .text')?.textContent;   // (errors go to the Console)
     // A shared link carries a program's own libraries.
     const code = await pack(JSON.stringify({ main: ['linked.bas', 'LIBRARY "lib2.bas"\nCALL TWO\n'], libraries: [['lib2.bas', 'SUB TWO\n  PRINT "two"\nEND SUB\n']] }));
     await openAddress('#code=' + code);

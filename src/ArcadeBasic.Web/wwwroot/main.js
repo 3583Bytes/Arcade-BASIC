@@ -127,6 +127,10 @@ function notify(text) {
 function showProblems(found) {
   const errors = found.filter(d => d.severity === 'error').length;
   const warnings = found.filter(d => d.severity === 'warning').length;
+  listProblems(found);
+  const badge = $('consoleBadge');
+  badge.className = errors ? 'errors' : warnings ? 'warnings' : '';
+  badge.textContent = errors ? `✖ ${errors}` : warnings ? `⚠ ${warnings}` : '';
   const button = $('problems');
   if (!errors && !warnings) { button.textContent = '✓ No problems'; return; }
   const part = (n, cls, icon, word) => {
@@ -138,7 +142,59 @@ function showProblems(found) {
   button.replaceChildren(...[errors && part(errors, 'errors', '✖', 'error'), warnings && part(warnings, 'warnings', '⚠', 'warning')]
     .filter(Boolean).flatMap((s, i) => i ? [' ', s] : [s]));
 }
-$('problems').addEventListener('click', () => editor.openProblems());
+$('problems').addEventListener('click', () => showView('console'));
+
+// -- The views: Code (editing and debugging), Output (what the program shows), Console ----
+// Running shows Output; a pause or an error shows Code, at its line. The tabs (or Alt+1, 2, 3)
+// show any of them.
+
+const viewTabs = [...document.querySelectorAll('#views [role="tab"]')];
+function showView(name) {
+  root.dataset.view = name;
+  for (const tab of viewTabs) tab.setAttribute('aria-selected', String(tab.dataset.view === name));
+  if (name === 'output' && run && !run.waiting) (root.classList.contains('drawn') ? canvas : $('runPane')).focus();
+  if (name === 'code') editor.focus();
+}
+for (const tab of viewTabs) tab.addEventListener('click', () => showView(tab.dataset.view));
+
+/** Show a program's line in the Code view. */
+function goToCode(doc, line) {
+  showView('code');
+  if (doc && documents.all.includes(doc) && documents.active !== doc) documents.show(doc);
+  if (line) editor.goToLine(line);
+}
+
+const element = (tag, cls, text) => Object.assign(document.createElement(tag), { className: cls, textContent: text });
+
+/** The Console's list of the program's problems (the ones the editor marks). */
+function listProblems(found) {
+  const doc = editor.state.doc, shown = documents.active;
+  const items = found.map(d => {
+    const line = doc.lineAt(Math.min(d.from, doc.length)).number;
+    const li = document.createElement('li');
+    li.append(element('span', `sev ${d.severity}`, d.severity === 'error' ? '✖' : d.severity === 'warning' ? '⚠' : 'ℹ'),
+              element('span', 'where', `line ${line}`), element('span', 'text', d.message));
+    li.addEventListener('click', () => goToCode(shown, line));
+    return li;
+  });
+  $('problemList').replaceChildren(...(items.length ? items : [element('li', 'none', `No problems in ${shown?.name ?? 'the program'}`)]));
+}
+
+/** A message in the Console: what ran, how it ended, its errors. `go`, if given, is where
+ *  clicking it goes. */
+function log(text, kind = 'info', go = null) {
+  const list = $('log');
+  list.querySelector('.none')?.remove();
+  const li = document.createElement('li');
+  li.append(element('time', '', new Date().toLocaleTimeString([], { hour12: false })),
+            element('span', `text ${kind}`, text));
+  if (go) { li.classList.add('goes'); li.title = 'Show it in the code'; li.addEventListener('click', go); }
+  list.append(li);
+  while (list.children.length > 200) list.firstElementChild.remove();
+  li.scrollIntoView({ block: 'nearest' });
+}
+$('clearLog').addEventListener('click', () => $('log').replaceChildren(element('li', 'none', 'Nothing yet')));
+$('log').append(element('li', 'none', 'Nothing yet'));
 
 // -- Questions ------------------------------------------------------------------------
 
@@ -228,14 +284,18 @@ function runActive(stopAtFirst = false) {
 function start(text, onHalt, doc = null, stopAtFirst = false, program = null) {
   stop();
   output.replaceChildren();
+  root.classList.remove('drawn', 'printed');
   editor.clearRuntimeError();
-  const diagnostics = P.Load(doc?.name ?? program?.name ?? 'program.bas', text,
-    ...(doc ? openPrograms(doc) : program?.libraries ?? [[], []]));
+  const name = doc?.name ?? program?.name ?? 'program.bas';
+  const diagnostics = P.Load(name, text, ...(doc ? openPrograms(doc) : program?.libraries ?? [[], []]));
   if (diagnostics) {
-    appendOutput(diagnostics, 'error');
-    if (doc) { if (documents.active !== doc) documents.show(doc); editor.goToFirstProblem(); }
+    if (player) { appendOutput(diagnostics, 'error'); return false; }
+    const go = () => { goToCode(doc); editor.goToFirstProblem(); };
+    log(`${name} can't run:\n${diagnostics}`, 'error', doc ? go : null);
+    if (doc) go();
     return false;
   }
+  if (!player) log(`▶ ${stopAtFirst ? 'Debugging' : 'Running'} ${name}`);
   audio.reset();
   screen.newRun();
   const files = P.SourceFiles();
@@ -246,8 +306,12 @@ function start(text, onHalt, doc = null, stopAtFirst = false, program = null) {
   syncBreakpoints();
   documents.setRunning(doc);
   $('stop').disabled = false;
+  root.classList.add('running');
   showDebugControls();
-  canvas.focus();
+  if (!stopAtFirst) {                    // (stopping at the first line stays in the code)
+    showView('output');
+    $('runPane').focus();                // (its keys go to the program; the screen takes them once it shows)
+  }
   requestAnimationFrame(tick);
   return true;
 }
@@ -259,9 +323,17 @@ function stop(silence = true) {
   if (run?.paused) leavePause();
   run = null;
   $('stop').disabled = true;
+  root.classList.remove('running');
   inputRow.style.display = 'none';
   canvas.style.cursor = '';
   showDebugControls();
+}
+
+/** Stop, from the Stop button or Shift+F5. */
+function stopByHand() {
+  if (!run) return;
+  stop();
+  log('■ Stopped');
 }
 
 function tick() {
@@ -285,8 +357,8 @@ function tick() {
     const drew = screen.draw(frame, P.FrameText(), P.FrameCells());
     r.frames++;
     if (drew && !root.classList.contains('drawn')) {
-      root.classList.add('drawn');
-      if (player) canvas.focus();         // (a play link's screen shows from its first frame: give it the keys)
+      root.classList.add('drawn');        // (the screen shows from the program's first frame: give it the keys)
+      if (player || document.activeElement === $('runPane')) canvas.focus();
     }
   }
   if (!r.paused) showStats(r, halted);
@@ -294,12 +366,17 @@ function tick() {
     const error = P.Error();
     const line = error ? P.CurrentLine() : 0;
     const failed = error ? docOfFile(P.CurrentFile()) : null;
-    if (error) appendOutput('\n' + error + '\n', 'error');
     r.instructions = P.Instructions();
     stop(false);
-    if (failed && documents.all.includes(failed)) {           // point at the line that failed
-      if (documents.active !== failed) documents.show(failed);
-      editor.showRuntimeError(line);
+    if (player) {
+      if (error) appendOutput('\n' + error + '\n', 'error');
+    } else if (error) {
+      const show = () => { goToCode(failed); editor.showRuntimeError(line); };
+      log(error, 'error', failed && documents.all.includes(failed) ? show : null);
+      notify(error);
+      if (failed && documents.all.includes(failed)) show();   // point at the line that failed
+    } else {
+      log(`■ Ended · ${stats.textContent}`);
     }
     r.onHalt?.(r);
     return;
@@ -318,8 +395,9 @@ function enterPause(r) {
   const line = P.CurrentLine(), file = P.CurrentFile(), doc = docOfFile(file);
   if (doc && documents.all.includes(doc) && documents.active !== doc) documents.show(doc);
   if (doc && documents.active === doc) editor.showPaused(line);
+  showView('code');
   showVariables(true);
-  showPanel('variables');
+  showVariablesPanel(true);
   editor.setValueLookup(valueOf);
   const where = file > 0 ? ` in ${r.files[file]}` : '';
   stats.textContent = `Paused at line ${line}${where} · F5 continue · F10 step over · F11 step into · Shift+F11 step out`;
@@ -340,6 +418,7 @@ function resume(step = null) {
   run.resumedAt = performance.now();
   leavePause();
   showDebugControls();
+  if (step == null) showView('output');   // (a step stays in the code)
 }
 
 /** Step Over / Into: from a pause, a step; with nothing running, run and stop at the first line. */
@@ -371,15 +450,14 @@ function showDebugControls() {
 }
 
 // The Output and Variables tabs under the screen.
-function showPanel(name) {
-  for (const tab of document.querySelectorAll('.ptab')) tab.setAttribute('aria-selected', String(tab.dataset.panel === name));
-  output.hidden = name !== 'output';
-  $('clearOutput').hidden = name !== 'output';
-  $('variables').hidden = name !== 'variables';
-  if (name === 'variables' && run && !run.paused) showVariables(false);
+/** The Variables panel beside the editor, on or off. */
+function showVariablesPanel(show) {
+  $('variables').hidden = !show;
+  $('variablesToggle').setAttribute('aria-pressed', String(show));
+  if (show && run && !run.paused) showVariables(false);
 }
 const variablesShowing = () => !$('variables').hidden;
-for (const tab of document.querySelectorAll('.ptab')) tab.addEventListener('click', () => showPanel(tab.dataset.panel));
+$('variablesToggle').addEventListener('click', () => showVariablesPanel(!variablesShowing()));
 
 let lastVariables = new Map();      // "frame/name" → what it showed, to mark what a step changed
 let lastSnapshot = { frames: [] };
@@ -532,6 +610,7 @@ function insertLine(text) {
 
 function appendOutput(text, cls = '') {
   if (!text) return;
+  root.classList.add('printed');
   const last = output.lastChild;
   if (!cls && last?.nodeType === Node.TEXT_NODE) last.appendData(text);
   else if (!cls) output.append(text);
@@ -545,6 +624,7 @@ function appendOutput(text, cls = '') {
 }
 
 function askForInput() {
+  showView('output');                    // (where the line it's reading is)
   inputRow.style.display = 'flex';
   inputLine.value = '';
   inputLine.focus();
@@ -559,12 +639,11 @@ inputRow.addEventListener('submit', e => {
   run.waiting = false;
   canvas.focus();
 });
-$('clearOutput').addEventListener('click', () => output.replaceChildren());
 
-// Keys go to the program only while the canvas has focus (so typing in the editor
-// doesn't); the page's own shortcuts (F5, Ctrl+S, …) are taken before it sees them.
+// Keys go to the program only from the Output view (so typing in the editor doesn't), and
+// not while it's reading a line; the page's own shortcuts (F5, Ctrl+S, …) are taken first.
 connectInput(screen, canvas, {
-  program: () => P, audio,
+  keys: $('runPane'), program: () => P, audio, wanted: e => e.target !== inputLine,
   onPress: () => { if (run?.waitingPoint) { run.waitingPoint = false; canvas.style.cursor = ''; } },
 });
 
@@ -678,7 +757,7 @@ const menus = [...document.querySelectorAll('.menu')].map(menu => {
 document.addEventListener('pointerdown', e => menus.forEach(m => { if (!m.menu.contains(e.target)) m.close(); }));
 
 $('run').addEventListener('click', runOrContinue);
-$('stop').addEventListener('click', () => stop());
+$('stop').addEventListener('click', stopByHand);
 $('pause').addEventListener('click', pauseRunning);
 $('stepOver').addEventListener('click', () => debugStep(OVER));
 $('stepInto').addEventListener('click', () => debugStep(INTO));
@@ -695,7 +774,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   let action = null;
-  if (key === 'F5' && !mod) action = e.shiftKey ? () => stop() : () => runOrContinue(e);
+  if (key === 'F5' && !mod) action = e.shiftKey ? stopByHand : () => runOrContinue(e);
   else if (mod && key === 'Enter') action = () => runOrContinue(e);
   else if (key === 'F6' && !mod) action = pauseRunning;
   else if (key === 'F10' && !mod) action = () => debugStep(OVER);
@@ -705,6 +784,7 @@ window.addEventListener('keydown', e => {
   else if (mod && e.shiftKey && !e.altKey && key === 'o') action = goTo;
   else if (e.altKey && !mod && e.code === 'KeyN') action = actions.new;
   else if (e.altKey && !mod && e.code === 'KeyW') action = actions.close;
+  else if (e.altKey && !mod && /^Digit[123]$/.test(e.code)) action = () => showView(['code', 'output', 'console'][e.code.slice(5) - 1]);
   if (!action || document.querySelector('dialog[open]')) return;
   e.preventDefault();
   e.stopPropagation();
@@ -731,36 +811,6 @@ window.addEventListener('drop', e => {
   document.body.classList.remove('dropping');
   documents.openDropped(e.dataTransfer);
 }, true);
-
-// The divider between the editor and the screen.
-const mainArea = document.querySelector('main'), divider = $('divider');
-const setSplit = f => {
-  f = Math.min(0.8, Math.max(0.2, f));
-  mainArea.style.gridTemplateColumns = `minmax(280px, ${f}fr) 6px minmax(300px, ${1 - f}fr)`;
-  return f;
-};
-let split = setSplit(Number(store.get('arcade-basic.split')) || 0.5);
-divider.addEventListener('pointerdown', e => {
-  divider.setPointerCapture(e.pointerId);
-  divider.classList.add('dragging');
-  const move = ev => {
-    const r = mainArea.getBoundingClientRect();
-    split = setSplit((ev.clientX - r.left) / r.width);
-  };
-  divider.addEventListener('pointermove', move);
-  divider.addEventListener('lostpointercapture', () => {
-    divider.classList.remove('dragging');
-    divider.removeEventListener('pointermove', move);
-    store.set('arcade-basic.split', String(split));
-  }, { once: true });
-});
-divider.addEventListener('keydown', e => {
-  const step = e.key === 'ArrowLeft' ? -0.02 : e.key === 'ArrowRight' ? 0.02 : 0;
-  if (!step) return;
-  split = setSplit(split + step);
-  store.set('arcade-basic.split', String(split));
-  e.preventDefault();
-});
 
 // -- Links to programs ---------------------------------------------------------------------
 // …/#breakout opens an example; …/#code=… carries a whole program, compressed; …/#play=…
@@ -872,6 +922,7 @@ function leavePlayer(openIt = false) {
   player = null;
   root.classList.remove('player', 'started', 'drawn');
   document.title = 'Arcade BASIC';
+  showView('code');
   if (openIt) {
     history.replaceState(null, '', location.pathname + location.search + '#code=' + code);
     openAddress('#code=' + code);

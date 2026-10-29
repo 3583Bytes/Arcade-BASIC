@@ -105,6 +105,24 @@ public sealed class EditorTests : IDisposable
 
     private const string Enter = "\r", Tab = "\t", Backspace = "\b", Escape = "\x1b";
     private const string F2 = "\0<", F3 = "\0=", F4 = "\0>", F7 = "\0A", F8 = "\0B";
+    private const string Up = "\0H", Insert = "\0R", Delete = "\0S", CtrlX = "\x18", CtrlV = "\x16";
+
+    /// <summary>Click the menu bar's button <paramref name="label"/>.</summary>
+    private static void ClickButton(Screen screen, BasicVm vm, string label)
+    {
+        var at = screen.Frame.First(t => t.Text == label).At;
+        screen.Click(at with { X = at.X + 0.005, Y = at.Y + 0.01 });
+        NextFrame(vm, 2);
+    }
+
+    /// <summary>Press <paramref name="key"/> with Shift held.</summary>
+    private static void Shifted(Screen screen, BasicVm vm, string key)
+    {
+        screen.Held.Add("ShiftLeft");
+        screen.Type(key);
+        NextFrame(vm);
+        screen.Held.Clear();
+    }
 
     /// <summary>Step until the program presents its next frame (SLEEP) or ends.</summary>
     private static StepStatus NextFrame(BasicVm vm, int frames = 1)
@@ -146,7 +164,7 @@ public sealed class EditorTests : IDisposable
         var screen = new Screen();
         Start(screen);
 
-        Assert.Equal("New F7   Open F3   Save F2   Save as F4   Close F8", screen.Row(0, to: 60).Trim());
+        Assert.Equal("New   Open   Save   Save as   Close     Cut   Copy   Paste       Help   Quit", screen.Row(0).Trim());
         Assert.True(screen.Shows("untitled-1"));
         Assert.Equal("Welcome to the Arcade BASIC editor.", screen.Line(0));
         // a tab character runs on to the next stop of 4, a faint → where it starts
@@ -285,6 +303,57 @@ public sealed class EditorTests : IDisposable
         NextFrame(vm);
         Assert.False(screen.Shows("other.txt"));
         Assert.True(screen.Shows("untitled-1"));
+    }
+
+    [Fact]
+    public void CutCopyAndPasteWorkOnSelectionsAndWholeLinesAndBetweenTabs()
+    {
+        File.WriteAllLines("notes.txt", ["alpha beta", "gamma", "delta"]);
+        OpenLastTime("notes.txt");
+        var screen = new Screen();
+        var vm = Start(screen);
+
+        // double-click "beta", Copy, click past the end of "delta", Shift+Ins pastes
+        screen.Click(Screen.Text(7, 0));
+        screen.Click(Screen.Text(7, 0));
+        NextFrame(vm, 4);
+        ClickButton(screen, vm, "Copy");
+        Assert.StartsWith("Copied 4 characters", screen.Status);
+        screen.Click(Screen.Text(20, 2));
+        NextFrame(vm, 2);
+        Shifted(screen, vm, Insert);
+        Assert.Equal("deltabeta", screen.Line(2));
+
+        // nothing selected: Shift+Del cuts the whole line, and Paste puts it back above
+        // the cursor's line
+        screen.Click(Screen.Text(1, 1));
+        NextFrame(vm, 2);
+        Shifted(screen, vm, Delete);
+        Assert.StartsWith("Cut the line", screen.Status);
+        Assert.Equal("deltabeta", screen.Line(1));
+        screen.Type(Up);
+        NextFrame(vm);
+        ClickButton(screen, vm, "Paste");
+        Assert.Equal(["gamma", "alpha beta", "deltabeta"], [screen.Line(0), screen.Line(1), screen.Line(2)]);
+
+        // a selection over two lines: Ctrl+X (as a terminal sends it) cuts it ...
+        screen.Pointer = Screen.Text(2, 1);
+        screen.Events.Enqueue(new PointerEvent(true, screen.Pointer));
+        NextFrame(vm);
+        screen.Pointer = Screen.Text(5, 2);
+        NextFrame(vm);
+        screen.Events.Enqueue(new PointerEvent(false, screen.Pointer));
+        NextFrame(vm);
+        screen.Type(CtrlX, F2);
+        NextFrame(vm);
+        Assert.Equal(["gamma", "albeta"], File.ReadAllLines("notes.txt"));
+
+        // ... and Ctrl+V pastes it into a new file, in another tab
+        screen.Type(F7, CtrlV);
+        NextFrame(vm);
+        Assert.True(screen.Shows("untitled-1"));
+        Assert.Equal(["pha beta", "delta", ""], [screen.Line(0), screen.Line(1), screen.Line(2)]);
+        Assert.StartsWith("Pasted 2 lines", screen.Status);
     }
 
     [Fact]

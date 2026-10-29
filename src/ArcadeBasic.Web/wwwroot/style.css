@@ -110,7 +110,7 @@
 html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 var(--ui-font);
-  display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden;
+  display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden;
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -165,15 +165,27 @@ header label { display: flex; gap: 6px; align-items: center; white-space: nowrap
 [data-theme="qbasic"] .menu-list .key { color: #555; }
 .menu-list hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; }
 
-/* Editor on the left, the program's screen and output on the right, a divider between */
-main {
-  display: grid; grid-template-columns: minmax(280px, var(--split, 1fr)) 6px minmax(300px, 1fr);
-  min-height: 0;
+/* The views — Code, Output, Console — one at a time, chosen by the tabs above them */
+#views {
+  display: flex; align-items: stretch; gap: 2px; padding: 0 10px; background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
-#editorPane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--ed-bg); }
-#divider { cursor: col-resize; background: var(--border); }
-#divider:hover, #divider.dragging { background: var(--accent); }
-#runPane { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-width: 0; min-height: 0; overflow: auto; }
+#views button {
+  background: transparent; border: 0; color: var(--muted); cursor: pointer; padding: 6px 14px; font-size: 13px;
+  display: flex; align-items: center; gap: 6px;
+}
+#views button:hover { color: var(--text); background: var(--hover); }
+#views button[aria-selected="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+#views .running { display: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+html.running #views .running { display: inline-block; }
+#consoleBadge { font-size: 11px; font-weight: 600; }
+#consoleBadge.errors { color: var(--danger); }
+#consoleBadge.warnings { color: var(--warn); }
+main { display: grid; min-height: 0; }
+main > section { grid-area: 1 / 1; display: none; min-width: 0; min-height: 0; }
+html[data-view="code"] #editorPane, html[data-view="output"] #runPane, html[data-view="console"] #consolePane { display: flex; }
+#editorPane { flex-direction: column; background: var(--ed-bg); }
+#runPane { flex-direction: column; align-items: center; gap: 8px; padding: 12px; overflow: hidden; outline: none; }
 
 /* The tabs, one per open program */
 #tabs {
@@ -202,9 +214,9 @@ main {
 
 .tabRow { display: flex; align-items: stretch; background: var(--bar); border-bottom: 1px solid var(--border); flex: none; }
 .tabRow #tabs { flex: 1; min-width: 0; border-bottom: 0; }
-#outlineToggle { border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; padding: 0 12px; white-space: nowrap; font-size: 13px; }
-#outlineToggle:hover, #outlineToggle[aria-pressed="true"] { color: var(--text); background: var(--hover); }
-[data-theme="qbasic"] #outlineToggle { color: #000; }
+#outlineToggle, #variablesToggle { border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; padding: 0 12px; white-space: nowrap; font-size: 13px; }
+#outlineToggle:hover, #outlineToggle[aria-pressed="true"], #variablesToggle:hover, #variablesToggle[aria-pressed="true"] { color: var(--text); background: var(--hover); }
+[data-theme="qbasic"] #outlineToggle, [data-theme="qbasic"] #variablesToggle { color: #000; }
 #editorBody { flex: 1; min-height: 0; display: flex; }
 #editor { flex: 1; min-width: 0; min-height: 0; position: relative; }
 
@@ -249,13 +261,17 @@ dialog.goTo .items { max-height: 50vh; overflow: auto; }
 #editor .cm-editor { position: absolute; inset: 0; }
 #editor .cm-editor.cm-focused { outline: none; }
 
-/* The program's screen, its output and the line it's asking for */
+/* The Output view: the program's screen once it draws (as large as fits; smaller when it
+   prints too), what it prints, and the line it's asking for — or, before it runs, a hint */
 #screen {
-  width: 100%; aspect-ratio: 5 / 3; background: #000; border: 1px solid var(--border); border-radius: 6px;
-  display: block; outline: none; touch-action: none; flex: none;
+  width: min(100%, calc((100vh - 150px) * 5 / 3)); aspect-ratio: 5 / 3; background: #000;
+  border: 1px solid var(--border); border-radius: 6px; display: block; outline: none; touch-action: none; flex: none;
 }
+html.drawn.printed #screen { width: min(100%, calc((100vh - 150px) * 0.65 * 5 / 3)); }
+html:not(.drawn) #screen { display: none; }
 #screen:focus { border-color: var(--accent); }
-#hint { color: var(--muted); margin: 0; font-size: 13px; }
+#hint { color: var(--muted); margin: auto; font-size: 14px; }
+html.drawn #hint, html.printed #hint { display: none; }
 
 /* A play link (#play=…): the program's screen, a bar, and nothing else. The screen shows
    once the program draws, so a program that only PRINTs is just its output. */
@@ -265,15 +281,9 @@ html.player .playerBar { display: flex; flex: 1; gap: 8px; align-items: center; 
 .playerBar .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .playerBar #playerStatus { color: var(--muted); }
 .playerBar .spacer { flex: 1; }
-html.player footer, html.player #editorPane, html.player #divider, html.player .outputHead,
-html.player #hint, html.player #variables { display: none; }
-html.player main { grid-template-columns: minmax(0, 1fr) !important; }   /* (over the editor's split, set on the element) */
-html.player #runPane { align-items: center; }
+html.player footer, html.player #views, html.player #editorPane, html.player #consolePane, html.player #hint { display: none; }
+html.player #runPane { display: flex; }
 html.player #screen, html.player .playButton { width: min(100%, calc((100vh - 90px) * 5 / 3)); }
-html.player:not(.drawn) #screen { display: none; }
-html.player #output { width: min(100%, 960px); flex: 1; }
-html.player #output:empty { display: none; }
-html.player #inputRow { width: min(100%, 960px); }
 html.player:not(.started) .playButton {
   display: flex; align-items: center; justify-content: center; aspect-ratio: 5 / 3; flex: none;
   background: #000; color: #fff; border: 1px solid var(--border); border-radius: 6px; font-size: 28px; cursor: pointer;
@@ -282,17 +292,11 @@ html.player .playButton:disabled { color: #888; cursor: default; }
 html.player .playButton:not(:disabled):hover { border-color: var(--accent); }
 #runPane:fullscreen { background: #000; justify-content: center; }
 #runPane:fullscreen #screen { width: min(100%, calc((100vh - 20px) * 5 / 3)); border: 0; }
-.outputHead { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
-.outputHead .spacer { flex: 1; }
-.outputHead button { background: transparent; border: 0; color: var(--muted); cursor: pointer; padding: 2px 6px; font-size: 12px; border-radius: 4px; }
-.outputHead button:hover { color: var(--text); }
-.outputHead .ptab[aria-selected="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); border-radius: 0; }
-
 /* The debugger: the toolbar's controls and the Variables panel */
 header .debug { display: flex; gap: 2px; }
 #variables {
-  min-height: 5em; flex: 1; overflow: auto; background: var(--panel); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: 13px/1.45 var(--code-font);
+  width: 320px; flex: none; overflow: auto; background: var(--panel); color: var(--text);
+  border-left: 1px solid var(--border); padding: 6px 8px; font: 13px/1.45 var(--code-font);
 }
 #variables .note { color: var(--muted); margin: 4px 2px; font-family: var(--ui-font); }
 #variables .frame + .frame { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 4px; }
@@ -310,17 +314,38 @@ header .debug { display: flex; gap: 2px; }
 #variables table.grid td { padding: 0 4px; text-align: right; border: 1px solid var(--border); }
 #variables table.grid tr:first-child td, #variables table.grid td:first-child { color: var(--muted); border-color: transparent; }
 #output {
-  margin: 0; min-height: 5em; flex: 1; overflow: auto; background: var(--panel); color: var(--text);
+  margin: 0; width: 100%; min-height: 5em; flex: 1; overflow: auto; background: var(--panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
   font: 13px/1.4 var(--code-font); white-space: pre-wrap; text-shadow: var(--glow);
 }
 #output .error { color: var(--danger); }
-#inputRow { display: none; gap: 6px; }
+#output:empty { display: none; }
+#inputRow { display: none; gap: 6px; width: 100%; flex: none; }
 #inputRow input {
   flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 6px;
   padding: 5px 8px; font: 13px var(--code-font);
 }
 #inputRow button { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+
+/* The Console view: the program's problems, and what happened when it ran */
+#consolePane { flex-direction: column; overflow: auto; padding: 4px 16px 16px; font-size: 13px; }
+.consoleHead { display: flex; align-items: baseline; gap: 12px; margin-top: 10px; }
+.consoleHead h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 0; }
+.consoleHead button { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; }
+.consoleHead button:hover { color: var(--text); }
+#problemList, #log { list-style: none; margin: 6px 0 0; padding: 0; font-family: var(--code-font); }
+#problemList li, #log li { display: flex; gap: 10px; padding: 3px 6px; border-radius: 4px; align-items: baseline; }
+#problemList li { cursor: pointer; }
+#problemList li:hover, #log li.goes:hover { background: var(--hover); cursor: pointer; }
+#problemList .none, #log .none { color: var(--muted); font-family: var(--ui-font); cursor: default; }
+#problemList .none:hover { background: none; }
+.sev { width: 1.2em; flex: none; text-align: center; }
+.sev.error, #log .error { color: var(--danger); }
+.sev.warning { color: var(--warn); }
+.sev.info, #log time { color: var(--muted); }
+#log time { flex: none; }
+#problemList .where, #log .where { color: var(--accent); flex: none; }
+#problemList .text, #log .text { white-space: pre-wrap; }
 
 /* The status line */
 footer {
@@ -427,14 +452,8 @@ body.dropping::after {
   pointer-events: none;
 }
 
-/* Phones and narrow windows: everything in one column, the page scrolls */
+/* Phones and narrow windows */
 [data-theme="qbasic"] #variables .frame > table tr.changed td { color: #ffff55; }
 @media (max-width: 900px) {
-  body { display: block; overflow: auto; }
-  main { display: flex; flex-direction: column; }
-  #divider { display: none; }
-  #editorPane { height: 60vh; }
-  #runPane { overflow: visible; }
-  #output { flex: none; max-height: 240px; }
-  footer { position: sticky; bottom: 0; }
+  #variables { width: 220px; }
 }

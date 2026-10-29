@@ -12,10 +12,17 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
 
 - **Colours** from the engine's own reserved words and supplied functions, with
   line numbers after `GOTO`/`GOSUB`/`THEN` coloured as labels.
+- **Three views**, tabs under the toolbar: **Code** (the editor, and the debugger's
+  Variables beside it), **Output** (what the program shows: its screen, as large as
+  fits, once it draws; what it prints; the line it's reading) and **Console** (the
+  problems, and what happened each run: started, ended, stopped, its errors — click
+  one to see its line). Running shows Output; a breakpoint, a pause or an error
+  shows Code at its line; Alt+1, 2 and 3 choose one.
 - **Problems as you type**: the engine checks the program (lexer, parser,
   analyzer, compiler, no run) and underlines errors and warnings — an undeclared
-  name is usually a typo. The status line counts them; F8 goes to the next.
-- **Runtime errors** highlight the line that raised them.
+  name is usually a typo. The status line counts them (click for the Console's
+  list); F8 goes to the next.
+- **Runtime errors** highlight the line that raised them; the Console has the message.
 - **Completion** of keywords, functions and the program's own names; **F12** or
   Ctrl/⌘-click goes to a line number, `SUB`, `FUNCTION` or `DEF`; find and
   replace, comment toggling, bracket matching.
@@ -47,13 +54,13 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   `localStorage` as you type, so a reload brings it all back. Nothing is sent
   anywhere.
 - **A debugger**: click beside a line number (or F9) for a breakpoint; the
-  program stops before that line, which is marked, and the **Variables** tab shows
+  program stops before that line, which is marked, and the **Variables** panel shows
   every call in progress and its variables — arrays open to their elements, a
   small two-dimensional one as a grid (maze3d's map, say), and what the last step
   changed in colour. Point at a name for its value. Step over (F10), into (F11),
   out (Shift+F11), continue (F5) or pause a running program (F6); F10/F11 with
   nothing running starts it stopped at the first line. While a program runs, the
-  Variables tab updates twice a second. Breakpoints are kept with the program.
+  Variables panel (◫ Variables) updates twice a second. Breakpoints are kept with the program.
 - **A pixel editor for pictures in the code**: a block of `DATA` lines that are
   each one quoted string, all the same length, is a picture — a character per
   pixel, the way maze3d keeps its map, textures and sprites. Each gets an
@@ -134,7 +141,8 @@ the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
 tabs, Save (catching the download), line endings, links, play links, sound timing and Web
 Audio (oscillators started, with the test profile allowing autoplay), and the
-debugger (breakpoints, stepping, the Variables tab, values on hover), and the
+debugger (breakpoints, stepping, the Variables panel, values on hover), the views
+(Run shows Output, Alt+1/2/3), and the
 pixel editor (painting maze3d's stone texture, recolouring it, one undo; a new
 picture), the colour swatches and palette, and the tune editor (hearing a tune,
 the piano, the keyboard, rests, tempo, an error, applying) — and reports each step.
