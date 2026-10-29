@@ -4,7 +4,7 @@
 // before it reaches the disk.
 import { findPictures } from './pictures.js';
 
-export async function ideSelftest({ editor, documents, pack, openAddress, $, audio }) {
+export async function ideSelftest({ P, editor, documents, pack, openAddress, $, audio }) {
   const pause = (ms = 300) => new Promise(r => setTimeout(r, ms));
   const view = editor.view;
   const result = {};
@@ -174,6 +174,68 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     const code = await pack(text);
     await openAddress('#code=' + code);
     return { codeLength: code.length, active: documents.active.name, same: view.state.doc.toString() === text };
+  });
+
+  /** A zip's files, name → contents (an export's). */
+  async function unzip(bytes) {
+    const at = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), files = new Map();
+    let end = bytes.length - 22;
+    while (end > 0 && at.getUint32(end, true) !== 0x06054b50) end--;
+    for (let i = 0, entry = at.getUint32(end + 16, true); i < at.getUint16(end + 10, true); i++) {
+      const method = at.getUint16(entry + 10, true), size = at.getUint32(entry + 20, true);
+      const nameLength = at.getUint16(entry + 28, true), local = at.getUint32(entry + 42, true);
+      const name = new TextDecoder().decode(bytes.subarray(entry + 46, entry + 46 + nameLength));
+      const start = local + 30 + at.getUint16(local + 26, true) + at.getUint16(local + 28, true);
+      let data = bytes.subarray(start, start + size);
+      if (method === 8)
+        data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+      files.set(name, data);
+      entry += 46 + nameLength + at.getUint16(entry + 30, true) + at.getUint16(entry + 32, true);
+    }
+    return files;
+  }
+
+  await step('export', async () => {
+    // File → Export: maze3d (and its two libraries) compiled and packed with the player — a
+    // page titled with the name given; a program with an error isn't exported.
+    const dialog = $('exportDialog'), nameInput = dialog.querySelector('input[name="name"]');
+    const before = downloads.length;
+    documents.openExample('maze3d.bas');
+    document.querySelector('[data-action="export"]').click();
+    await pause(300);
+    const opened = { open: dialog.open, heading: dialog.querySelector('h2').textContent, name: nameInput.value,
+                     status: dialog.querySelector('.status').textContent };
+    nameInput.value = 'Maze 3D';
+    dialog.querySelector('[value="export"]').click();
+    for (let i = 0; i < 400 && downloads.length === before; i++) await pause(50);
+    const exported = downloads[before];
+    const bytes = new Uint8Array(await (await fetch(exported.href)).arrayBuffer());
+    const files = await unzip(bytes);
+    const bytecode = P.ExportedBytecode();
+    const game = files.get('game.bin');
+    const result = {
+      opened, file: exported.name, megabytes: +(bytes.length / 1048576).toFixed(2), entries: files.size,
+      has: ['index.html', 'player.js', 'screen.js', '_framework/dotnet.js', 'game.bin'].filter(n => files.has(n)),
+      title: /<title>(.*?)<\/title>/.exec(new TextDecoder().decode(files.get('index.html')))?.[1],
+      gameIsTheProgram: !!game && game.length === bytecode.length && game.every((b, i) => b === bytecode[i]),
+      after: !dialog.querySelector('.after').hidden && dialog.querySelector('.after .file').textContent,
+      logged: document.querySelector('#log li:last-child .text')?.textContent,
+    };
+    if (location.search.includes('keepzip')) {     // (for a test server to unpack and play)
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      result.zip = btoa(binary);
+    }
+    dialog.close();
+    documents.newProgram();
+    setText('PRINT "fine"\nPRINT (1\n');
+    document.querySelector('[data-action="export"]').click();
+    await pause(200);
+    dialog.querySelector('[value="export"]').click();
+    await pause(300);
+    result.withAnError = { dialogOpen: dialog.open, view: document.documentElement.dataset.view, cursorLine: lineAtCursor(),
+                           logged: document.querySelector('#log li:last-child .text')?.textContent.split('\n')[0], downloads: downloads.length - before };
+    return result;
   });
 
   await step('views', async () => {

@@ -97,7 +97,14 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   it opens the program's screen with a Play button and a small bar (Restart, Full
   screen, Sound, Open in the editor), no editor, and doesn't open the program in a
   tab. The screen shows once the program draws, so a program that only prints is
-  just its output and input line.
+  just its output and input line. An example has a short one: `#play/breakout`.
+- **Export**: *File → Export…* makes the program something to give people — for
+  now a **web page**: a zip of the player (`src/ArcadeBasic.Player`, which the site
+  carries in `player/`) and the program compiled to bytecode (`game.bin`, with its
+  libraries; no source), its page titled with the name you give. Upload it to
+  itch.io as an HTML game, or put its files on any website. A program with errors
+  isn't exported: the code view shows the first. (`wwwroot/export.js` packs it,
+  `wwwroot/zip.js` zips it, `Playground.Export.cs` compiles it.)
 
 It's live at <https://3583bytes.github.io/Arcade-BASIC/>, published by
 [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) whenever `main`
@@ -113,13 +120,16 @@ dotnet run --project src/ArcadeBasic.Web -c Release
 # click the screen to play. (The HTTPS dev-certificate warning is harmless; use the http URL.)
 ```
 
-To host it anywhere static (GitHub Pages, `python3 -m http.server`), publish and
-serve `bin/Release/net10.0/publish/wwwroot`:
+To host it anywhere static (GitHub Pages, `python3 -m http.server`), build the
+site — the IDE with the player Export needs in `player/` — and serve it:
 
 ```sh
-dotnet publish -c Release src/ArcadeBasic.Web
-python3 -m http.server -d src/ArcadeBasic.Web/bin/Release/net10.0/publish/wwwroot 8080
+src/ArcadeBasic.Web/build-site.sh                  # → publish/site
+python3 -m http.server -d publish/site 8080
 ```
+
+(`dotnet publish -c Release src/ArcadeBasic.Web` alone makes the IDE without the
+player: everything works but Export.)
 
 Publishing compiles the .NET code to WebAssembly ahead of time
 (`RunAOTCompilation`), so it needs the WebAssembly build tools once:
@@ -183,5 +193,8 @@ npm ci && npm run build
 | `Playground.Tools.cs` | the tools' exports: a `PLAY` string's tones, the starting palette |
 | `wwwroot/outline.js` | a program's sections, blocks and subroutines: the outline, folding, Go to |
 | `wwwroot/files.js` | the files programs write, kept in the browser; File → Program files… (the player keeps its game's too) |
+| `wwwroot/export.js`, `wwwroot/zip.js` | File → Export…: the dialog, and the program packed with the player into a zip |
+| `Playground.Export.cs` | Export's compiling: the program as bytecode (`game.bin`) |
+| `build-site.sh` | the site: the IDE, with the player in `player/` (what Pages publishes) |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

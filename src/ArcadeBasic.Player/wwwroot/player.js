@@ -130,7 +130,8 @@ try {
   throw e;
 }
 
-const title = P.Title() || 'Arcade BASIC';
+// An exported page comes with its name as its title (export.js); else the program's file's.
+const title = document.title !== 'Arcade BASIC' ? document.title : P.Title() || 'Arcade BASIC';
 document.title = title;
 files = createFiles({ store, key: `arcade-basic.files.${title}` });
 files.attach(P);

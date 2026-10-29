@@ -56,25 +56,31 @@ internal static partial class Playground
         [JSMarshalAs<JSType.Array<JSType.String>>] string[] names, [JSMarshalAs<JSType.Array<JSType.String>>] string[] texts)
     {
         s_vm = null;
+        var (compiled, info, problems) = Compile(name, source, names, texts);
+        if (compiled is null) return problems;
+        Begin(compiled);
+        RememberScopes(compiled, info!);
+        return "";
+    }
+
+    /// <summary>The program (with its libraries; see <see cref="LoadProgram"/>) compiled, or
+    /// the diagnostics that stop it compiling.</summary>
+    private static (ArcadeBasic.Bytecode.Program? Compiled, SemanticInfo? Info, string Problems) Compile(
+        string name, string source, string[] names, string[] texts)
+    {
         var diags = new DiagnosticBag();
         var program = LoadProgram(name, source, names, texts, diags);
         var info = diags.HasErrors ? null : Analyzer.Analyze(program, diags);
         if (info is null || diags.HasErrors)
-            return string.Join("\n", diags.All.Select(d => d.Render(useColor: false)));
-
-        ArcadeBasic.Bytecode.Program compiled;
+            return (null, null, string.Join("\n", diags.All.Select(d => d.Render(useColor: false))));
         try
         {
-            compiled = BasicCompiler.Compile(program, info);
+            return (BasicCompiler.Compile(program, info), info, "");
         }
         catch (BasicCompiler.UnsupportedFeatureException ex)
         {
-            return ex.Message;
+            return (null, null, ex.Message);
         }
-
-        Begin(compiled);
-        RememberScopes(compiled, info);
-        return "";
     }
 
     private static string[] s_checkMessages = [];

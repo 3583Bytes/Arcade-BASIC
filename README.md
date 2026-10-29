@@ -6,49 +6,175 @@
 [![Spec: ISO 10279](https://img.shields.io/badge/spec-ISO%2010279%3A1991-blue)](https://www.iso.org/standard/18305.html)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-A fun and modern re-implementation of **Full BASIC** including an interpreter, compiler, and IDE Based on (ISO/IEC 10279:1991, ANSI X3.113-1987) and ECMA-116 for Graphics module implementation.
+**Full BASIC** — the ISO/ANSI standard, with its graphics module — for making small games and
+programs, in an IDE that runs in your browser. Write it, run it, debug it, and share a link that
+opens straight into your game.
 
-Run classic BASIC programs, write new ones, embed BASIC in your .NET app, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
+### [▶ Open the IDE](https://3583bytes.github.io/Arcade-BASIC/) — nothing to install
 
-**[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, programs in several files (`LIBRARY`), an outline and folding for long ones, a debugger (breakpoints, stepping, the variables as they change), a pixel editor for the sprites and textures kept in `DATA`, colour swatches and a palette, a tune editor for `PLAY`, open and save your own `.bas` files, share a link that opens straight into your game, six themes (QBasic blue and Commodore 64 among them), sound, and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
+<a href="https://3583bytes.github.io/Arcade-BASIC/">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/images/ide-light.png">
+    <img src="docs/images/ide.png" alt="The Arcade BASIC IDE in a browser, running a first-person 3D maze written in BASIC">
+  </picture>
+</a>
 
-[![A first-person 3D maze written in Arcade BASIC, running in the browser](src/ArcadeBasic.Web/wwwroot/preview.png)](https://3583bytes.github.io/Arcade-BASIC/)
+- **An IDE in the browser:** an editor that checks your program as you type, a debugger, a pixel
+  editor for sprites and textures, a tune editor for `PLAY`, sound, and six themes.
+- **A standard language:** ISO/IEC 10279 Full BASIC — `SUB`s and `FUNCTION`s, modules, `SELECT CASE`,
+  exceptions, matrices, exact decimal arithmetic — with the ANSI graphics module and a few Microsoft
+  BASIC favourites (`INKEY$`, `SOUND`, `PLAY`) for games.
+- **Share and ship:** a link that opens your program to edit or to play, a single native
+  executable, or a desktop app.
 
-## Why? 
+## Play
 
-Because Why Not.  For fun mostly.  
+Every picture opens its game in the IDE, ready to play (*code* opens its program in the editor).
+They're all in [`examples/`](examples/), written in Arcade BASIC.
 
-## In one minute
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://3583bytes.github.io/Arcade-BASIC/#play/maze3d"><img src="docs/images/maze3d-walk.gif" alt="Walking down a corridor in the first-person 3D maze"></a><br>
+      <b>Maze 3D</b> · <a href="https://3583bytes.github.io/Arcade-BASIC/#maze3d">code</a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://3583bytes.github.io/Arcade-BASIC/#play/invaders"><img src="docs/images/invaders.png" alt="Invaders: rows of aliens above the player's ship"></a><br>
+      <b>Invaders</b> · <a href="https://3583bytes.github.io/Arcade-BASIC/#invaders">code</a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://3583bytes.github.io/Arcade-BASIC/#play/breakout"><img src="docs/images/breakout.png" alt="Breakout: coloured bricks, a ball and a paddle"></a><br>
+      <b>Breakout</b> · <a href="https://3583bytes.github.io/Arcade-BASIC/#breakout">code</a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://3583bytes.github.io/Arcade-BASIC/#play/tetris"><img src="docs/images/tetris.png" alt="Tetris: a stack of falling blocks"></a><br>
+      <b>Tetris</b> · <a href="https://3583bytes.github.io/Arcade-BASIC/#tetris">code</a>
+    </td>
+    <td align="center">
+      <a href="https://3583bytes.github.io/Arcade-BASIC/#play/kanban"><img src="docs/images/kanban.png" alt="A kanban board with To Do, Doing and Done lanes"></a><br>
+      <b>Kanban</b> · <a href="https://3583bytes.github.io/Arcade-BASIC/#kanban">code</a>
+    </td>
+    <td align="center">
+      <a href="https://3583bytes.github.io/Arcade-BASIC/#play/readyedit"><img src="docs/images/readyedit.png" alt="Ready Edit, a text editor with tabs, written in BASIC"></a><br>
+      <b>Ready Edit</b> · <a href="https://3583bytes.github.io/Arcade-BASIC/#readyedit">code</a>
+    </td>
+  </tr>
+</table>
 
-A tiny BASIC program:
+Also there: Snake, Super Star Trek (1978), Lunar Lander (1969), a Mandelbrot set, a music demo and
+more — see [`examples/README.md`](examples/README.md).
+
+## The IDE
+
+Pick an example or start a new program, press **Run** (F5), and click the screen so it gets your
+keys. Your programs stay in the browser between visits, and you can open and save `.bas` files of
+your own. Nothing is sent anywhere.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/debugger.png" alt="The debugger paused on a breakpoint in Breakout's main loop, the variables beside the code"></td>
+    <td width="50%"><img src="docs/images/pixel-editor.png" alt="The pixel editor open on a 16 × 16 stone texture kept in DATA lines"></td>
+  </tr>
+  <tr>
+    <td><b>A debugger</b>: breakpoints, stepping over, into and out, and every variable as it changes.</td>
+    <td><b>A pixel editor</b> for the sprites and textures a program keeps in <code>DATA</code> lines.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/tune-editor.png" alt="The tune editor: a piano roll and keyboard for a PLAY string"></td>
+    <td><img src="docs/images/play-link.png" alt="A play link: Invaders on its own page, with Restart, Full screen and Sound"></td>
+  </tr>
+  <tr>
+    <td><b>A tune editor</b> for <code>PLAY</code> strings: a piano roll, and a keyboard to play notes in.</td>
+    <td><b>Play links</b>: <i>File → Copy a link to play this program</i> opens straight into it, no editor.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/theme-qbasic.png" alt="The IDE in its QBasic blue theme, showing Super Star Trek"></td>
+    <td><img src="docs/images/theme-commodore.png" alt="The IDE in its Commodore 64 theme, showing Lunar Lander"></td>
+  </tr>
+  <tr>
+    <td><b>Six themes</b>, QBasic blue among them…</td>
+    <td>…and Commodore 64.</td>
+  </tr>
+</table>
+
+Also: problems underlined as you type, completion, go to definition, an outline and folding for
+long programs, programs in several files (`LIBRARY`), colour swatches and a palette, sound, and
+the files your programs write kept in the browser. The IDE's own guide is
+[`src/ArcadeBasic.Web/README.md`](src/ArcadeBasic.Web/README.md).
+
+## The language
+
+Arcade BASIC is ISO/IEC 10279 **Full BASIC** (ANSI X3.113-1987, ECMA-116): the structured BASIC of
+the 1980s standards — no line numbers needed — with the standard's graphics module. A ball that
+bounces round the screen:
 
 ```basic
-PRINT "Hello, Arcade BASIC!"
-FOR I = 1 TO 3
-  PRINT "  squared:"; I; "->"; I * I
-NEXT I
+! A ball that bounces off the edges. Press Q to stop.
+SET WINDOW 0, 160, 0, 100            ! your own coordinates: 160 across, 100 up
+LET X = 20
+LET Y = 70
+LET DX = 1.5
+LET DY = -1
+DO
+  CLEAR
+  CALL BALL(X, Y)
+  IF X + DX < 3 OR X + DX > 157 THEN LET DX = -DX
+  IF Y + DY < 3 OR Y + DY > 97 THEN LET DY = -DY
+  LET X = X + DX
+  LET Y = Y + DY
+  SLEEP 0.02                         ! one frame
+LOOP UNTIL INKEY$ = "q"
+
+SUB BALL(X, Y)
+  SET AREA COLOR 3
+  GRAPH AREA: X - 3, Y - 3; X + 3, Y - 3; X + 3, Y + 3; X - 3, Y + 3
+END SUB
+END
 ```
 
-Run it on the interpreter:
+**[▶ Run this in your browser](https://3583bytes.github.io/Arcade-BASIC/#code=dVDRboJAEHy_rxhNH9oIBDTW1FYTlGslvQAFjPCIetYmlrMcxvTvm-PU2KTdl9mZ3dnduxZcLIvdDvW2qLEUh3LFJcRmg3rLwdfvXFqIKi4l3lALyFrsLZLQFAs_8MIFbAPOvW00aNu4iha-xaGCOJZYCVGtP8qi5nKo2lGsKiGlthz2hNEUGUbo2k2aY4SBTj0lO1ZfE1UwHeKFBJgy6sYKXcYwcRm7zQzkdwTwn5Gho6xP6CGMz2wMpz9AOqMBLqNNL9OOXPXkZ8eJjfFwbWjWezkBzgfrySdBlbWRAAmjNIJt2V38Fy2IkmNTFZ-csDCMMA9Sn8EPXml-gxHaX21Ckvnk9-vU37sxdTENWRijR4CX2I1mjThEBhM9A7mCx-a-P1hHM_PCCA08JPOJQvID)**
+
+What's in it:
+
+- **Structured programs:** `SUB`, `FUNCTION` and `DEF`, `MODULE`s with `PUBLIC` and `SHARE`
+  variables, programs in several files (`LIBRARY`), `SELECT CASE`, `DO … LOOP`, `EXIT`; `GOTO`,
+  `GOSUB` and line numbers still work, so 1970s listings run too.
+- **Numbers that add up:** exact decimal arithmetic (`0.1 + 0.2` is `0.3`), or
+  `OPTION ARITHMETIC NATIVE` for hardware speed; matrices with `MAT` (`+`, `*`, `TRN`, `INV`, …).
+- **Exceptions:** `WHEN … USE`, `CAUSE EXCEPTION`, `RETRY`, `CONTINUE`, named handlers.
+- **Text and files:** `PRINT USING` pictures, `INPUT`, `READ`/`DATA`, files on channels
+  (`OPEN #1: NAME "scores.txt"`), exact-value `INTERNAL` records.
+- **Graphics:** the standard's `SET WINDOW`, `GRAPH LINES`/`AREA`/`TEXT` with clipping, and
+  `MAT GRAPH CELLS` and `SET COLOR MIX` for pixels and a 256-colour palette; the mouse with
+  `GET MOUSE` and `LOCATE POINT`.
+- **For games:** `INKEY$` and `KEYDOWN` (held keys), `SLEEP` to pace a frame, and `SOUND`, `BEEP`
+  and `PLAY` (Music Macro Language) — Microsoft BASIC's, marked as such in the docs.
+
+The **[language reference](docs/keywords.md)** has every keyword and function with an example;
+**[conformance](docs/conformance.md)** lists where Arcade BASIC departs from the standard and what
+it adds.
+
+## Outside the browser
+
+The same engine — compiled to bytecode, run on a VM — runs everywhere:
+
+| | Command | |
+|---|---|---|
+| **Command line** | `arcade-basic run foo.bas` | Runs a program in a terminal; its graphics are drawn with Braille and ANSI colours, its sound played. `--svg out.svg` and `--wav out.wav` save them instead. |
+| **Native binary** | `arcade-basic build foo.bas -o foo` | One self-contained executable for Linux, macOS or Windows; no .NET needed where it runs. |
+| **Desktop app** | `arcade-basic build foo.bas --desktop` | Your program in a window of its own, as in the browser (a Mac `.app`, or a Windows or Linux executable). Needs the desktop player ([`desktop/player`](desktop/player)). |
+| **REPL** | `arcade-basic repl` | Type a line, see it run; blocks (`FOR`, `SUB`, …) continue on the next line. |
+| **.NET** | `BasicEngine.Run(source, out output)` | Embed it: the libraries target `net10.0` and `netstandard2.1`. |
+
+`arcade-basic` for Linux, macOS (Intel and Apple Silicon) and Windows is attached to each
+[release](https://github.com/3583Bytes/Arcade-BASIC/releases/latest).
 
 ```sh
-$ arcade-basic run hello.bas
-Hello, Arcade BASIC!
-  squared: 1 -> 1
-  squared: 2 -> 4
-  squared: 3 -> 9
+$ arcade-basic run examples/hello.bas
+$ arcade-basic build examples/invaders.bas -o invaders && ./invaders
 ```
-
-Same program, compiled to a self-contained native binary that runs anywhere — no .NET install required:
-
-```sh
-$ arcade-basic build hello.bas -o hello
-$ ./hello
-Hello, Arcade BASIC!
-  squared: 1 -> 1 ...
-```
-
-Or embed it in your C# app:
 
 ```csharp
 using ArcadeBasic;
@@ -57,97 +183,19 @@ BasicEngine.Run("PRINT 6 * 7", out var output);
 Console.WriteLine(output);   //  42
 ```
 
-## What you can do with it
+## Documentation
 
-- **Run vintage BASIC games.** The repo ships [`startrek.bas`](examples/startrek.bas) (Super Star Trek, Dave Ahl 1978) and [`lunar.bas`](examples/lunar.bas) (Storer's 1969 Lunar Lander), faithfully ported to Full BASIC.
-- **Write real-time games.** `INKEY$` (non-blocking keyboard), `KEYDOWN` (held keys) and `SLEEP` (frame delay) drive a game loop, and `OPTION ARITHMETIC NATIVE` swaps exact decimal arithmetic for hardware doubles — 2–8× faster on math-heavy code; combined with the graphics module that's a playable [`invaders.bas`](examples/invaders.bas) (Space Invaders) in the browser, in a terminal with the CLI, or as a standalone binary. (These are Microsoft-BASIC and Arcade BASIC extensions, flagged as such in the docs.)
-- **Draw with the graphics module.** ECMA-116 §13 `SET WINDOW`/`GRAPH LINES`/`AREA`/`POINTS`/`TEXT` with windowing and clipping. Render to SVG (`arcade-basic run examples/graphics.bas --svg out.svg`), live in **any terminal** (the CLI and standalone binaries draw with a Braille + ANSI backend), or on the canvas in the browser IDE.
-- **Make sound.** `SOUND`, `BEEP`, and `PLAY` (Music Macro Language) — the GW-BASIC/QuickBASIC audio verbs, flagged as Microsoft-dialect extensions in the docs. Plays in **real time** on an interactive terminal (Windows/macOS/Linux), and in the browser, and renders to a WAV file with `arcade-basic run examples/music.bas --wav out.wav`. Foreground (`MF`) and background (`MB`) music both work. See [docs/audio-extension.md](docs/audio-extension.md).
-- **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
-- **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into .NET Framework, Xamarin, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.
-- **Learn how a language gets implemented.** Clean separation of lexer → parser → semantic analyzer → compiler → bytecode VM, all in one C# solution with extensive tests.
+- [**Language reference**](docs/keywords.md) — every keyword and function, with examples. Start here to learn the language.
+- [**Conformance**](docs/conformance.md) — where Arcade BASIC follows ISO 10279, where it departs, and its extensions.
+- [**Examples**](examples/README.md) — the sample programs and what each one shows.
+- [**The IDE**](src/ArcadeBasic.Web/README.md) — what the browser IDE does, and how to build and serve it yourself.
+- [**Building from source**](docs/building.md) — prerequisites, and publishing the CLI and standalone binaries per platform.
+- [**Standalone builds**](docs/standalone-builds.md) — how `arcade-basic build` turns a `.bas` into one executable, or a desktop app.
+- [**Architecture**](docs/architecture.md) — the pipeline, project graph and key data structures.
+- [**Contributing**](CONTRIBUTING.md) — the build and test loop, and recipes for adding functions, statements and opcodes.
+- [**Changelog**](CHANGELOG.md) — what each release changed.
 
-## Ways to run a program
-
-| | Command | Best for |
-|---|---|---|
-| **Browser** | [the IDE](https://3583bytes.github.io/Arcade-BASIC/) | Writing, debugging and playing — graphics, sound, mouse. |
-| **Command line** | `arcade-basic run foo.bas` | Compiles to bytecode and runs it on the VM, in a terminal. |
-| **Native binary** | `arcade-basic build foo.bas -o foo` | Bundles the VM and your compiled program into a single self-contained executable — no .NET needed on the target. |
-| **Desktop app** | `arcade-basic build foo.bas --desktop` | Your compiled program in a window of its own — its screen, sound and keys as in the browser, no IDE (a Mac `.app`, or a Windows or Linux executable). Needs the desktop player, `arcade-player` ([`desktop/player`](desktop/player)). |
-
-All of them run the same engine, the bytecode VM, so they execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules (`PUBLIC` and `SHARE` variables, `DECLARE PUBLIC`, start-up code, their own `DATA`) and programs in several files (`LIBRARY "file.bas"`), exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers.
-
-## Try the IDE
-
-The IDE runs in the browser — **[open it](https://3583bytes.github.io/Arcade-BASIC/)**, nothing to install. To build and run it yourself, see [`src/ArcadeBasic.Web/README.md`](src/ArcadeBasic.Web/README.md).
-
-## Try the REPL
-
-```sh
-arcade-basic repl
-```
-
-```
-Arcade BASIC REPL — type .help for commands, .exit to quit.
-> LET X = 42
-> PRINT X * 2
- 84
-> FOR I = 1 TO 4
-...   PRINT I, I * I
-... NEXT I
- 1               1
- 2               4
- 3               9
- 4               16
-> PRINT SIN(PI / 2)
- 1
-> .exit
-bye.
-```
-
-Each accepted line is appended to a growing session source. Multi-line blocks (`FOR`, `DO`, `IF`, `SELECT`, `SUB`, `FUNCTION`, `DEF`, `MODULE`, `WHEN`) auto-detect and the prompt switches to `... ` until the block closes. Bad input doesn't pollute the session. `.list` shows the accumulated source; `.clear` resets it.
-
-`INPUT` and `RANDOMIZE` don't round-trip cleanly through the REPL's re-execute-each-turn model — for those, save your code to a `.bas` file and use `arcade-basic run`.
-
-## Example programs
-
-23 sample programs (and two libraries they use) in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, real-time Space Invaders, Snake, Breakout, and Tetris, a first-person 3D maze, and a `PLAY`/`SOUND` music demo. Highlights:
-
-| Program | What it shows |
-|---|---|
-| [`hello.bas`](examples/hello.bas) | `PRINT`, `IF`/`THEN`/`ELSE`, `FOR`, `^` |
-| [`matrix.bas`](examples/matrix.bas) | `MAT` operations — `+`, `*`, `TRN`, `INV`, `IDN`, `MAT PRINT` |
-| [`mandelbrot.bas`](examples/mandelbrot.bas) | escape-time Mandelbrot as ASCII art — a pure-compute benchmark (`z = z*z + c`) |
-| [`exception.bas`](examples/exception.bas) | `WHEN`/`USE`/`END WHEN`, `CAUSE`, `EXLINE`, `EXTYPE`, `RETRY` |
-| [`modules.bas`](examples/modules.bas) | `MODULE` blocks, `PUBLIC` vs private declarations |
-| [`fileio.bas`](examples/fileio.bas) | `OPEN` / `PRINT #` / `LINE INPUT #` / `CLOSE` |
-| [`formatted.bas`](examples/formatted.bas) | `PRINT USING` with picture strings |
-| [`graphics.bas`](examples/graphics.bas) | §13 graphics — `SET WINDOW`, `GRAPH LINES`/`AREA`/`POINTS`/`TEXT` (render with `--svg`) |
-| [`kanban.bas`](examples/kanban.bas) | a Kanban board for your own tasks that saves itself as you go — drag cards between lanes and up and down with the mouse (`GET MOUSE`), edit them, move them with the keys |
-| [`invaders.bas`](examples/invaders.bas) | real-time Space Invaders — `KEYDOWN` (held keys) + `INKEY$` (key presses) + `SLEEP` (frame delay) + §13 graphics |
-| [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
-| [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `KEYDOWN` + `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
-| [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
-| [`maze3d.bas`](examples/maze3d.bas) | (three files: the game, and its level and textures as modules in [`maze3d-level.bas`](examples/maze3d-level.bas) and [`maze3d-textures.bas`](examples/maze3d-textures.bas), brought in with `LIBRARY`) first-person 3D maze, Wolfenstein-style — ray casting with textured walls, floor and ceiling and sprites — a key to find and gems to collect (`MAT GRAPH CELLS` stretches a texture column over each screen column, draws the floor and ceiling a dot at a time, and its see-through cells make sprites; `SET COLOR MIX` colours), `KEYDOWN` walking and turning |
-| [`music.bas`](examples/music.bas) | audio — `SOUND`, `BEEP`, and `PLAY` (MML); render to WAV with `--wav` |
-| [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
-| [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
-
-See [`examples/README.md`](examples/README.md) for the full list.
-
-## Embedding in .NET
-
-The library projects (lexer through VM) multi-target **`net10.0`** *and* **`netstandard2.1`**, so they drop into anything from a modern ASP.NET host to a .NET Framework app. The smallest possible embed:
-
-```csharp
-using ArcadeBasic;
-
-var result = BasicEngine.Run("LET X = 6 * 7 \n PRINT X", out string output);
-Console.WriteLine(output);  //  42
-```
-
-## Quick build from source
+## Build from source
 
 Requires the .NET 10 SDK.
 
@@ -158,14 +206,14 @@ cd arcade-basic
 dotnet build                                                    # debug build
 dotnet test                                                     # all tests (about 800)
 dotnet run --project src/ArcadeBasic.Cli -- run examples/hello.bas
+dotnet run --project src/ArcadeBasic.Web -c Release             # the IDE, on localhost
 
-# Produce an AOT-compiled standalone CLI for the current platform
-# (PublishAot is set in the CLI csproj, so no need to pass it on the cmdline)
-dotnet publish src/ArcadeBasic.Cli -c Release -r osx-arm64
-# → src/ArcadeBasic.Cli/bin/Release/net10.0/<rid>/publish/arcade-basic
+# An AOT-compiled standalone CLI for this platform
+dotnet publish src/ArcadeBasic.Cli -c Release -r osx-arm64 -o publish/cli
 ```
 
-Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are attached to each tagged GitHub release: `arcade-basic`, the CLI. No .NET install needed on the target machine.
+The pictures in this README come from the IDE itself: `node tools/screenshots/shots.mjs` takes
+them all again (it needs Node 22 or later and Firefox).
 
 ## CLI reference
 
@@ -182,28 +230,10 @@ arcade-basic <command> [args]
   --version
 ```
 
-Inspect intermediate stages of a program:
-
-```sh
-arcade-basic lex     examples/factorial.bas
-arcade-basic parse   examples/factorial.bas
-arcade-basic analyze examples/factorial.bas
-```
-
-## Documentation
-
-- [**Keywords**](docs/keywords.md) — every reserved word with a description and a commented example. Start here if you're learning the language.
-- [**Building from source**](docs/building.md) — per-platform prerequisites, RIDs, and publish commands for the CLI and standalone binaries.
-- [**Architecture**](docs/architecture.md) — the pipeline, project graph, key data structures, target-framework strategy.
-- [**Standalone builds**](docs/standalone-builds.md) — how `arcade-basic build` turns a `.bas` into a single self-contained executable (it's a self-extracting bytecode VM, not a native-codegen pipeline; this doc explains the anatomy of the resulting binary and why the design was chosen).
-- [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
-- [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
-- [**Examples**](examples/README.md) — the sample programs and what each one shows.
-- [**Changelog**](CHANGELOG.md) — what each release changed.
-
 ## How it's built
 
-A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assembly so you can pull in only what you need:
+A compiler pipeline and a bytecode VM in one C# solution. Each box is its own assembly, so you can
+pull in only what you need:
 
 ```
    Source file
@@ -230,7 +260,11 @@ A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assemb
 | `ArcadeBasic.Player` | the player for desktop apps: a compiled program on the VM, no IDE (WebAssembly) |
 | `desktop/player` | the desktop player: the player page in a native window (Tauri) |
 
-The VM runs on the runtime's `Value` hierarchy, `BigDecimal` numerics, `MatOps` math kernels (LU-decomposition inverse, transpose, …), picture-string formatter, and channel table. (Until 2026 a tree-walking interpreter ran programs too, as a second, reference engine.) The full architecture writeup lives in [`docs/architecture.md`](docs/architecture.md).
+The full write-up is [`docs/architecture.md`](docs/architecture.md).
+
+## Why?
+
+Because why not. For fun, mostly.
 
 ## License
 

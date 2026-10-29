@@ -1,25 +1,29 @@
-# Arcade BASIC keyword reference
+# Arcade BASIC language reference
 
-Every reserved word in Arcade BASIC, grouped by what it does. Each entry has a
-one-paragraph description and a runnable example. Comments inside examples
-start with `!` (Arcade BASIC's line-comment marker — `REM` works too).
+Every statement, operator and function in Arcade BASIC, grouped by what it does, each
+with a short example. New to the language? Start with [Language basics](#language-basics).
 
-Keywords are case-insensitive: `PRINT`, `print`, and `Print` are the same
-token. Examples use uppercase by convention.
+Arcade BASIC is ISO/IEC 10279 **Full BASIC** (the same language as ANSI X3.113 and
+ECMA-116). Anything marked **†** in the index isn't in that standard: it comes from
+Microsoft BASIC, True BASIC or Arcade BASIC itself, and its entry says which.
+[Conformance](conformance.md) has the details, including where Arcade BASIC departs from
+the standard.
 
-> **Companion docs:** [`architecture.md`](architecture.md) for the pipeline,
-> [`conformance.md`](conformance.md) for ISO 10279 deviations and the
-> [**Extensions** table](conformance.md#extensions-beyond-isoecma-full-basic)
-> (which keyword/function belongs to which spec — e.g. `INKEY$` is a Microsoft
-> BASIC extension, not ISO Full BASIC),
-> [`../examples/README.md`](../examples/README.md) for full programs that
-> exercise these features together.
+**▶ Try it** under an example opens it in the
+[browser IDE](https://3583bytes.github.io/Arcade-BASIC/), ready to run (F5).
+Comments in the examples start with `!`; a comment after a statement often shows what
+it prints.
 
 ## Index
 
-**Declarations:** [DIM](#dim) · [REDIM](#redim) · [DEF](#def) ·
+**[Language basics](#language-basics):** [a program](#a-program) · [variables](#variables) ·
+[numbers](#numbers) · [strings](#strings) · [true and false](#true-and-false) ·
+[procedures](#procedures)
+
+**Declarations:** [DIM](#dim) · [MAT REDIM](#redim) · [DEF](#def) ·
 [FUNCTION](#function) · [SUB](#sub) · [CALL](#call) · [MODULE](#module) ·
-[PUBLIC](#public) · [SHARE](#share) · [DECLARE PUBLIC](#declare-public) · [LIBRARY](#library) · [HANDLER](#handler) · [OPTION BASE](#option-base) ·
+[PUBLIC](#public) · [SHARE](#share) · [DECLARE PUBLIC](#declare-public) ·
+[LIBRARY](#library)† · [HANDLER](#handler) · [OPTION BASE](#option-base) ·
 [OPTION ARITHMETIC](#option-arithmetic)
 
 **Values & assignment:** [LET](#let) · [REM / `!`](#rem)
@@ -31,19 +35,23 @@ token. Examples use uppercase by convention.
 [READ](#read) · [DATA](#data) · [RESTORE](#restore)
 
 **Selection:** [IF / THEN / ELSEIF / ELSE / END IF](#if--then--elseif--else--end-if) ·
-[SELECT CASE / IS / TO / CASE ELSE](#select-case)
+[SELECT CASE](#select-case)
 
-**Iteration:** [FOR / TO / STEP / NEXT](#for--to--step--next) ·
-[DO / LOOP / WHILE / UNTIL](#do--loop--while--until) ·
-[EXIT](#exit)
+**Iteration:** [FOR / NEXT](#for--to--step--next) ·
+[DO / LOOP / WHILE / UNTIL](#do--loop--while--until) · [EXIT](#exit)
 
-**Jumps:** [GOTO](#goto) · [GOSUB / RETURN](#gosub--return) ·
-[ON ... GOTO / GOSUB](#on--goto--gosub) ·
-[STOP](#stop) · [END](#end) · [RANDOMIZE](#randomize) · [RUN](#run) · [SLEEP](#sleep) · [SOUND](#sound) · [BEEP](#beep) · [PLAY](#play)
+**Jumps:** [GOTO](#goto) · [GOSUB / RETURN](#gosub--return) · [ON … GOTO / GOSUB](#on--goto--gosub)
 
-**Word-form operators:** [AND, OR, NOT, XOR, IMP, EQV](#logical-operators) ·
-[MOD, REMAINDER](#mod--remainder) ·
-[BAND, BOR, BXOR, BNOT](#bitwise-operators)
+**Starting and stopping:** [STOP](#stop) · [END](#end) · [RUN](#run)
+
+**[Operators](#operators):** [AND, OR, NOT](#logical-operators) · [XOR, IMP, EQV](#logical-operators)† ·
+[MOD, REMAINDER](#mod--remainder) · [BAND, BOR, BXOR, BNOT](#bitwise-operators)†
+
+**[Functions](#functions):** [numbers](#number-functions) (ABS, INT, ROUND, SQR, MAX …) ·
+[trigonometry](#trigonometry) · [RND](#rnd) · [RANDOMIZE](#randomize) ·
+[strings](#string-functions) (LEN, MID$, POS, UCASE$, VAL, STR$, CHR$ …) ·
+[date and time](#date-and-time) · [exception information](#exception-information) ·
+[constants](#constants) (PI, EPS, MAXNUM)
 
 **Arrays & MAT:** [MAT](#mat) · [ZER](#zer) · [IDN](#idn) · [CON](#con) ·
 [NUL$](#nul) · [TRN](#trn) · [INV](#inv)
@@ -55,10 +63,118 @@ token. Examples use uppercase by convention.
 **Exceptions:** [WHEN ... USE](#when--use) · [CAUSE EXCEPTION](#cause-exception) ·
 [RETRY](#retry) · [CONTINUE](#continue)
 
-**Graphics (§13):** [SET WINDOW / VIEWPORT / DEVICE …](#graphics) · [SET CLIP](#graphics) ·
+**Graphics:** [SET WINDOW / VIEWPORT / DEVICE …](#graphics) · [SET CLIP](#graphics) ·
 [SET … STYLE / COLOR](#graphics) · [ASK …](#graphics) · [CLEAR](#graphics) ·
 [GRAPH POINTS / LINES / AREA / TEXT](#graphics) ·
-[MAT GRAPH CELLS / SET COLOR MIX](#pictures-and-colours-mat-graph-cells-set-color-mix)
+[MAT GRAPH CELLS / SET COLOR MIX](#pictures-and-colours-mat-graph-cells-set-color-mix) ·
+[LOCATE POINT / GET POINT](#mouse-locate-point--get-point-get-mouse) ·
+[GET MOUSE](#mouse-locate-point--get-point-get-mouse)†
+
+**Keys, mouse and time:** [INKEY$](#inkey)† · [KEYDOWN](#keydown)† · [SLEEP](#sleep)† ·
+[the mouse](#the-mouse)
+
+**Sound:** [SOUND](#sound)† · [BEEP](#beep)† · [PLAY](#play)†
+
+---
+
+## Language basics
+
+### A program
+
+A program is a list of statements, one to a line; `:` puts several on one line. It runs
+from the top until it reaches `END` (or runs out of lines). Keywords and names can be
+written in any case: `PRINT`, `print` and `Print` are the same.
+
+Line numbers are optional. A number at the start of a line is a *label*, something for
+`GOTO` and `GOSUB` to jump to, so old listings with a number on every line still run,
+and new programs only need one where they jump. A comment runs from `!` to the end of
+the line (or a line starts with [`REM`](#rem)).
+
+```basic
+! Comments start with an exclamation mark.
+PRINT "Hello"                    ! a statement, then a comment
+LET A = 1 : LET B = 2            ! two statements on one line
+GOSUB 100
+END
+
+100 PRINT A + B                  ! 100 labels this line, for GOSUB 100
+RETURN
+```
+
+### Variables
+
+A name starts with a letter, then letters, digits or `_`. A name ending in `$` holds
+a string; any other name holds a number. Numbers start at 0 and strings at `""`, though
+the IDE underlines a name read before anything was put in it, as that's usually a typo.
+An array needs a [`DIM`](#dim) first; its subscripts start at 1 (see
+[`OPTION BASE`](#option-base)).
+
+```basic
+LET SCORE = 10                   ! a number
+LET PLAYER$ = "Ada"              ! a string: the name ends in $
+DIM HI(5)                        ! an array of five numbers, HI(1) to HI(5)
+LET HI(1) = SCORE
+PRINT PLAYER$; " scored"; HI(1)  ! Ada scored 10
+```
+
+### Numbers
+
+Numbers are exact decimals: `0.1 + 0.2` is exactly `0.3`, so sums of money never drift.
+Write them as `42`, `3.25` or `1.5E3`. `PRINT` shows up to 9 significant digits, with a
+space before a number that isn't negative (where a minus sign would go) and one after.
+For speed, [`OPTION ARITHMETIC NATIVE`](#option-arithmetic) uses the computer's own
+floating point instead.
+
+```basic
+PRINT 0.1 + 0.2                  !  0.3
+PRINT 10 / 4; 2 ^ 10; 1.5E3      !  2.5  1024  1500
+PRINT 1 / 3                      !  0.33333333
+```
+
+### Strings
+
+A string is written in double quotes, and a quote inside one is doubled. `&` joins
+strings (`+` doesn't). Lengths and positions count characters, whatever the alphabet:
+`LEN("π")` is 1. The [string functions](#string-functions) take strings apart.
+
+```basic
+LET S$ = "Arcade" & " " & "BASIC"
+PRINT S$; LEN(S$)                ! Arcade BASIC 12
+PRINT "She said ""hello"""       ! She said "hello"
+```
+
+### True and false
+
+A comparison is -1 when it's true and 0 when it's false, and `IF`, `WHILE` and `UNTIL`
+treat any number other than 0 as true. [`AND`, `OR` and `NOT`](#logical-operators)
+combine them.
+
+```basic
+PRINT 3 > 2; 3 < 2               ! -1  0
+LET READY = 5 > 1
+IF READY THEN PRINT "ready"
+```
+
+### Procedures
+
+[`SUB`](#sub)s and [`FUNCTION`](#function)s are written inside the program, before its
+`END`. A `SUB` is called with [`CALL`](#call); a `FUNCTION` returns a value by setting a
+variable with its own name. Their parameters are their own; other names they use are
+the program's variables. In a [`MODULE`](#module) or a [`LIBRARY`](#library) file,
+procedures keep to their own variables.
+
+```basic
+FUNCTION SIZE(W, H)
+  LET SIZE = W * H
+END FUNCTION
+
+SUB SHOW(LABEL$, VALUE)
+  PRINT LABEL$; ":"; VALUE
+END SUB
+
+CALL SHOW("size", SIZE(3, 4))    ! size: 12
+END
+```
 
 ---
 
@@ -217,6 +333,7 @@ Use variables a module made `PUBLIC`; an array is written with parentheses.
 Put it before the names are used, in whichever unit uses them (the main program,
 a procedure, another module).
 
+<!-- fragment -->
 ```basic
 LIBRARY "level.bas"
 DECLARE PUBLIC MAPW, MAP()
@@ -418,14 +535,14 @@ PRINT A; B; C              !  10   20   30
 
 Declare items to populate the program's `DATA` pool. Statements may appear
 anywhere — they're all concatenated in source order at compile time.
-Strings can be quoted or bare (a bare item is parsed as numeric if `READ`
-expects a numeric target, otherwise as a string).
+Items are numbers and quoted strings. (The standard's unquoted strings, `DATA red,
+green`, aren't supported yet.)
 
 ```basic
-DATA "alpha", "beta"       ! quoted strings
-DATA 1, 2, 3               ! numerics
-DATA bare-string-ish       ! bare → string when a string target reads
-READ NAME1$, NAME2$, X, Y, Z, S$
+DATA "alpha", "beta"       ! strings
+DATA 1, 2, 3               ! numbers
+READ NAME1$, NAME2$, X, Y, Z
+PRINT NAME2$; Z            ! beta 3
 ```
 
 ### `RESTORE`
@@ -453,6 +570,7 @@ after `THEN` (or `ELSE`) is shorthand for an implicit `GOTO`: `IF X < 0 THEN 900
 means `IF X < 0 THEN GOTO 900`. The block form opens with `THEN` at end-of-line
 and closes with `END IF`, optionally nesting `ELSEIF` and `ELSE`.
 
+<!-- fragment -->
 ```basic
 ! Single-line form
 IF X > 0 THEN PRINT "positive"
@@ -589,11 +707,16 @@ comes back to the statement after the `ON`. An optional `ELSE <statement>` runs
 when the index is out of range; without `ELSE`, an out-of-range index raises
 exception `10001`, catchable with [`WHEN ... USE`](#when--use).
 
+<!-- fragment -->
 ```basic
 ON CHOICE GOTO 100, 200, 300        ! CHOICE=2 jumps to line 200
 ON K GOSUB 1000, 2000, 3000         ! call the K-th subroutine, then continue
 ON N GOTO 100, 200 ELSE PRINT "out of range"
 ```
+
+---
+
+## Starting and stopping
 
 ### `STOP`
 
@@ -620,21 +743,6 @@ PRINT "hello"
 END                        ! explicit halt at the end of main
 ```
 
-### `RANDOMIZE`
-
-Reseed the random-number generator used by the `RND` builtin. A program
-that never runs `RANDOMIZE` gets the **same** `RND` sequence every time it
-runs (as the standard requires) — handy while debugging. `RANDOMIZE` with no
-argument starts an unpredictable sequence from the clock; with a numeric
-argument (an extension) it starts a repeatable one, the same for the same
-number on every platform.
-
-```basic
-RANDOMIZE                  ! time-seeded: different every run
-RANDOMIZE 42               ! deterministic — useful for reproducibility
-PRINT RND
-```
-
 ### `RUN`
 
 Restart the program from the top, clearing all variable state. Rarely used
@@ -645,76 +753,41 @@ PRINT "boot"
 RUN                        ! starts over (clears X, etc.)
 ```
 
-### `SLEEP`
-
-Pause execution for a number of seconds (fractional allowed). Paces real-time
-loops — pair it with the `INKEY$` function (non-blocking keyboard: one result per
-key press) and `KEYDOWN(key$)` (-1 while a key is held) for games.
-**Extension:** Microsoft BASIC (QuickBASIC), not ISO/ECMA Full BASIC — see the
-[Extensions table](conformance.md#extensions-beyond-isoecma-full-basic).
-
-```basic
-DO
-  LET K$ = INKEY$          ! "" if no key is waiting
-  IF K$ = "q" THEN EXIT DO
-  IF KEYDOWN("ArrowLeft") THEN LET X = X - 1   ! moves every frame it's held
-  IF KEYDOWN("ArrowRight") THEN LET X = X + 1
-  ! ... update + redraw ...
-  SLEEP 0.05               ! ~20 frames/second
-LOOP
-```
-
-### `SOUND`
-
-`SOUND freq, duration` emits a tone: `freq` in Hz (37–32767), `duration` in
-clock ticks of 18.2/second (so `duration/18.2` seconds). `duration = 0` stops
-the current sound. **Extension:** Microsoft BASIC (GW-BASIC/QuickBASIC) — see the
-[Extensions table](conformance.md#extensions-beyond-isoecma-full-basic). Render
-audio with `arcade-basic run file.bas --wav out.wav`.
-
-```basic
-SOUND 440, 9               ! 440 Hz (concert A) for about half a second
-```
-
-### `BEEP`
-
-`BEEP` emits the standard alert tone (~800 Hz for ~0.25 s, like `PRINT CHR$(7)`).
-**Extension:** Microsoft BASIC (GW-BASIC/QuickBASIC).
-
-```basic
-BEEP
-```
-
-### `PLAY`
-
-`PLAY notes$` plays a Music Macro Language (MML) string. **Extension:** Microsoft
-BASIC (GW-BASIC/QuickBASIC). Commands (case-insensitive, spaces ignored):
-
-| | |
-|---|---|
-| `A`–`G` | a note in the current octave; suffix `#`/`+` sharp, `-` flat; optional length digit + dots |
-| `O n` / `>` / `<` | octave 0–6 (default 4) / up one / down one |
-| `N n` | note by number 0–84 (0 = rest) |
-| `L n` | default note length 1–64 (default 4 = quarter) |
-| `P n` | rest of length n |
-| `T n` | tempo: quarter notes per minute, 32–255 (default 120) |
-| `MN` / `ML` / `MS` | normal / legato / staccato articulation |
-| `MF` / `MB` | foreground / background — foreground waits for the music to finish; background plays asynchronously (up to 32 buffered tones) |
-
-```basic
-PLAY "T120 O4 L8 CDEFGAB>C"      ! a C major scale
-PLAY "MS T140 O5 L16 C C G G"    ! staccato
-```
-
 ---
 
-## Word-form operators
+## Operators
+
+From the first to be worked out to the last; parentheses come before them all.
+
+| Operators | | |
+|---|---|---|
+| `^` | power | `2 ^ 10` is 1024 |
+| `-` `+` in front | negative, positive | `-2 ^ 2` is -4: the power comes first |
+| `*` `/` `MOD` `REMAINDER` | multiply, divide, [modulo, remainder](#mod--remainder) | `7 / 2` is 3.5 |
+| `+` `-` | add, subtract | |
+| `&` | join strings | `"Arcade" & " BASIC"` |
+| `=` `<>` `<` `<=` `>` `>=` | compare two numbers or two strings: -1 if true, 0 if not | `"B" < "a"` is -1 (by character code) |
+| `NOT` | [logical](#logical-operators) not | |
+| `AND` `BAND` | logical and, [bitwise](#bitwise-operators) and | |
+| `OR` `XOR` `BOR` `BXOR` | logical or and exclusive or, bitwise or and exclusive or | |
+| `IMP` | implies | |
+| `EQV` | equivalent | |
+
+`+` adds numbers only: join strings with `&`.
+
+```basic
+PRINT 2 + 3 * 4; (2 + 3) * 4     !  14  20
+PRINT -2 ^ 2; 7 / 2              ! -4  3.5
+PRINT "Arcade" & " BASIC"        ! Arcade BASIC
+PRINT 3 > 2 AND "b" > "a"        ! -1
+```
 
 ### Logical operators
 
 `AND`, `OR`, `NOT`, `XOR`, `IMP`, `EQV` operate on truth values. BASIC's
 truth model: non-zero is true, `0` is false; the operators return `-1`
-(all-ones) for true and `0` for false.
+(all-ones) for true and `0` for false. **Extension:** `XOR`, `IMP` and `EQV` are
+Microsoft BASIC's; ISO Full BASIC has `AND`, `OR` and `NOT`.
 
 ```basic
 IF X > 0 AND X < 10 THEN PRINT "in range"
@@ -741,7 +814,7 @@ PRINT -7 REMAINDER 3       ! -1   (truncated)
 ### Bitwise operators
 
 `BAND`, `BOR`, `BXOR`, `BNOT` operate on the integer representation of
-their operands.
+their operands. **Extension:** Arcade BASIC.
 
 ```basic
 PRINT 12 BAND 10           !  8   (1100 & 1010 = 1000)
@@ -749,6 +822,131 @@ PRINT 12 BOR 10            ! 14   (1100 | 1010 = 1110)
 PRINT 12 BXOR 10           !  6   (1100 ^ 1010 = 0110)
 PRINT BNOT 0               ! -1   (bitwise complement)
 ```
+
+---
+
+## Functions
+
+A function's arguments go in parentheses: `SQR(2)`, `MID$(A$, 2, 3)`. A function whose
+name ends in `$` gives a string. A few take no arguments and have no parentheses: `RND`,
+`PI`, `DATE$`, `INKEY$`. They aren't reserved words, but a variable of the same name
+would hide one, so it's best not to.
+
+### Number functions
+
+| | Gives |
+|---|---|
+| `ABS(x)` | x without its sign |
+| `SGN(x)` | -1, 0 or 1: the sign of x |
+| `INT(x)` | the whole number at or below x: `INT(-2.5)` is -3 |
+| `TRUNCATE(x)` | x with its fraction dropped: `TRUNCATE(-2.5)` is -2 |
+| `CEIL(x)` | the whole number at or above x |
+| `ROUND(x)` | the nearest whole number; a half goes to the even one, so `ROUND(2.5)` is 2 and `ROUND(3.5)` is 4 |
+| `SQR(x)` | the square root (x mustn't be negative) |
+| `EXP(x)` | e to the power x |
+| `LOG(x)` `LOG2(x)` `LOG10(x)` | the natural, base-2 and base-10 logarithm (x must be positive) |
+| `MAX(x, y, …)` `MIN(x, y, …)` | the largest or smallest of any number of values |
+
+`MOD` and `REMAINDER` are [operators](#mod--remainder): `7 MOD 3`.
+
+```basic
+PRINT ABS(-3); SGN(-3); SQR(16)                  !  3 -1  4
+PRINT INT(-2.5); TRUNCATE(-2.5); CEIL(-2.5)      ! -3 -2 -2
+PRINT ROUND(2.5); ROUND(3.5); ROUND(2.567)       !  2  4  3
+PRINT EXP(1); LOG10(1000); LOG2(8)               !  2.71828183  3  3
+PRINT MAX(3, 9, 4); MIN(3, 9, 4)                 !  9  3
+```
+
+### Trigonometry
+
+`SIN(x)`, `COS(x)`, `TAN(x)`, and their inverses `ATN(x)` (arctangent), `ASIN(x)` and
+`ACOS(x)` (for x from -1 to 1); `SEC(x)`, `CSC(x)` and `COT(x)` are 1 over `COS`, `SIN`
+and `TAN`. Angles are in radians: multiply degrees by `PI / 180`.
+
+```basic
+PRINT SIN(PI / 2); COS(0); ATN(1) * 4            !  1  1  3.14159265
+PRINT SIN(30 * PI / 180)                         !  0.5   (30 degrees)
+```
+
+### `RND`
+
+A random number from 0 up to, but not including, 1 — a new one each time. Scale it to
+the range you want: `INT(RND * 6) + 1` rolls a die. Until a program runs
+[`RANDOMIZE`](#randomize), the numbers come out the same every run, which helps while
+testing. An argument, if there is one, is ignored.
+
+```basic
+RANDOMIZE
+FOR I = 1 TO 5
+  PRINT INT(RND * 6) + 1;        ! five rolls of a die
+NEXT I
+```
+
+### `RANDOMIZE`
+
+Reseed the random-number generator used by the `RND` builtin. A program
+that never runs `RANDOMIZE` gets the **same** `RND` sequence every time it
+runs (as the standard requires) — handy while debugging. `RANDOMIZE` with no
+argument starts an unpredictable sequence from the clock; with a numeric
+argument (an extension) it starts a repeatable one, the same for the same
+number on every platform.
+
+```basic
+RANDOMIZE                  ! time-seeded: different every run
+RANDOMIZE 42               ! deterministic — useful for reproducibility
+PRINT RND
+```
+### String functions
+
+Positions start at 1 and count characters.
+
+| | Gives |
+|---|---|
+| `LEN(s$)` | the number of characters in s$ |
+| `MID$(s$, p)` `MID$(s$, p, n)` | the characters from position p on, or n of them |
+| `LEFT$(s$, n)` `RIGHT$(s$, n)` | the first or last n characters |
+| `POS(s$, t$)` `POS(s$, t$, p)` | where t$ first comes in s$ (looking from position p), or 0 if it doesn't |
+| `UCASE$(s$)` `LCASE$(s$)` | s$ in capitals, or in small letters (`UPRC$` is another name for `UCASE$`) |
+| `LTRIM$(s$)` `RTRIM$(s$)` | s$ without the spaces at its start, or at its end |
+| `REPEAT$(s$, n)` | s$ n times over |
+| `STR$(x)` | the number as `PRINT` shows it, without the spaces either side |
+| `VAL(s$)` | the number s$ spells out (exception 3001 if it isn't one) |
+| `CHR$(n)` | the character with code n (Unicode: `CHR$(65)` is `"A"`, `CHR$(960)` is `"π"`) |
+| `ORD(s$)` | the code of s$'s first character |
+
+```basic
+LET S$ = "Arcade BASIC"
+PRINT LEN(S$); POS(S$, "BASIC")                  !  12  8
+PRINT LEFT$(S$, 6); "|"; MID$(S$, 3, 4); "|"; RIGHT$(S$, 5)   ! Arcade|cade|BASIC
+PRINT UCASE$("abc"); LCASE$("XYZ"); REPEAT$("-", 3)           ! ABCxyz---
+PRINT "["; LTRIM$("  hi  "); "]["; RTRIM$("  hi  "); "]"       ! [hi  ][  hi]
+PRINT VAL("3.25") * 2; "<"; STR$(42); ">"                       !  6.5 <42>
+PRINT CHR$(65); ORD("A")                                        ! A 65
+```
+
+### Date and time
+
+`DATE$` is today's date as `"YYYYMMDD"`, and `TIME$` the time now as `"HH:MM:SS"`
+(24-hour), both from the computer's clock.
+
+```basic
+PRINT DATE$; " "; TIME$                          ! 20261029 14:05:09, say
+PRINT "This year is "; LEFT$(DATE$, 4)
+```
+
+### Exception information
+
+`EXTYPE` (the exception's number), `EXLINE` (the line it happened on) and `EXTEXT$`
+(its message) describe the exception being handled, inside
+[`WHEN … USE`](#when--use) and a [`HANDLER`](#handler).
+
+### Constants
+
+| | |
+|---|---|
+| `PI` | 3.14159265…, to 37 digits |
+| `EPS` | 1E-14, a tiny positive number |
+| `MAXNUM` | 1E308, the largest number (`INF` is the same) |
 
 ---
 
@@ -1101,6 +1299,7 @@ column per screen column), floor and ceiling, and sprites with see-through parts
 Pointer input comes back in the same problem coordinates you draw with. It works
 where there's a mouse over the drawing — the browser IDE.
 
+<!-- fragment -->
 ```basic
 LOCATE POINT : X, Y             ! wait for a click; X, Y in window coordinates
 GET POINT : X, Y                ! the same (no picture transforms here)
@@ -1118,21 +1317,147 @@ instead. `GET MOUSE` is an extension in the style of True BASIC's; it never wait
 See [`examples/kanban.bas`](../examples/kanban.bas) — drag cards between lanes.
 `LOCATE`, `GET` and `MOUSE` aren't reserved words.
 
+---
+
+## Keys, mouse and time
+
+For games and other programs that respond as you use them: a loop that reads the keys
+(and the mouse), updates, draws, and waits a moment with [`SLEEP`](#sleep) before the
+next frame. In the browser IDE, keys go to the program while its screen has the focus
+(click it first); the IDE keeps Ctrl, ⌘ and Alt combinations, and F5, F6, F10 and F11,
+for itself.
+
+### `INKEY$`
+
+The next key pressed, without waiting; `""` if there isn't one. A key that types a
+character gives the character (`"a"`, `"A"`, `" "`, and Enter `CHR$(13)`, Tab
+`CHR$(9)`, Backspace `CHR$(8)`, Esc `CHR$(27)`). Other keys give `CHR$(0)` followed by a
+code, as in GW-BASIC: the arrows 72 ↑, 80 ↓, 75 ←, 77 →; Home 71, End 79, Page Up 73,
+Page Down 81, Insert 82, Delete 83; F1–F10 59–68, F11 133, F12 134. Each press comes
+once, which suits commands and typing; for moving while a key is held, use
+[`KEYDOWN`](#keydown). **Extension:** Microsoft BASIC.
+
+```basic
+PRINT "Press keys; Q stops"
+DO
+  LET K$ = INKEY$
+  IF K$ = CHR$(0) & CHR$(72) THEN PRINT "up arrow"
+  IF LEN(K$) = 1 THEN PRINT "you typed "; K$
+  SLEEP 0.02
+LOOP UNTIL K$ = "q"
+```
+
+### `KEYDOWN`
+
+`KEYDOWN(key$)` is -1 while that key is held down, and 0 when it isn't: what a game
+needs to move something every frame a key is held. Name the key the way `INKEY$` gives
+it (`"a"`, `" "`, `CHR$(0) & CHR$(72)`) or by its W3C name, in any case: `"ArrowLeft"`,
+`"Space"`, `"Enter"`, `"KeyW"`, `"ShiftLeft"`, `"F1"`. A W3C name is a place on the
+keyboard, so `"KeyW"` is where W is on a US keyboard, whatever the layout. `KEYDOWN`
+doesn't use up presses: `INKEY$` still gets each one. In a terminal, which reports
+presses but not releases, a key counts as held while it repeats. **Extension:** Arcade
+BASIC (like QB64's `_KEYDOWN`).
+
+```basic
+SET WINDOW 0, 100, 0, 100
+LET X = 50
+DO
+  IF KEYDOWN("ArrowLeft") AND X > 5 THEN LET X = X - 1
+  IF KEYDOWN("ArrowRight") AND X < 95 THEN LET X = X + 1
+  CLEAR
+  GRAPH AREA: X - 5, 10; X + 5, 10; X + 5, 14; X - 5, 14
+  SLEEP 0.02
+LOOP UNTIL INKEY$ = "q"
+```
+
+### `SLEEP`
+
+Pause execution for a number of seconds (fractional allowed). Paces real-time
+loops — pair it with the `INKEY$` function (non-blocking keyboard: one result per
+key press) and `KEYDOWN(key$)` (-1 while a key is held) for games.
+**Extension:** Microsoft BASIC (QuickBASIC), not ISO/ECMA Full BASIC — see the
+[Extensions table](conformance.md#extensions-beyond-isoecma-full-basic).
+
+```basic
+DO
+  LET K$ = INKEY$          ! "" if no key is waiting
+  IF K$ = "q" THEN EXIT DO
+  IF KEYDOWN("ArrowLeft") THEN LET X = X - 1   ! moves every frame it's held
+  IF KEYDOWN("ArrowRight") THEN LET X = X + 1
+  ! ... update + redraw ...
+  SLEEP 0.05               ! ~20 frames/second
+LOOP
+```
+### The mouse
+
+`GET MOUSE x, y, s` reads where the pointer is and what its button is doing, without
+waiting; `LOCATE POINT` waits for a click. Both are in [Graphics](#mouse-locate-point--get-point-get-mouse),
+since they answer in the window's coordinates.
+
+---
+
+## Sound
+
+The GW-BASIC and QuickBASIC sound statements. They play in the browser and in a
+terminal, and `arcade-basic run file.bas --wav out.wav` records them;
+[audio-extension.md](audio-extension.md) has the full details.
+
+### `SOUND`
+
+`SOUND freq, duration` emits a tone: `freq` in Hz (37–32767), `duration` in
+clock ticks of 18.2/second (so `duration/18.2` seconds). `duration = 0` stops
+the current sound. **Extension:** Microsoft BASIC (GW-BASIC/QuickBASIC) — see the
+[Extensions table](conformance.md#extensions-beyond-isoecma-full-basic). Render
+audio with `arcade-basic run file.bas --wav out.wav`.
+
+```basic
+SOUND 440, 9               ! 440 Hz (concert A) for about half a second
+```
+
+### `BEEP`
+
+`BEEP` emits the standard alert tone (~800 Hz for ~0.25 s, like `PRINT CHR$(7)`).
+**Extension:** Microsoft BASIC (GW-BASIC/QuickBASIC).
+
+```basic
+BEEP
+```
+
+### `PLAY`
+
+`PLAY notes$` plays a Music Macro Language (MML) string. **Extension:** Microsoft
+BASIC (GW-BASIC/QuickBASIC). Commands (case-insensitive, spaces ignored):
+
+| | |
+|---|---|
+| `A`–`G` | a note in the current octave; suffix `#`/`+` sharp, `-` flat; optional length digit + dots |
+| `O n` / `>` / `<` | octave 0–6 (default 4) / up one / down one |
+| `N n` | note by number 0–84 (0 = rest) |
+| `L n` | default note length 1–64 (default 4 = quarter) |
+| `P n` | rest of length n |
+| `T n` | tempo: quarter notes per minute, 32–255 (default 120) |
+| `MN` / `ML` / `MS` | normal / legato / staccato articulation |
+| `MF` / `MB` | foreground / background — foreground waits for the music to finish; background plays asynchronously (up to 32 buffered tones) |
+
+```basic
+PLAY "T120 O4 L8 CDEFGAB>C"      ! a C major scale
+PLAY "MS T140 O5 L16 C C G G"    ! staccato
+```
+
+---
+
 ## Notes on coverage
 
-- Every keyword above is **implemented end-to-end** — parser → semantic
+- Every keyword and function above is **implemented end-to-end** — parser → semantic
   analysis → compiler → bytecode VM, which runs programs everywhere: the
   browser IDE, `arcade-basic run`, and standalone binaries.
-- The §13 graphics statements (`SET`/`ASK`/`GRAPH`/`CLEAR` — see
-  [Graphics](#graphics) below) are implemented. A handful of other keywords are
-  still reserved by the lexer for future spec features (DISPLAY, PLOT, DRAW,
-  POLYGON, TRANSFORM, MASK, MARGIN, ZONEWIDTH, PIC, PICTURE, FORMAT, TEMPLATE,
-  TIMEOUT, BREAK, TRACE, COLLATE, native types like FIXED/REAL/STRING/NUMERIC,
-  FILES/FILETYPE, RANDOM, REWRITE, RSET, …) — the parser rejects statements
-  built around them with a clear error. See [conformance.md](conformance.md)
-  for the full deviation list.
-- Function names like `SIN`, `COS`, `LEN`, `MID$`, `CHR$`, `RND`,
-  `EXTYPE`, etc. are **builtins**, not keywords — they're resolved by
-  name at semantic analysis time and can in principle be shadowed (avoid).
-  See [`src/ArcadeBasic.Runtime/BuiltinImpls.cs`](../src/ArcadeBasic.Runtime/BuiltinImpls.cs)
-  for the complete catalogue.
+- A handful of other keywords are reserved by the lexer for parts of the standard
+  not implemented yet (DISPLAY, PLOT, DRAW, POLYGON, TRANSFORM, MASK, MARGIN, ZONEWIDTH,
+  PIC, PICTURE, FORMAT, TEMPLATE, TIMEOUT, BREAK, TRACE, COLLATE, native types like
+  FIXED/REAL/STRING/NUMERIC, FILES/FILETYPE, RANDOM, REWRITE, RSET, …) — the parser
+  rejects statements built around them with a clear error. See
+  [conformance.md](conformance.md) for the full deviation list.
+- Known gaps: `LBOUND` and `UBOUND` are recognised but can't be called yet (passing
+  them an array name is rejected); `MOD` and `REMAINDER` work as operators
+  (`7 MOD 3`) but not yet in the standard's function form (`MOD(7, 3)`); and `DATA`
+  doesn't take the standard's unquoted strings.

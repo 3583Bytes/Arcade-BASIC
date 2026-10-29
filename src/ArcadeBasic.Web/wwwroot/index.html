@@ -36,6 +36,7 @@
         <button data-action="saveAs" role="menuitem">Save as… <span class="key" data-key="Mod+Shift+S"></span></button>
         <hr>
         <button data-action="programFiles" role="menuitem">Program files…</button>
+        <button data-action="export" role="menuitem">Export…</button>
         <hr>
         <button data-action="share" role="menuitem">Copy a link to this program</button>
         <button data-action="sharePlay" role="menuitem">Copy a link to play this program</button>
@@ -193,6 +194,29 @@
       <table class="fileList"></table>
       <p class="empty">No files yet. A program makes one with <code>OPEN #1: NAME "notes.txt", ACCESS OUTPUT</code>.</p>
       <div class="buttons"><button type="button" class="upload">Upload…</button><span class="spacer"></span><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- File → Export…: the program, compiled, with the player (export.js). -->
+  <dialog id="exportDialog" class="export" aria-labelledby="exportHeading">
+    <form method="dialog">
+      <h2 id="exportHeading">Export</h2>
+      <p>The program, ready to give to people: compiled, without its source.</p>
+      <label class="name">Name <input type="text" name="name" spellcheck="false" autocomplete="off"></label>
+      <fieldset class="kinds">
+        <label class="kind"><input type="radio" name="kind" value="web" checked>
+          <span><b>Web page</b><small>A zip to put on itch.io or any website. It plays in every browser, on any computer.</small></span></label>
+      </fieldset>
+      <p class="status" aria-live="polite"></p>
+      <div class="after" hidden>
+        <p><b class="file"></b> is in your downloads.</p>
+        <p><b>itch.io:</b> make a new project, choose <i>HTML</i> as its kind, upload the zip and tick
+          <i>This file will be played in the browser</i>. Or put its files on any website (GitHub Pages, Netlify…).</p>
+        <p class="note">Opening its <code>index.html</code> straight from your disk won't work: browsers run it only
+          from a website. To try it on your computer, unzip it and run <code>python3 -m http.server</code> in
+          its folder, then open <code>localhost:8000</code>.</p>
+      </div>
+      <div class="buttons"><span class="spacer"></span><button type="button" class="close">Close</button><button class="primary" value="export">Export</button></div>
     </form>
   </dialog>
 

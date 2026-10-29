@@ -241,6 +241,19 @@ html[data-view="code"] #editorPane, html[data-view="output"] #runPane, html[data
 .items .item:hover { background: var(--hover); }
 .items .item.current, .items .item.chosen { background: var(--ed-sel); color: var(--ed-text); }
 dialog.files { width: min(520px, calc(100vw - 32px)); }
+dialog.export { width: min(520px, calc(100vw - 32px)); }
+dialog.export .name { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+dialog.export .name input { flex: 1; }
+dialog.export .kinds { border: 0; padding: 0; margin: 0 0 8px; }
+dialog.export .kind { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+dialog.export .kind:has(input:checked) { border-color: var(--accent); }
+dialog.export .kind input { margin-top: 3px; }
+dialog.export .kind b { display: block; }
+dialog.export .kind small { color: var(--muted); font-size: 12px; }
+dialog.export .status:empty { display: none; }
+dialog.export .after p { margin: 6px 0; }
+dialog.export .after .note { color: var(--muted); font-size: 12px; }
+dialog.export code { font-family: var(--code-font); font-size: 12px; }
 dialog.files .fileList { margin-bottom: 10px; }
 dialog.files .fileList td { padding: 5px 8px 5px 0; vertical-align: middle; }
 dialog.files .fileList .name { font-family: var(--code-font); word-break: break-all; white-space: normal; }

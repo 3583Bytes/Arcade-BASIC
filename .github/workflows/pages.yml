@@ -1,8 +1,9 @@
 name: Playground (GitHub Pages)
 
-# Builds the browser playground (src/ArcadeBasic.Web, the VM compiled ahead of time
-# to WebAssembly) and publishes it to GitHub Pages. Needs Pages turned on with
-# "GitHub Actions" as the source (Settings → Pages).
+# Builds the browser IDE (src/ArcadeBasic.Web, the VM compiled ahead of time to
+# WebAssembly), with the player that File → Export packs programs with
+# (src/ArcadeBasic.Player, in player/), and publishes them to GitHub Pages. Needs Pages
+# turned on with "GitHub Actions" as the source (Settings → Pages).
 
 on:
   push:
@@ -42,22 +43,14 @@ jobs:
       - name: Install the WebAssembly build tools (ahead-of-time compilation)
         run: dotnet workload install wasm-tools
 
-      - name: Publish
-        run: dotnet publish src/ArcadeBasic.Web --configuration Release --output publish/web
-
-      # Pages serves files as they are, so the pre-compressed .br/.gz copies would
-      # never be used; and nothing here is for Jekyll (which would hide _framework).
-      - name: Keep only what the page loads
-        run: |
-          find publish/web/wwwroot -name '*.br' -delete
-          find publish/web/wwwroot -name '*.gz' -delete
-          touch publish/web/wwwroot/.nojekyll
+      - name: Build the site (the IDE, and the player in player/)
+        run: bash src/ArcadeBasic.Web/build-site.sh publish/site
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: publish/web/wwwroot
+          path: publish/site
 
   deploy:
     name: Deploy to GitHub Pages

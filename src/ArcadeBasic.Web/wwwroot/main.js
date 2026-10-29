@@ -16,6 +16,7 @@ import { setDefaultPalette, openPalette } from './colours.js';
 import { setTuneEngine, openTuneEditor, insertTune } from './tunes.js';
 import { createOutline, openGoTo } from './outline.js';
 import { createFiles } from './files.js';
+import { createExport } from './export.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
@@ -718,6 +719,7 @@ const actions = {
   palette: () => openPalette({ current: programColours, insert: insertLine }),
   close: () => documents.close(),
   programFiles: () => programFiles.open(),
+  export: () => { if (P && documents.active) exporter.open(); },
   shortcuts: () => $('shortcutsDialog').showModal(),
   about: () => $('aboutDialog').showModal(),
 };
@@ -812,9 +814,29 @@ window.addEventListener('drop', e => {
   documents.openDropped(e.dataTransfer);
 }, true);
 
+// -- Export ---------------------------------------------------------------------------------
+// File → Export…: the program showing (or the one it's a library of), compiled, packed with
+// the player (export.js).
+
+const exporter = createExport({
+  dialog: $('exportDialog'),
+  programName: () => programFor(documents.active).name,
+  compile() {
+    const doc = programFor(documents.active);
+    const problems = P.Export(doc.name, textOf(doc), ...openPrograms(doc));
+    return problems ? { doc, name: doc.name, problems } : { doc, name: doc.name, bytecode: new Uint8Array(P.ExportedBytecode()) };
+  },
+  onProblems({ doc, name, problems }) {
+    const go = () => { goToCode(doc); editor.goToFirstProblem(); };
+    log(`${name} can't be exported:\n${problems}`, 'error', go);
+    go();
+  },
+  onExported: (file, bytes) => log(`⇩ Exported ${file} (${(bytes / 1048576).toFixed(1)} MB)`),
+});
+
 // -- Links to programs ---------------------------------------------------------------------
-// …/#breakout opens an example; …/#code=… carries a whole program, compressed; …/#play=…
-// carries one to play, with no editor.
+// …/#breakout opens an example; …/#play/breakout plays it, with no editor; …/#code=…
+// carries a whole program, compressed; …/#play=… carries one to play.
 
 /** Copy a link to the program showing (or the one it's a library of): to open in the
  *  editor, or with `play`, to play. */
@@ -853,6 +875,13 @@ async function unpack(code) {
 /** Open what an address names; false if it names nothing. */
 async function openAddress(hash) {
   if (hash.startsWith('#play=')) return openPlayer(hash.slice(6));
+  if (hash.startsWith('#play/')) {
+    const example = exampleNamed(hash.slice(6));
+    if (!example) return false;
+    const text = P.ExampleSource(example);
+    const libraries = libraryNames(text).filter(n => P.Examples().includes(n)).map(n => [n, P.ExampleSource(n)]);
+    return openPlayer(await pack(JSON.stringify({ main: [example, text], libraries })));
+  }
   if (player) leavePlayer();
   if (hash.startsWith('#code=')) {
     try {
@@ -867,11 +896,16 @@ async function openAddress(hash) {
       return false;
     }
   }
-  const name = decodeURIComponent(hash.slice(1)).toLowerCase();
-  const example = name && P.Examples().find(n => n.toLowerCase() === name || n.toLowerCase() === name + '.bas');
+  const example = exampleNamed(hash.slice(1));
   if (!example) return false;
   openExampleProgram(example);
   return true;
+}
+
+/** The example a link names ("breakout" or "breakout.bas", any case), or undefined. */
+function exampleNamed(text) {
+  const name = decodeURIComponent(text).toLowerCase();
+  return name ? P.Examples().find(n => n.toLowerCase() === name || n.toLowerCase() === name + '.bas') : undefined;
 }
 
 // -- Play links ------------------------------------------------------------------------------

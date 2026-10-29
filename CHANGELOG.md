@@ -5,6 +5,18 @@ are its section here (the release workflow copies it), followed by the commits s
 the last one. Releases before 2.0.0 are on the
 [releases page](https://github.com/3583Bytes/Arcade-BASIC/releases).
 
+## Unreleased
+
+(Renamed to the version when it's released.)
+
+- **The IDE has three views**, tabs under the toolbar: **Code** (the editor, with the
+  debugger's Variables beside it), **Output** (the program's screen, as large as fits,
+  what it prints, its input line) and **Console** (problems, and what each run did).
+  Running shows Output; a pause or an error shows the code at its line; Alt+1, 2 and 3
+  switch.
+- **Export**: *File → Export…* makes your program a web page — a zip of the player and
+  the compiled program, no source — to upload to itch.io or put on any website.
+
 ## 2.0.0
 
 The biggest release so far: an IDE in the browser, one engine for everything, and a
