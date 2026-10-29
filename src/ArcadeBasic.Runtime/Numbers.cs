@@ -4,8 +4,7 @@ using Singulink.Numerics;
 namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Centralised arithmetic for the numeric operators, shared by the tree-walking
-/// interpreter and the bytecode VM so the two engines stay byte-for-byte identical.
+/// Centralised arithmetic for the numeric operators.
 ///
 /// <para><see cref="BigDecimal"/> multiply/add are <em>exact</em>: multiplying two
 /// n-digit values yields a 2n-digit value, so an iterative loop such as Mandelbrot's

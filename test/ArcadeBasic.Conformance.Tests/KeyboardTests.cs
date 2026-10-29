@@ -2,7 +2,6 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Vm;
 using ArcadeBasic.Runtime;
@@ -10,7 +9,7 @@ using ArcadeBasic.Runtime;
 namespace ArcadeBasic.Conformance.Tests;
 
 /// <summary>
-/// INKEY$ and KEYDOWN agree on both engines: KEYDOWN reads held keys (exactly,
+/// INKEY$ and KEYDOWN: KEYDOWN reads held keys (exactly,
 /// from a backend that knows them), doesn't consume INKEY$'s presses, and rejects
 /// names that aren't keys with a catchable exception.
 /// </summary>
@@ -28,8 +27,8 @@ public class KeyboardTests
         public string ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : "";
     }
 
-    /// <summary>Run <paramref name="source"/> on both engines, each with its own keyboard.</summary>
-    private static (string Interpreter, string Vm) RunBoth(string source, Func<IKeyboard> keyboard)
+    /// <summary>Run <paramref name="source"/> with the keyboard <paramref name="keyboard"/> makes; what it prints.</summary>
+    private static string Run(string source, Func<IKeyboard> keyboard)
     {
         var file = new SourceFile("keys.bas", source);
         var diags = new DiagnosticBag();
@@ -38,47 +37,41 @@ public class KeyboardTests
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
-        var iOut = new StringWriter { NewLine = "\n" };
-        new BasicInterpreter(program, info, iOut, TextReader.Null, keyboard: keyboard()).Run();
-        var vOut = new StringWriter { NewLine = "\n" };
-        new BasicVm(BasicCompiler.Compile(program, info), vOut, TextReader.Null, keyboard: keyboard()).Run();
-        return (iOut.ToString(), vOut.ToString());
+        var output = new StringWriter { NewLine = "\n" };
+        new BasicVm(BasicCompiler.Compile(program, info), output, TextReader.Null, keyboard: keyboard()).Run();
+        return output.ToString();
     }
 
     [Fact]
     public void KeydownReadsHeldKeysByAnyOfTheirNames()
     {
-        var (i, v) = RunBoth(
+        var output = Run(
             "PRINT KEYDOWN(\"ArrowLeft\"); KEYDOWN(CHR$(0) & CHR$(75)); KEYDOWN(\"a\"); KEYDOWN(\"A\"); KEYDOWN(\"space\")\n",
             () => new HeldKeys("ArrowLeft", "a"));
-        Assert.Equal("-1 -1 -1 -1  0 \n", i);
-        Assert.Equal(i, v);
+        Assert.Equal("-1 -1 -1 -1  0 \n", output);
     }
 
     [Fact]
     public void KeydownLeavesPressesForInkey()
     {
         // Just pressed, so it reads as held — and INKEY$ still gets the press, once.
-        var (i, v) = RunBoth("LET D = KEYDOWN(\"x\")\nPRINT D; INKEY$; \"|\"; INKEY$; \"|\"\n", () => new Presses("x"));
-        Assert.Equal("-1 x||\n", i);
-        Assert.Equal(i, v);
+        var output = Run("LET D = KEYDOWN(\"x\")\nPRINT D; INKEY$; \"|\"; INKEY$; \"|\"\n", () => new Presses("x"));
+        Assert.Equal("-1 x||\n", output);
     }
 
     [Fact]
     public void InkeyStillReadsOnePressPerCall()
     {
-        var (i, v) = RunBoth("FOR I = 1 TO 4\nPRINT \"[\" & INKEY$ & \"]\";\nNEXT I\nPRINT\n", () => new Presses("", "a", "", "b"));
-        Assert.Equal("[][a][][b]\n", i);
-        Assert.Equal(i, v);
+        var output = Run("FOR I = 1 TO 4\nPRINT \"[\" & INKEY$ & \"]\";\nNEXT I\nPRINT\n", () => new Presses("", "a", "", "b"));
+        Assert.Equal("[][a][][b]\n", output);
     }
 
     [Fact]
     public void AnUnknownKeyNameRaisesACatchableException()
     {
-        var (i, v) = RunBoth(
+        var output = Run(
             "WHEN EXCEPTION IN\nLET D = KEYDOWN(\"Lft\")\nUSE\nPRINT EXTYPE; EXTEXT$\nEND WHEN\n",
             () => new Presses());
-        Assert.Equal(" 4000 KEYDOWN: \"Lft\" is not a key name\n", i);
-        Assert.Equal(i, v);
+        Assert.Equal(" 4000 KEYDOWN: \"Lft\" is not a key name\n", output);
     }
 }

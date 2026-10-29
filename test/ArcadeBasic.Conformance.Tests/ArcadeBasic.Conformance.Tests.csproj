@@ -22,4 +22,9 @@
     <ProjectReference Include="..\..\src\ArcadeBasic.Cli\ArcadeBasic.Cli.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- What the deterministic examples print (ExampleTests) -->
+    <None Include="ExampleOutputs\*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

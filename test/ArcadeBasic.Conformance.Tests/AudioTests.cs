@@ -2,7 +2,6 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Vm;
 using ArcadeBasic.Runtime;
@@ -10,14 +9,13 @@ using ArcadeBasic.Runtime;
 namespace ArcadeBasic.Conformance.Tests;
 
 /// <summary>
-/// Audio extension (SOUND/BEEP/PLAY — Microsoft BASIC / GW-BASIC dialect):
-/// byte-for-byte parity between the tree-walker and the VM observed through a
-/// <see cref="RecordingAudioDevice"/>, plus direct <see cref="AudioState"/>
-/// checks of the MML semantics documented in docs/audio-extension.md.
+/// Audio extension (SOUND/BEEP/PLAY — Microsoft BASIC / GW-BASIC dialect): what a
+/// program plays, observed through a <see cref="RecordingAudioDevice"/>, plus direct
+/// <see cref="AudioState"/> checks of the MML semantics documented in docs/audio-extension.md.
 /// </summary>
 public class AudioTests
 {
-    private static (string Interp, string Vm) Both(string source)
+    private static string Record(string source)
     {
         var file = new SourceFile("audio.bas", source);
         var diags = new DiagnosticBag();
@@ -26,63 +24,60 @@ public class AudioTests
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
-        var ir = new RecordingAudioDevice();
-        new BasicInterpreter(program, info, new StringWriter(), TextReader.Null, default, null, null, ir).Run();
-
-        var vr = new RecordingAudioDevice();
-        new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), TextReader.Null, null, null, vr).Run();
-
-        return (ir.Transcript, vr.Transcript);
+        var recorder = new RecordingAudioDevice();
+        new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), TextReader.Null, null, null, recorder).Run();
+        return recorder.Transcript;
     }
 
-    // -- engine parity ----------------------------------------------------
+    // -- programs ---------------------------------------------------------
 
     [Fact]
-    public void BeepParityAndFixedTone()
+    public void BeepIsAFixedTone()
     {
-        var (i, v) = Both("BEEP");
-        Assert.Equal(i, v);
-        Assert.Equal("TONE 800.0000 0.2500 0.0000\n", i);
+        var tones = Record("BEEP");
+        Assert.Equal("TONE 800.0000 0.2500 0.0000\n", tones);
     }
 
     [Fact]
-    public void SoundParityFrequencyAndDuration()
+    public void SoundTakesFrequencyAndDurationInTicks()
     {
         // 18.2 ticks = 1.0 s (18.2 ticks/sec); foreground tone, no gap.
-        var (i, v) = Both("SOUND 440, 18.2");
-        Assert.Equal(i, v);
-        Assert.Equal("TONE 440.0000 1.0000 0.0000\n", i);
+        var tones = Record("SOUND 440, 18.2");
+        Assert.Equal("TONE 440.0000 1.0000 0.0000\n", tones);
     }
 
     [Fact]
-    public void PlayParityNoteTempoLengthArticulation()
+    public void PlayFollowsNoteTempoLengthAndArticulation()
     {
         // T120 → quarter note = 0.5 s; MN → sounds 7/8 (0.4375), gap 0.0625; A in O4 = 440 Hz.
-        var (i, v) = Both("""PLAY "T120 L4 MN O4 A" """);
-        Assert.Equal(i, v);
-        Assert.Equal("TONE 440.0000 0.4375 0.0625\n", i);
+        var tones = Record("""PLAY "T120 L4 MN O4 A" """);
+        Assert.Equal("TONE 440.0000 0.4375 0.0625\n", tones);
     }
 
     [Fact]
-    public void PlayParityFullScalePlusRest()
+    public void PlayPlaysAScaleAndARest()
     {
-        var (i, v) = Both("""
+        var tones = Record("""
             PLAY "T120 O4 L8 CDEFGAB>C"
             PLAY "P4"
             """);
-        Assert.Equal(i, v);
-        Assert.Contains("TONE 0.0000 0.5000 0.0000", i);   // the P4 rest
+        Assert.Contains("TONE 0.0000 0.5000 0.0000", tones);   // the P4 rest
     }
 
     [Fact]
-    public void MixedProgramParity()
+    public void SoundBeepAndPlayMix()
     {
-        var (i, v) = Both("""
+        var tones = Record("""
             SOUND 262, 4
             BEEP
             PLAY "MS T140 O5 L16 CDE"
             """);
-        Assert.Equal(i, v);
+        Assert.Equal(
+            "TONE 262.0000 0.2198 0.0000\n" +   // 4 ticks of 18.2 a second
+            "TONE 800.0000 0.2500 0.0000\n" +
+            "TONE 523.2511 0.0804 0.0268\n" +   // staccato: 3/4 of a 1/16 note at T140
+            "TONE 587.3295 0.0804 0.0268\n" +
+            "TONE 659.2551 0.0804 0.0268\n", tones);
     }
 
     // -- AudioState semantics (MML) --------------------------------------

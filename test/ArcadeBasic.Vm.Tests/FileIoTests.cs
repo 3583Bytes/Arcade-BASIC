@@ -1,11 +1,11 @@
 using FluentAssertions;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Interpreter.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>
 /// Phase-5 file I/O tests. Use a per-test temp directory so we don't pollute
@@ -42,7 +42,7 @@ public class FileIoTests : IDisposable
         }
         var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
-        var exit = new BasicInterpreter(program, info, sw, sr).Run();
+        var exit = new BasicVm(BasicCompiler.Compile(program, info), sw, sr).Run();
         return (sw.ToString(), exit, diags);
     }
 

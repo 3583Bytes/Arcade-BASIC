@@ -14,15 +14,15 @@ public struct GfxRect(double left, double right, double bottom, double top)
 }
 
 /// <summary>
-/// Device-independent state and geometry for the ECMA-116 §13 graphics module,
-/// shared by the tree-walking interpreter and the bytecode VM. It owns the
+/// Device-independent state and geometry for the ECMA-116 §13 graphics module.
+/// It owns the
 /// current window / viewport / device window / device viewport / clipping flag
 /// and the modal style/colour indices, and turns problem-coordinate drawing
 /// requests into clipped <see cref="GfxPoint"/> primitives in the normalized
 /// device unit square, which it hands to an <see cref="IGraphicsDevice"/>.
 ///
 /// Keeping every transform and clip here (à la <c>MatOps</c>/<c>PictureFormat</c>)
-/// is what makes the two engines render byte-identically.
+/// is what makes every device show the same picture.
 ///
 /// Coordinate pipeline: problem coords --(WINDOW→VIEWPORT)--> NDC, clip to the
 /// effective rectangle, --(DEVICE WINDOW→DEVICE VIEWPORT)--> normalized surface.
@@ -42,9 +42,7 @@ public sealed class GraphicsState
     public int PointStyle = 3;  // 1 dot, 2 plus, 3 asterisk
     public int PointColor = 1, LineColor = 1, TextColor = 1, AreaColor = 1;
 
-    /// <summary>Convert an evaluated numeric value to a drawing coordinate.
-    /// Both engines route through this so they hand identical points to the
-    /// device (preserving byte-for-byte parity).</summary>
+    /// <summary>Convert an evaluated numeric value to a drawing coordinate.</summary>
     public static double ToCoord(NumericValue v) => v.D;
 
     /// <summary>Round an evaluated numeric value to a style/colour index.</summary>
@@ -57,7 +55,7 @@ public sealed class GraphicsState
 
     /// <summary>
     /// Compute the value an ASK statement reads for the given object and target
-    /// index. Both engines call this, so they assign identical values. Indices:
+    /// index. Indices:
     /// rectangles 0..3 = left/right/bottom/top; DEVICE SIZE 0/1/2 = width/height/unit$.
     /// </summary>
     public Value Query(GfxQuery q, int index, IGraphicsDevice dev, bool native) => q switch

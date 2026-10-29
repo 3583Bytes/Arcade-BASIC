@@ -113,7 +113,7 @@ public static class KeyNames
 
 /// <summary>
 /// One run's keyboard as the program sees it: <c>INKEY$</c>'s presses and
-/// <c>KEYDOWN</c>'s held keys, shared by both engines.
+/// <c>KEYDOWN</c>'s held keys.
 ///
 /// A keyboard implementing <see cref="IKeyState"/> answers KEYDOWN exactly. For
 /// one that only reports presses — a terminal, where holding a key arrives as a

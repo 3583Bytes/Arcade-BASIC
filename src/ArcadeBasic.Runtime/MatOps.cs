@@ -5,10 +5,9 @@ namespace ArcadeBasic.Runtime;
 /// <summary>
 /// Shared MAT math kernels. Pure functions that operate on flat
 /// <see cref="BigDecimal"/>/<see cref="string"/> arrays plus a
-/// <see cref="Bounds"/> descriptor — no symbol table, no I/O. Used by both
-/// the tree-walking interpreter and the bytecode VM so the matrix algorithms
-/// (multiply, transpose, LU inverse, REDIM with overlap-preservation) live
-/// in exactly one place.
+/// <see cref="Bounds"/> descriptor — no symbol table, no I/O: the matrix
+/// algorithms (multiply, transpose, LU inverse, REDIM with overlap-preservation)
+/// the VM's MAT statements use.
 /// </summary>
 public static class MatOps
 {

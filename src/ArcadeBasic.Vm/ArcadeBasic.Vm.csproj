@@ -4,6 +4,10 @@
     <ProjectReference Include="..\ArcadeBasic.Core\ArcadeBasic.Core.csproj" />
     <ProjectReference Include="..\ArcadeBasic.Bytecode\ArcadeBasic.Bytecode.csproj" />
     <ProjectReference Include="..\ArcadeBasic.Runtime\ArcadeBasic.Runtime.csproj" />
+    <!-- BasicEngine: source text in, the program run -->
+    <ProjectReference Include="..\ArcadeBasic.Parser\ArcadeBasic.Parser.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Sema\ArcadeBasic.Sema.csproj" />
+    <ProjectReference Include="..\ArcadeBasic.Compiler\ArcadeBasic.Compiler.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

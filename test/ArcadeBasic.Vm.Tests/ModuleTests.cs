@@ -1,11 +1,11 @@
 using FluentAssertions;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Interpreter.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>Phase-7 module tests. Single-file MODULE blocks plus multi-file linkage.</summary>
 public class ModuleTests
@@ -33,7 +33,7 @@ public class ModuleTests
         }
         var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader("");
-        var exit = new BasicInterpreter(combined, info, sw, sr).Run();
+        var exit = new BasicVm(BasicCompiler.Compile(combined, info), sw, sr).Run();
         return (sw.ToString(), exit, diags);
     }
 
@@ -50,7 +50,7 @@ public class ModuleTests
         }
         var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
-        var exit = new BasicInterpreter(program, info, sw, sr).Run();
+        var exit = new BasicVm(BasicCompiler.Compile(program, info), sw, sr).Run();
         return (sw.ToString(), exit);
     }
 

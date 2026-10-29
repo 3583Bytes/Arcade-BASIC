@@ -2,10 +2,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
+using ArcadeBasic.Vm;
 
 namespace ArcadeBasic.Cli;
 
@@ -135,10 +135,11 @@ internal sealed class BasicRepl
         RenderDiagnostics(diags, onlyAfter: _session.Length);
 
         var capture = new StringWriter();
+        var errors = new StringWriter();
+        int exit;
         try
         {
-            var interp = new BasicInterpreter(program, info, capture, Console.In);
-            interp.Run();
+            exit = new BasicVm(BasicCompiler.Compile(program, info), capture, Console.In) { Errors = errors }.Run();
         }
         catch (Exception ex)
         {
@@ -155,6 +156,13 @@ internal sealed class BasicRepl
         {
             Console.Write(newPart);
             if (!newPart.EndsWith('\n')) Console.WriteLine();
+        }
+
+        // A fragment that stops the program isn't kept: every later turn would stop there too.
+        if (exit != 0)
+        {
+            Console.Error.Write(errors.ToString());
+            return;
         }
 
         _previousOutput = fullOutput;

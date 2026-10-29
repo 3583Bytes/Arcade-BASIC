@@ -2,7 +2,6 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Vm;
 using AstProgram = ArcadeBasic.Parser.Ast.Program;
@@ -10,22 +9,17 @@ using AstProgram = ArcadeBasic.Parser.Ast.Program;
 namespace ArcadeBasic.Conformance.Tests;
 
 /// <summary>
-/// Engine-parity coverage for the bundled example programs. The whole design
-/// rests on the tree-walking interpreter and the bytecode VM producing
-/// byte-identical output, so this fixture guards that invariant end-to-end on
-/// real programs (not just unit snippets).
-///
-/// Two tiers:
-///   * <see cref="InterpreterAndVmAgree"/> — for examples that run to completion
-///     deterministically (given the supplied stdin), assert identical output and
-///     exit code from both engines.
-///   * <see cref="EveryExampleCompilesOnBothEngines"/> — for *every* example,
-///     assert it analyzes cleanly and the VM compiler accepts it. This catches
-///     "feature works in the interpreter but the VM compiler chokes" gaps even
-///     for input-driven or RND-seeded programs we can't compare by output.
+/// The bundled example programs, end to end, and the language semantics they rest
+/// on (snippets with the output they must give). Two tiers for the examples:
+///   * <see cref="EachExamplePrintsWhatItAlwaysHas"/> — for examples that run to
+///     completion deterministically (given the supplied stdin), the output matches
+///     the one recorded in ExampleOutputs/ (first recorded from the tree-walking
+///     interpreter, the reference engine until the VM became the only one).
+///   * <see cref="EveryExampleCompiles"/> — for *every* example, it analyzes cleanly
+///     and the compiler accepts it, even the input-driven or RND-seeded ones.
 /// </summary>
 [Collection(ScoreFiles.Collection)]
-public class ExampleParityTests
+public class ExampleTests
 {
     /// <summary>(file, stdin) for examples that terminate deterministically.</summary>
     public static IEnumerable<object[]> DeterministicExamples() =>
@@ -51,15 +45,13 @@ public class ExampleParityTests
 
     [Theory]
     [MemberData(nameof(DeterministicExamples))]
-    public void InterpreterAndVmAgree(string name, string stdin)
+    public void EachExamplePrintsWhatItAlwaysHas(string name, string stdin)
     {
         var (program, info) = FrontEnd(name);
+        var expected = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "ExampleOutputs", Path.ChangeExtension(name, ".txt")))
+            .Replace("\r\n", "\n");   // (a Windows checkout may have turned the newlines into CRLF)
 
-        var (interpOut, interpExit) = RunInterpreter(program, info, stdin);
-        var (vmOut, vmExit) = RunVm(program, info, stdin);
-
-        Assert.Equal(interpOut, vmOut);
-        Assert.Equal(interpExit, vmExit);
+        Assert.Equal((expected, 0), RunVm(program, info, stdin));
     }
 
     /// <summary>Pausing after every single instruction — and at every INPUT, fed its
@@ -88,7 +80,7 @@ public class ExampleParityTests
     /// <summary>(source, expected). RND without RANDOMIZE repeats the same sequence
     /// every run (ECMA-116 §5.4.4) — pinned here, so changing the generator is a
     /// deliberate act — and RANDOMIZE n (an extension) repeats per n. Each runs
-    /// under both arithmetic modes on both engines.</summary>
+    /// under both arithmetic modes.</summary>
     public static IEnumerable<object[]> RandomSemantics() =>
     [
         ["PRINT RND; RND; RND\n", " 0.86770936  0.12033515  0.22254771 \n"],
@@ -101,12 +93,11 @@ public class ExampleParityTests
 
     [Theory]
     [MemberData(nameof(RandomSemantics))]
-    public void RandomSequencesAgreeOnBothEngines(string source, string expected)
+    public void RandomSequencesRepeat(string source, string expected)
     {
         foreach (var src in new[] { source, source + "OPTION ARITHMETIC NATIVE\n" })
         {
             var (program, info) = FrontEndSource("rnd.bas", src);
-            Assert.Equal((expected, 0), RunInterpreter(program, info, ""));
             Assert.Equal((expected, 0), RunVm(program, info, ""));
         }
     }
@@ -117,15 +108,14 @@ public class ExampleParityTests
         var (program, info) = FrontEndSource("randomize.bas", "RANDOMIZE\nPRINT RND; RND; RND\n");
 
         // From the clock: a new sequence every run (and never the default one).
-        var runs = new[] { RunInterpreter(program, info, ""), RunInterpreter(program, info, ""), RunVm(program, info, ""), RunVm(program, info, "") }
+        var runs = new[] { RunVm(program, info, ""), RunVm(program, info, ""), RunVm(program, info, ""), RunVm(program, info, "") }
             .Select(r => r.Output).ToList();
         Assert.Equal(runs.Count, runs.Distinct().Count());
         Assert.DoesNotContain(" 0.86770936  0.12033515  0.22254771 \n", runs);
 
-        // From a host seed: the same run every time, on both engines; another seed, another run.
+        // From a host seed: the same run every time; another seed, another run.
         var seeded = RunVm(program, info, "", randomizeSeed: 7);
         Assert.Equal(seeded, RunVm(program, info, "", randomizeSeed: 7));
-        Assert.Equal(seeded, RunInterpreter(program, info, "", randomizeSeed: 7));
         Assert.NotEqual(seeded, RunVm(program, info, "", randomizeSeed: 8));
 
         // A host seed only stands in for the clock: without RANDOMIZE nothing changes.
@@ -204,24 +194,21 @@ public class ExampleParityTests
 
     [Theory]
     [MemberData(nameof(AllExamples))]
-    public void EveryExampleCompilesOnBothEngines(string name)
+    public void EveryExampleCompiles(string name)
     {
-        // The interpreter accepts everything by construction; the gap we guard
-        // against is the VM compiler rejecting a feature (e.g. a statement it
-        // hasn't learned to lower yet).
+        // The gap we guard against is the compiler rejecting a feature sema
+        // accepts (e.g. a statement it hasn't learned to lower yet).
         var (program, info) = FrontEnd(name);
         var ex = Record.Exception(() => BasicCompiler.Compile(program, info));
         Assert.Null(ex);
     }
 
     [Fact]
-    public void TerminalLineInputAgreesOnBothEngines()
+    public void TerminalLineInputReadsWholeLines()
     {
-        // Regression: terminal LINE INPUT (no file channel) was unimplemented in
-        // the interpreter (it fell through to the default no-op) while the VM read
-        // it — a silent parity gap. Both must now read the whole line, commas
-        // included, and emit identical prompts ("? " bare, a single space for the
-        // ';' form).
+        // Regression: terminal LINE INPUT (no file channel) was once unimplemented
+        // in the tree-walker. It reads the whole line, commas included, with the
+        // prompt "? " bare and a single space for the ';' form.
         const string source =
             "LINE INPUT A$\n" +
             "LINE INPUT \"\"; B$\n" +
@@ -229,12 +216,7 @@ public class ExampleParityTests
         const string stdin = "hello, world\nsecond, line\n";
 
         var (program, info) = FrontEndSource("lineinput.bas", source);
-        var (interpOut, interpExit) = RunInterpreter(program, info, stdin);
-        var (vmOut, vmExit) = RunVm(program, info, stdin);
-
-        Assert.Equal(interpOut, vmOut);
-        Assert.Equal(interpExit, vmExit);
-        Assert.Contains("[hello, world][second, line]", interpOut);  // whole lines, commas kept
+        Assert.Equal(("?  [hello, world][second, line]\n", 0), RunVm(program, info, stdin));   // whole lines, commas kept
     }
 
     /// <summary>(source, expected output) for FOR / SELECT CASE semantics. Regression:
@@ -264,16 +246,10 @@ public class ExampleParityTests
 
     [Theory]
     [MemberData(nameof(LoopSemantics))]
-    public void LoopAndSelectSemanticsAgreeOnBothEngines(string source, string expected)
+    public void LoopAndSelectSemanticsHold(string source, string expected)
     {
         var (program, info) = FrontEndSource("loops.bas", source);
-        var (interpOut, interpExit) = RunInterpreter(program, info, "");
-        var (vmOut, vmExit) = RunVm(program, info, "");
-
-        Assert.Equal(expected, interpOut);
-        Assert.Equal(expected, vmOut);
-        Assert.Equal(0, interpExit);
-        Assert.Equal(0, vmExit);
+        Assert.Equal((expected, 0), RunVm(program, info, ""));
     }
 
     /// <summary>(source, stdin, expected output, expected exit code). Procedure calls
@@ -325,16 +301,10 @@ public class ExampleParityTests
 
     [Theory]
     [MemberData(nameof(CallAndPrintSemantics))]
-    public void CallAndPrintSemanticsAgreeOnBothEngines(string source, string stdin, string expected, int expectedExit)
+    public void CallAndPrintSemanticsHold(string source, string stdin, string expected, int expectedExit)
     {
         var (program, info) = FrontEndSource("calls.bas", source);
-        var (interpOut, interpExit) = RunInterpreter(program, info, stdin);
-        var (vmOut, vmExit) = RunVm(program, info, stdin);
-
-        Assert.Equal(expected, interpOut);
-        Assert.Equal(expected, vmOut);
-        Assert.Equal(expectedExit, interpExit);
-        Assert.Equal(expectedExit, vmExit);
+        Assert.Equal((expected, expectedExit), RunVm(program, info, stdin));
     }
 
     [Theory]
@@ -349,17 +319,11 @@ public class ExampleParityTests
         var (program, info) = FrontEndSource(name, source + "\nOPTION ARITHMETIC NATIVE\n");
         Assert.Equal(ArcadeBasic.Parser.Ast.ArithmeticMode.Native, info.Arithmetic);
 
-        var (decimalOut, _) = RunInterpreter(decProgram, decInfo, stdin);
-        var (interpOut, interpExit) = RunInterpreter(program, info, stdin);
-        var (vmOut, vmExit) = RunVm(program, info, stdin);
-
-        Assert.Equal(decimalOut, interpOut);
-        Assert.Equal(interpOut, vmOut);
-        Assert.Equal(interpExit, vmExit);
+        Assert.Equal(RunVm(decProgram, decInfo, stdin), RunVm(program, info, stdin));
     }
 
     /// <summary>(source, expected under DECIMAL, expected under NATIVE). Each snippet
-    /// runs under both arithmetic modes on both engines.</summary>
+    /// runs under both arithmetic modes.</summary>
     public static IEnumerable<object[]> ArithmeticSemantics() =>
     [
         // negative and fractional powers, INF/MAXNUM — all used to escape as .NET exceptions
@@ -402,25 +366,20 @@ public class ExampleParityTests
 
     [Theory]
     [MemberData(nameof(ArithmeticSemantics))]
-    public void ArithmeticModesAgreeOnBothEngines(string source, string expectedDecimal, string expectedNative)
+    public void ArithmeticModesGiveTheirOwnResults(string source, string expectedDecimal, string expectedNative)
     {
         foreach (var (src, expected) in new[] { (source, expectedDecimal), (source + "OPTION ARITHMETIC NATIVE\n", expectedNative) })
         {
             var (program, info) = FrontEndSource("arith.bas", src);
-            var (interpOut, _) = RunInterpreter(program, info, "");
-            var (vmOut, _) = RunVm(program, info, "");
-
-            Assert.Equal(expected, interpOut);
-            Assert.Equal(expected, vmOut);
+            Assert.Equal(expected, RunVm(program, info, "").Output);
         }
     }
 
     [Fact]
-    public void InternalFileRoundTripsExactlyOnBothEngines()
+    public void InternalFileRoundTripsExactly()
     {
         // INTERNAL records (WRITE #/READ #) preserve the exact value — including
-        // precision well beyond the 9-digit display rounding — and the two engines
-        // agree byte-for-byte.
+        // precision well beyond the 9-digit display rounding.
         var path = Path.GetTempFileName();
         try
         {
@@ -435,13 +394,10 @@ public class ExampleParityTests
                 "PRINT S$\n";                          // exact, comma and all (READ # doesn't split)
             var (program, info) = FrontEndSource("internal.bas", src);
 
-            var (iOut, iExit) = RunInterpreter(program, info, "");
-            var (vOut, vExit) = RunVm(program, info, "");
+            var (output, exit) = RunVm(program, info, "");
 
-            Assert.Equal(0, iExit);
-            Assert.Equal(0, vExit);
-            Assert.Equal(iOut, vOut);
-            var lines = iOut.Replace("\r", "").Split('\n');
+            Assert.Equal(0, exit);
+            var lines = output.Replace("\r", "").Split('\n');
             Assert.Equal("0", lines[0].Trim());       // exact round-trip past display precision
             Assert.Equal("hi, there", lines[1]);       // string verbatim (comma preserved)
         }
@@ -453,15 +409,14 @@ public class ExampleParityTests
 
     // -- helpers ---------------------------------------------------------
 
-    /// <summary>With no OPTION BASE, arrays start at subscript 1 on both engines (ANSI
-    /// X3.113 §7.1.1) — the tree-walker used to start them at 0.</summary>
+    /// <summary>With no OPTION BASE, arrays start at subscript 1 (ANSI X3.113 §7.1.1) —
+    /// the tree-walker used to start them at 0.</summary>
     [Theory]
     [InlineData("DIM A(3)\nMAT PRINT A\nMAT REDIM A(2, 2)\nMAT PRINT A\n", " 0  0  0 \n 0  0 \n 0  0 \n\n")]
     [InlineData("OPTION BASE 0\nDIM A(3)\nMAT PRINT A\n", " 0  0  0  0 \n")]
     public void ArraysStartAtOneUnlessOptionBaseSaysZero(string source, string expected)
     {
         var (program, info) = FrontEndSource("base.bas", source);
-        Assert.Equal((expected, 0), RunInterpreter(program, info, ""));
         Assert.Equal((expected, 0), RunVm(program, info, ""));
     }
 
@@ -490,13 +445,6 @@ public class ExampleParityTests
         Assert.False(diags.HasErrors,
             $"{name} produced analysis diagnostics:\n{string.Join("\n", diags.All.Select(d => d.Render(false)))}");
         return (program, info);
-    }
-
-    private static (string Output, int Exit) RunInterpreter(AstProgram program, SemanticInfo info, string stdin, int? randomizeSeed = null)
-    {
-        var sw = new StringWriter { NewLine = "\n" };
-        var exit = new BasicInterpreter(program, info, sw, new StringReader(stdin), randomizeSeed: randomizeSeed).Run();
-        return (sw.ToString(), exit);
     }
 
     private static (string Output, int Exit) RunVm(AstProgram program, SemanticInfo info, string stdin, int? randomizeSeed = null)

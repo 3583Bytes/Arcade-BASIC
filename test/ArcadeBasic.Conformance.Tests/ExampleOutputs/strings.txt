@@ -1,0 +1,11 @@
+original   : hello, BASIC world
+length     : 18 
+uppercase  : HELLO, BASIC WORLD
+lowercase  : hello, basic world
+first 5    : hello
+last 5     : world
+middle 7-5 : BASIC
+repeat 3   : ababab
+chr(65)    : A
+ord(A)     : 65 
+unicode π  : 1 codepoint(s)

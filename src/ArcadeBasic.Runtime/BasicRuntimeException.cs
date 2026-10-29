@@ -1,10 +1,8 @@
 namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Phase-3 stand-in for the spec's exception machinery. Phase 6 will replace
-/// thrown C# exceptions with FlowControl.Cause so user WHEN/USE/HANDLER
-/// blocks can catch them. Until then, runtime errors propagate via this
-/// exception and the CLI top-level prints them.
+/// A BASIC exception raised while running: the type code (EXTYPE) and its text. The
+/// VM catches it and hands it to the innermost WHEN handler, or ends the program.
 /// </summary>
 public sealed class BasicRuntimeException : Exception
 {

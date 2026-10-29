@@ -1,49 +1,44 @@
 # Example Arcade BASIC programs
 
-Run any of these with the interpreter:
+Open any of these in the [browser IDE](https://3583bytes.github.io/Arcade-BASIC/)
+(File ▸ Examples), or run it from the command line:
 
 ```sh
 dotnet run --project src/ArcadeBasic.Cli -- run examples/<file>.bas
-# or, after `dotnet publish ... /p:PublishAot=true`:
-./publish/aot/ArcadeBasic.Cli run examples/<file>.bas
+# or, after `dotnet publish src/ArcadeBasic.Cli -c Release -r <RID> -o publish/cli`:
+./publish/cli/arcade-basic run examples/<file>.bas
 ```
 
-| File             | Demonstrates                                    | Tree-walker | Bytecode VM |
-|------------------|-------------------------------------------------|:-----------:|:-----------:|
-| `hello.bas`      | PRINT, IF/THEN/ELSE, FOR, ^                     | ✓           | ✓           |
-| `factorial.bas`  | recursive FUNCTION                              | ✓           | ✓           |
-| `fibonacci.bas`  | DIM array, FOR loop                             | ✓           | ✓           |
-| `primes.bas`     | sieve, nested FOR, IF inside loop               | ✓           | ✓           |
-| `strings.bas`    | LEN/MID$/LEFT$/RIGHT$/UCASE$/REPEAT$/CHR$/ORD   | ✓           | ✓           |
-| `matrix.bas`     | MAT + / * / TRN / INV / PRINT                   | ✓           | ✓           |
-| `exception.bas`  | WHEN/USE/END WHEN, CAUSE, EXLINE, EXTYPE, RETRY | ✓           | ✓           |
-| `fileio.bas`     | OPEN / PRINT # / LINE INPUT # / CLOSE           | ✓           | ✓           |
-| `formatted.bas`  | PRINT USING with picture strings                | ✓           | ✓           |
-| `modules.bas`    | MODULE block, PUBLIC vs private declarations    | ✓           | ✓           |
-| `pi.bas`         | Leibniz series, MOD, ABS, PI constant           | ✓           | ✓           |
-| `mandelbrot.bas` | escape-time Mandelbrot as ASCII art — pure-compute benchmark (nested loops, `z=z*z+c`) | ✓ | ✓ |
-| `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             | ✓           | ✓           |
-| `kanban.bas`     | a Kanban board for your own tasks that keeps itself in `kanban.board` (saved after every change, opened next time): SET COLOR MIX palette, GRAPH AREA lanes and cards, one-line cards that open up when selected, lanes that scroll, ASK DEVICE SIZE; with a mouse (GET MOUSE) drag cards between lanes and up and down, double-click to edit, arrow keys + Space to move them; else a typed-command INPUT loop | ✓ | ✓ |
-| `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   | ✓           | ✓           |
-| `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation | ✓           | ✓           |
-| `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) | ✓ | ✓ |
-| `invaders.bas`   | Space Invaders — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; play-again on game over; persists a high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
-| `snake.bas`      | Snake — real-time `INKEY$` + `SLEEP` + §13 graphics; growing body array, food via `RND`, anti-reverse steering, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
-| `breakout.bas`   | Breakout — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; ball physics (wall/brick/paddle reflection, angle steered by paddle hit point), lives, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
-| `tetris.bas`     | Tetris — real-time `INKEY$` + `SLEEP` + §13 graphics; piece table from `READ`/`DATA`, live 90° rotation via the `(r,c)->(c,-r)` transform, full-row clearing, levels, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) | ✓ | ✓ |
-| `maze3d.bas`     | a program in three files: `LIBRARY "maze3d-level.bas", "maze3d-textures.bas"` brings in two modules — the map and the objects, and the textures and their colours — which set themselves up before the game runs (their `DATA` their own) and share variables through `PUBLIC` / `DECLARE PUBLIC`. A first-person 3D maze, Wolfenstein-style — a ray cast per screen column (DDA grid stepping); each wall slice is a column of a 16 × 16 texture stretched over it with `MAT GRAPH CELLS`, and the floor and ceiling are textured a dot at a time (floor casting) and drawn as two cell arrays; a key and gems are sprites (scaled pixel art with see-through `-1` cells, hidden behind nearer walls, drawn farthest first); colours from `SET COLOR MIX` (darker copies for side and distance shading); find the key to unlock the door, gems add time; a fog-of-war minimap; `KEYDOWN` walking/turning + `INKEY$` + `SLEEP`, `OPTION ARITHMETIC NATIVE`, a time limit, play-again | ✓ | ✓ |
-| `music.bas`      | Audio — `SOUND`, `BEEP`, `PLAY` (Music Macro Language); a Microsoft-BASIC/GW-BASIC dialect extension. Render to a WAV with `--wav out.wav` | ✓ | ✓ |
-
-A ✓ in the **Bytecode VM** column means the example also runs via
-`arcade-basic vm <file>` with output byte-identical to the tree-walker
-(`startrek.bas` and the real-time games — `invaders`, `snake`, `breakout`,
-`tetris` — use non-deterministic `RND`, so the two engines produce
-structurally-identical output up to RNG draws).
+| File             | Demonstrates                                    |
+|------------------|-------------------------------------------------|
+| `hello.bas`      | PRINT, IF/THEN/ELSE, FOR, ^                     |
+| `factorial.bas`  | recursive FUNCTION                              |
+| `fibonacci.bas`  | DIM array, FOR loop                             |
+| `primes.bas`     | sieve, nested FOR, IF inside loop               |
+| `strings.bas`    | LEN/MID$/LEFT$/RIGHT$/UCASE$/REPEAT$/CHR$/ORD   |
+| `matrix.bas`     | MAT + / * / TRN / INV / PRINT                   |
+| `exception.bas`  | WHEN/USE/END WHEN, CAUSE, EXLINE, EXTYPE, RETRY |
+| `fileio.bas`     | OPEN / PRINT # / LINE INPUT # / CLOSE           |
+| `formatted.bas`  | PRINT USING with picture strings                |
+| `modules.bas`    | MODULE block, PUBLIC vs private declarations    |
+| `pi.bas`         | Leibniz series, MOD, ABS, PI constant           |
+| `mandelbrot.bas` | escape-time Mandelbrot as ASCII art — pure-compute benchmark (nested loops, `z=z*z+c`) |
+| `guess.bas`      | INPUT loop, IF/ELSEIF/ELSE, EXIT DO             |
+| `kanban.bas`     | a Kanban board for your own tasks that keeps itself in `kanban.board` (saved after every change, opened next time): SET COLOR MIX palette, GRAPH AREA lanes and cards, one-line cards that open up when selected, lanes that scroll, ASK DEVICE SIZE; with a mouse (GET MOUSE) drag cards between lanes and up and down, double-click to edit, arrow keys + Space to move them; else a typed-command INPUT loop |
+| `startrek.bas`   | Super Star Trek (Ahl 1978) — GOSUB-heavy port   |
+| `lunar.bas`      | Lunar Lander (Storer 1969) — physics simulation |
+| `graphics.bas`   | §13 graphics: SET WINDOW/VIEWPORT, GRAPH LINES/AREA/POINTS/TEXT (render with `--svg`) |
+| `invaders.bas`   | Space Invaders — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; play-again on game over; persists a high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) |
+| `snake.bas`      | Snake — real-time `INKEY$` + `SLEEP` + §13 graphics; growing body array, food via `RND`, anti-reverse steering, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) |
+| `breakout.bas`   | Breakout — real-time `KEYDOWN` (held keys) + `INKEY$` + `SLEEP` + §13 graphics; ball physics (wall/brick/paddle reflection, angle steered by paddle hit point), lives, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) |
+| `tetris.bas`     | Tetris — real-time `INKEY$` + `SLEEP` + §13 graphics; piece table from `READ`/`DATA`, live 90° rotation via the `(r,c)->(c,-r)` transform, full-row clearing, levels, play-again, high score via `WRITE #`/`READ #` (RECTYPE INTERNAL) |
+| `maze3d.bas`     | a program in three files: `LIBRARY "maze3d-level.bas", "maze3d-textures.bas"` brings in two modules — the map and the objects, and the textures and their colours — which set themselves up before the game runs (their `DATA` their own) and share variables through `PUBLIC` / `DECLARE PUBLIC`. A first-person 3D maze, Wolfenstein-style — a ray cast per screen column (DDA grid stepping); each wall slice is a column of a 16 × 16 texture stretched over it with `MAT GRAPH CELLS`, and the floor and ceiling are textured a dot at a time (floor casting) and drawn as two cell arrays; a key and gems are sprites (scaled pixel art with see-through `-1` cells, hidden behind nearer walls, drawn farthest first); colours from `SET COLOR MIX` (darker copies for side and distance shading); find the key to unlock the door, gems add time; a fog-of-war minimap; `KEYDOWN` walking/turning + `INKEY$` + `SLEEP`, `OPTION ARITHMETIC NATIVE`, a time limit, play-again |
+| `music.bas`      | Audio — `SOUND`, `BEEP`, `PLAY` (Music Macro Language); a Microsoft-BASIC/GW-BASIC dialect extension. Render to a WAV with `--wav out.wav` |
 
 To produce a self-contained native binary for any example:
 
 ```sh
-./publish/aot/ArcadeBasic.Cli build examples/factorial.bas -o factorial
+./publish/cli/arcade-basic build examples/factorial.bas -o factorial
 ./factorial
 ```
 

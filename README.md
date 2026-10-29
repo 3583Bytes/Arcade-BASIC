@@ -65,17 +65,17 @@ Console.WriteLine(output);   //  42
 - **Make sound.** `SOUND`, `BEEP`, and `PLAY` (Music Macro Language) — the GW-BASIC/QuickBASIC audio verbs, flagged as Microsoft-dialect extensions in the docs. Plays in **real time** on an interactive terminal (Windows/macOS/Linux), and in the browser, and renders to a WAV file with `arcade-basic run examples/music.bas --wav out.wav`. Foreground (`MF`) and background (`MB`) music both work. See [docs/audio-extension.md](docs/audio-extension.md).
 - **Ship a `.bas` file as a one-file native binary.** `arcade-basic build foo.bas -o foo` produces a single executable for Linux, macOS (Intel + Apple Silicon), or Windows. No interpreter to install, no runtime dependency.
 - **Embed BASIC in a .NET game or app.** The libraries multi-target `netstandard2.1`, so they drop into .NET Framework, Xamarin, or any modern .NET host. Ideal for in-game scripting, modding hooks, or programmable retro consoles.
-- **Learn how a language gets implemented.** Clean separation of lexer → parser → semantic analyzer → tree-walking interpreter and bytecode VM, all in one C# solution with extensive tests.
+- **Learn how a language gets implemented.** Clean separation of lexer → parser → semantic analyzer → compiler → bytecode VM, all in one C# solution with extensive tests.
 
-## Three ways to run a program
+## Ways to run a program
 
 | | Command | Best for |
 |---|---|---|
-| **Tree-walking interpreter** | `arcade-basic run foo.bas` | The reference implementation. Fast to iterate on. |
-| **Bytecode VM** | `arcade-basic vm foo.bas` | Stack-based VM over compact bytecode. Output is byte-identical to the interpreter. |
+| **Browser** | [the IDE](https://3583bytes.github.io/Arcade-BASIC/) | Writing, debugging and playing — graphics, sound, mouse. |
+| **Command line** | `arcade-basic run foo.bas` | Compiles to bytecode and runs it on the VM, in a terminal. |
 | **Native binary** | `arcade-basic build foo.bas -o foo` | Bundles the VM and your compiled program into a single self-contained executable — no .NET needed on the target. |
 
-All three execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules (`PUBLIC` and `SHARE` variables, `DECLARE PUBLIC`, start-up code, their own `DATA`) and programs in several files (`LIBRARY "file.bas"`), exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers. Every example program runs the same on all three.
+All of them run the same engine, the bytecode VM, so they execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules (`PUBLIC` and `SHARE` variables, `DECLARE PUBLIC`, start-up code, their own `DATA`) and programs in several files (`LIBRARY "file.bas"`), exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers.
 
 ## Try the IDE
 
@@ -133,7 +133,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |
 
-See [`examples/README.md`](examples/README.md) for the full list with a tree-walker vs VM compatibility matrix.
+See [`examples/README.md`](examples/README.md) for the full list.
 
 ## Embedding in .NET
 
@@ -171,8 +171,7 @@ Pre-built binaries for Linux, macOS (Intel + Apple Silicon), and Windows are att
 ```
 arcade-basic <command> [args]
 
-  run <file>              tree-walking interpreter (the reference path)
-  vm <file>               compile to bytecode and run on the VM
+  run <file>              compile to bytecode and run it on the VM (vm is the same)
   build <file> [-o out]   produce a self-contained native binary
   repl                    interactive Arcade BASIC session
   lex <file>              tokenize and print the token stream
@@ -197,7 +196,7 @@ arcade-basic analyze examples/factorial.bas
 - [**Standalone builds**](docs/standalone-builds.md) — how `arcade-basic build` turns a `.bas` into a single self-contained executable (it's a self-extracting bytecode VM, not a native-codegen pipeline; this doc explains the anatomy of the resulting binary and why the design was chosen).
 - [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
 - [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
-- [**Examples**](examples/README.md) — sample programs with a feature matrix across tree-walker and bytecode VM.
+- [**Examples**](examples/README.md) — the sample programs and what each one shows.
 
 ## How it's built
 
@@ -207,10 +206,9 @@ A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assemb
    Source file
         │
         ▼
-  Lexer ──► Parser ──► Sema ──┬─► Tree-walking interpreter ──► output
-                              │
-                              └─► Compiler ──► Bytecode VM ──► output
+  Lexer ──► Parser ──► Sema ──► Compiler ──► Bytecode VM ──► output
                                                   │
+                                                  ├──► the browser IDE (WebAssembly)
                                                   └──► self-extracting native binary
 ```
 
@@ -221,14 +219,13 @@ A clean compiler-pipeline-plus-VM in one C# solution. Each box is its own assemb
 | `ArcadeBasic.Parser` | recursive-descent parser → immutable AST |
 | `ArcadeBasic.Sema` | two-pass analyzer; symbol/scope resolution as a side table |
 | `ArcadeBasic.Runtime` | `BigDecimal`-backed values, builtins, picture-string formatter, channels |
-| `ArcadeBasic.Interpreter` | tree-walking interpreter with explicit handler stack |
 | `ArcadeBasic.Bytecode` | opcode enum, chunk format, serializer |
 | `ArcadeBasic.Compiler` | AST → bytecode lowering |
-| `ArcadeBasic.Vm` | stack-based bytecode VM |
+| `ArcadeBasic.Vm` | stack-based bytecode VM, and `BasicEngine` (source in, program run) |
 | `ArcadeBasic.Cli` | command dispatcher + self-extracting AOT stub |
 | `ArcadeBasic.Web` | the browser IDE (WebAssembly, on the VM) |
 
-The interpreter and the VM share the same `Value` hierarchy, `BigDecimal` numerics, `MatOps` math kernels (LU-decomposition inverse, transpose, …), picture-string formatter, and channel table — so any program runs identically on both engines. The full architecture writeup lives in [`docs/architecture.md`](docs/architecture.md).
+The VM runs on the runtime's `Value` hierarchy, `BigDecimal` numerics, `MatOps` math kernels (LU-decomposition inverse, transpose, …), picture-string formatter, and channel table. (Until 2026 a tree-walking interpreter ran programs too, as a second, reference engine.) The full architecture writeup lives in [`docs/architecture.md`](docs/architecture.md).
 
 ## License
 

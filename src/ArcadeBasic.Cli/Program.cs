@@ -3,7 +3,6 @@ using ArcadeBasic.Cli;
 using ArcadeBasic.Cli.Audio;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Runtime;
@@ -54,7 +53,7 @@ static int Run(string[] args)
         "parse" => RunParse(args.AsSpan(1)),
         "analyze" => RunAnalyze(args.AsSpan(1)),
         "run" => RunProgram(args.AsSpan(1)),
-        "vm" => RunVm(args.AsSpan(1)),
+        "vm" => RunProgram(args.AsSpan(1)),   // its old name, from when run had its own engine
         "build" => RunBuild(args.AsSpan(1)),
         "repl" => new BasicRepl().Run(),
         "--help" or "-h" => PrintUsage(),
@@ -77,8 +76,7 @@ static int PrintUsage()
           lex <file>            Run the lexer over <file> and print the token stream.
           parse <file>          Lex + parse <file> and pretty-print the AST.
           analyze <file>        Lex + parse + analyze; print symbol summary.
-          run <file>            Lex + parse + analyze + run the program (tree-walker).
-          vm <file>             Lex + parse + analyze + compile + run on bytecode VM.
+          run <file>            Compile <file> and run it (vm does the same).
           build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
           repl                  Start an interactive Arcade BASIC session.
           --version             Print version info.
@@ -253,68 +251,6 @@ static int RunBuild(ReadOnlySpan<string> args)
     return 0;
 }
 
-static int RunVm(ReadOnlySpan<string> args)
-{
-    var files = ParseRenderOptions(args, out var svgPath, out var wavPath);
-    if (files.Count != 1)
-    {
-        Console.Error.WriteLine("usage: arcade-basic vm <file> [--svg <out.svg>] [--wav <out.wav>]");
-        return 2;
-    }
-    var path = files[0];
-    if (!File.Exists(path))
-    {
-        Console.Error.WriteLine($"file not found: {path}");
-        return 1;
-    }
-
-    var diags = new DiagnosticBag();
-    var program = LoadProgram(path, diags);
-    var info = Analyzer.Analyze(program, diags);
-
-    var useColor = !Console.IsErrorRedirected;
-    foreach (var diag in diags.All)
-    {
-        Console.Error.Write(diag.Render(useColor));
-    }
-    if (diags.HasErrors) return 1;
-
-    ArcadeBasic.Bytecode.Program compiled;
-    try
-    {
-        compiled = BasicCompiler.Compile(program, info);
-    }
-    catch (BasicCompiler.UnsupportedFeatureException ex)
-    {
-        // Reached only by programs that survive sema but then violate a
-        // VM-side invariant (e.g. a computed GOTO expression sema couldn't
-        // resolve to a literal label). Tree-walker may still accept these.
-        Console.Error.WriteLine($"VM compile error: {ex.Message}");
-        Console.Error.WriteLine("(`arcade-basic run` may still accept this program)");
-        return 1;
-    }
-
-    var (audio, wav) = MakeAudio(wavPath);
-    try
-    {
-        if (svgPath is not null)
-        {
-            var svg = new SvgGraphicsDevice();
-            var exit = new BasicVm(compiled, Console.Out, Console.In, svg, null, audio).Run();
-            File.WriteAllText(svgPath, svg.ToSvg());
-            Console.Error.WriteLine($"wrote {svgPath}");
-            return exit;
-        }
-        return RunWithConsoleGraphics((input, gfx, kb) =>
-            new BasicVm(compiled, Console.Out, input, gfx, kb, audio).Run());
-    }
-    finally
-    {
-        (audio as IDisposable)?.Dispose();   // drain + close any real-time sink
-        WriteWav(wavPath, wav);
-    }
-}
-
 static int RunAnalyze(ReadOnlySpan<string> args)
 {
     if (args.Length != 1)
@@ -404,23 +340,36 @@ static int RunProgram(ReadOnlySpan<string> args)
     }
     if (diags.HasErrors) return 1;
 
+    ArcadeBasic.Bytecode.Program compiled;
+    try
+    {
+        compiled = BasicCompiler.Compile(combined, info);
+    }
+    catch (BasicCompiler.UnsupportedFeatureException ex)
+    {
+        // Reached only by programs that survive sema but then break one of the
+        // compiler's own rules (a bug to report, rather than the program's fault).
+        Console.Error.WriteLine($"compile error: {ex.Message}");
+        return 1;
+    }
+
     var (audio, wav) = MakeAudio(wavPath);
     try
     {
         if (svgPath is not null)
         {
             var svg = new SvgGraphicsDevice();
-            var exit = new BasicInterpreter(combined, info, Console.Out, Console.In, default, svg, null, audio).Run();
+            var exit = new BasicVm(compiled, Console.Out, Console.In, svg, null, audio).Run();
             File.WriteAllText(svgPath, svg.ToSvg());
             Console.Error.WriteLine($"wrote {svgPath}");
             return exit;
         }
         return RunWithConsoleGraphics((input, gfx, kb) =>
-            new BasicInterpreter(combined, info, Console.Out, input, default, gfx, kb, audio).Run());
+            new BasicVm(compiled, Console.Out, input, gfx, kb, audio).Run());
     }
     finally
     {
-        (audio as IDisposable)?.Dispose();
+        (audio as IDisposable)?.Dispose();   // drain + close any real-time sink
         WriteWav(wavPath, wav);
     }
 }

@@ -31,7 +31,7 @@ The **Real-time** module (ANSI X3.113 §14) is a different beast: parallel secti
 
 **IMPLEMENTATION-DEFINED:** PRINT output rounds to **9 significant digits**. ISO 10279 requires at least 6. Internal computation keeps full precision; only the display is rounded. `PRINT USING` uses its picture string verbatim and is unaffected.
 
-**IMPLEMENTATION-DEFINED:** `OPTION ARITHMETIC NATIVE` (§5.6) selects IEEE 754 binary64 (`double`): ~15–17 significant digits and a range of ~2.2E-308 to ~1.8E308, well past the standard's minimum of six digits and 2E-38 to 1E+38. Every number the program creates — literals, `INPUT`/`READ`/`DATA` items, supplied-function results, array elements — is a double, and arithmetic runs in hardware; PRINT still rounds to 9 significant digits, so most programs print identically under both modes. Decimal fractions are no longer exact (`0.1 + 0.2 = 0.3` is false), integers are exact only up to 2^53, and a result past the double range raises exception **1002** (decimal arithmetic is unbounded, so it never overflows). `MAT` operations compute in decimal and store the result back as doubles. INTERNAL files written under one mode read back under the other (the record holds the shortest decimal that round-trips the double). Typical speed-up over `DECIMAL` is 2–8× on the tree-walker (largest for trig/`SQR`/array-heavy code) and 1.3–4× on the VM.
+**IMPLEMENTATION-DEFINED:** `OPTION ARITHMETIC NATIVE` (§5.6) selects IEEE 754 binary64 (`double`): ~15–17 significant digits and a range of ~2.2E-308 to ~1.8E308, well past the standard's minimum of six digits and 2E-38 to 1E+38. Every number the program creates — literals, `INPUT`/`READ`/`DATA` items, supplied-function results, array elements — is a double, and arithmetic runs in hardware; PRINT still rounds to 9 significant digits, so most programs print identically under both modes. Decimal fractions are no longer exact (`0.1 + 0.2 = 0.3` is false), integers are exact only up to 2^53, and a result past the double range raises exception **1002** (decimal arithmetic is unbounded, so it never overflows). `MAT` operations compute in decimal and store the result back as doubles. INTERNAL files written under one mode read back under the other (the record holds the shortest decimal that round-trips the double). Typical speed-up over `DECIMAL` is 1.3–4× (largest for trig/`SQR`/array-heavy code).
 
 **DEVIATION:** ISO 10279 scopes `OPTION ARITHMETIC` to its program-unit; here it applies to the **whole program**, wherever it appears (the main program or a `MODULE`). Units that name different modes are rejected at analysis time (`FB0311`), so a program never mixes representations.
 
@@ -48,7 +48,7 @@ The **Real-time** module (ANSI X3.113 §14) is a different beast: parallel secti
 - **Keywords are case-insensitive.** `PRINT`, `print`, `Print`, `PrInT` are all the same token. Identifiers are case-preserving but compared case-insensitively in sema, so `foo` and `FOO` refer to the same variable.
 - **Comments:** both `REM ...` and `! ...` to end-of-line. The `!` form is an ISO 10279 addition over Minimal BASIC.
 - **Line labels.** Leading integers on a logical line become labels (used as GOTO/GOSUB/RESTORE targets). Optional per ISO. Embedded numeric literals later in the line are not labels.
-- **Scientific notation.** Numeric literals with an exponent (`1E-03`, `2.5E3`, `6.022E2`) are lexed and evaluated. Literals are parsed with `NumberStyles.Float` in both the interpreter and the compiler, so `run`, `vm`, and `build` agree.
+- **Scientific notation.** Numeric literals with an exponent (`1E-03`, `2.5E3`, `6.022E2`) are lexed and evaluated. Literals are parsed with `NumberStyles.Float`.
 
 ## Statements
 
@@ -91,13 +91,12 @@ Supported, including the `GO TO`/`GO SUB` two-word spellings and the optional
 otherwise it raises exception **10001** (§8.2), which `WHEN`/`USE` can catch.
 
 `ON i GOSUB` pushes the return address like a plain `GOSUB`, so `RETURN` comes
-back to the statement after the `ON`. The bytecode VM lowers the statement to a
-compare-and-jump chain (the index rounded via the `ROUND` builtin), so `run`,
-`vm`, and `build` produce identical output.
+back to the statement after the `ON`. The compiler lowers the statement to a
+compare-and-jump chain (the index rounded via the `ROUND` builtin).
 
 ### `FOR` / `NEXT`
 
-Follows the §8.3.5 equivalence on both engines: the limit and the step are
+Follows the §8.3.5 equivalence: the limit and the step are
 evaluated **once**, on entry (limit first, then step, then the initial value),
 and `NEXT` adds the step to the control variable's *current* value — so a body
 that assigns the control variable steers the loop. After a loop that runs to
@@ -168,7 +167,7 @@ Domain errors raise the §5.4 exceptions: `SQR` of a negative (3005), `ASIN`/`AC
 
 **IMPLEMENTATION-DEFINED:** `RND` takes 0 or 1 arguments. The argument is **ignored**; every call advances the underlying PRNG. ISO permits dialect-specific behaviour; MS-BASIC's `RND(0) = last value` is not implemented.
 
-`RND` follows §5.4.4: without `RANDOMIZE` a program gets the same sequence every run, one sequence for the whole program (all its program units); `RANDOMIZE` starts an unpredictable one from the clock. **EXTENSION:** `RANDOMIZE n` starts the repeatable sequence that belongs to `n`. **IMPLEMENTATION-DEFINED:** the generator is SplitMix64 (`BasicRandom` in `ArcadeBasic.Runtime`), so both engines and WebAssembly produce identical numbers; values are uniform in [0, 1) with 53 random bits. An embedding host can pass a *randomize seed* (`randomizeSeed:` on `BasicInterpreter` / `BasicVm`) that a plain `RANDOMIZE` uses instead of the clock, which makes a whole run repeatable — the tests use it to replay the real-time games.
+`RND` follows §5.4.4: without `RANDOMIZE` a program gets the same sequence every run, one sequence for the whole program (all its program units); `RANDOMIZE` starts an unpredictable one from the clock. **EXTENSION:** `RANDOMIZE n` starts the repeatable sequence that belongs to `n`. **IMPLEMENTATION-DEFINED:** the generator is SplitMix64 (`BasicRandom` in `ArcadeBasic.Runtime`), so .NET and WebAssembly produce identical numbers; values are uniform in [0, 1) with 53 random bits. An embedding host can pass a *randomize seed* (`randomizeSeed:` on `BasicVm`) that a plain `RANDOMIZE` uses instead of the clock, which makes a whole run repeatable — the tests use it to replay the real-time games.
 
 **IMPLEMENTATION-DEFINED:** `PI`, `EPS`, `INF`, `MAXNUM` are modelled as constant symbols (no parens). Their values:
 
@@ -234,7 +233,7 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 **IMPLEMENTATION-DEFINED:** Exception type codes follow the spec for the ones we implement. Our extensions (e.g. `4003` for INPUT-stream-closed) are documented inline in `BasicRuntimeException` callsites.
 
-**IMPLEMENTATION-DEFINED:** procedure calls may nest 100,000 deep on the VM (`vm`, `build`, standalone binaries); the next call raises exception **5000** (the "storage exhausted" class), which `WHEN`/`USE` can catch. **Known gap:** the tree-walker (`run`, the REPL, `BasicEngine.Run`) still recurses on the host thread's stack, so very deep recursion — somewhere past 1,000 levels — ends the process instead.
+**IMPLEMENTATION-DEFINED:** procedure calls may nest 100,000 deep (the VM keeps its own call stack, not the host thread's); the next call raises exception **5000** (the "storage exhausted" class), which `WHEN`/`USE` can catch.
 
 ## Modules
 
@@ -250,7 +249,7 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 Errors and the debugger say which file a line is in: a runtime error in a library reads `… at line 8 in greet.bas: …`.
 
-**Not implemented:** `EXTERNAL SUB`/`EXTERNAL FUNCTION` written after a main program's `END` (and `DECLARE EXTERNAL`) — put external procedures in a library file; `DECLARE` forms other than `DECLARE PUBLIC`; `PRIVATE` as a statement listing routines (the `PRIVATE` prefix is accepted and is the default); `RESTORE` to a line number (it rewinds the unit's `DATA`, as in both engines before).
+**Not implemented:** `EXTERNAL SUB`/`EXTERNAL FUNCTION` written after a main program's `END` (and `DECLARE EXTERNAL`) — put external procedures in a library file; `DECLARE` forms other than `DECLARE PUBLIC`; `PRIVATE` as a statement listing routines (the `PRIVATE` prefix is accepted and is the default); `RESTORE` to a line number (it rewinds the unit's `DATA`).
 
 **DEVIATION:** No on-disk compiled module format. Modules are recompiled from source on each invocation.
 
@@ -341,11 +340,10 @@ from the keyboard as the standard requires: it reads `x, y` like `INPUT`.
 `ArcadeBasic.Runtime`) performs all coordinate mapping and clipping
 (Cohen–Sutherland for lines, Sutherland–Hodgman for areas) and hands an
 `IGraphicsDevice` clipped vector primitives in the normalized device unit square.
-The interpreter and VM share that core, so graphics output is byte-identical
-between engines (asserted in `ArcadeBasic.Conformance.Tests`). Shipped backends:
-**SVG** (`arcade-basic run|vm file.bas --svg out.svg`); the **browser IDE**'s
+Shipped backends:
+**SVG** (`arcade-basic run file.bas --svg out.svg`); the **browser IDE**'s
 canvas; and a **console ANSI** backend (`AnsiGraphicsDevice` in Runtime) used by
-`arcade-basic run`/`vm` and standalone binaries on an interactive terminal — so
+`arcade-basic run` and standalone binaries on an interactive terminal — so
 graphics programs run in a terminal too. The terminal backend draws on a
 `CellSurface`, which draws
 each primitive with the characters that suit it: horizontal/vertical lines as
@@ -375,7 +373,7 @@ this phase. The `^`-style picture exponent is unrelated; see PRINT USING.
 
 **IMPLEMENTATION-DEFINED:** Diagnostics use stable codes (`FB0001`...) with Rust-style snippets and a caret. Colour goes through ANSI when stderr is a TTY.
 
-**IMPLEMENTATION-DEFINED:** The `build` subcommand produces a self-extracting native binary by appending a serialised bytecode payload to the running CLI binary. The VM is feature-complete against the tree-walker — it handles every Arcade BASIC feature the tree-walker accepts (arrays/DIM, `INPUT`, `LINE INPUT`, MAT operations, `READ`/`DATA`/`RESTORE`, `PRINT USING`, `PRINT TAB(n)`, DISPLAY-mode file I/O, `WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE` with inline or named `HANDLER` bodies, forward `GOTO`/`GOSUB`, single-line and multi-line `DEF`, nested MAT constants, modules with PUBLIC re-export) and matches its byte-for-byte output on every example program.
+**IMPLEMENTATION-DEFINED:** The `build` subcommand produces a self-extracting native binary by appending a serialised bytecode payload to the running CLI binary. The binary runs the same VM as everything else, so it handles every Arcade BASIC feature (arrays/DIM, `INPUT`, `LINE INPUT`, MAT operations, `READ`/`DATA`/`RESTORE`, `PRINT USING`, `PRINT TAB(n)`, DISPLAY-mode file I/O, `WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE` with inline or named `HANDLER` bodies, forward `GOTO`/`GOSUB`, single-line and multi-line `DEF`, nested MAT constants, modules with PUBLIC re-export).
 
 ## Known gaps vs `examples/`
 
@@ -394,4 +392,4 @@ Open an issue with:
 - Observed output from `dotnet run --project src/ArcadeBasic.Cli -- run <file>`.
 - Expected output per the spec, ideally with the relevant sentence quoted.
 
-Conformance fixes that change observable behaviour land with both a regression test under `test/ArcadeBasic.Interpreter.Tests/` and an update to this document if a new deviation is introduced or an old one resolved.
+Conformance fixes that change observable behaviour land with both a regression test under `test/ArcadeBasic.Vm.Tests/` and an update to this document if a new deviation is introduced or an old one resolved.

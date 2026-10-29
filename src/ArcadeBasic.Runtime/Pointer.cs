@@ -23,7 +23,7 @@ public interface IPointer
 }
 
 /// <summary>
-/// One run's pointer as the program sees it, shared by both engines: <c>GET MOUSE</c>
+/// One run's pointer as the program sees it: <c>GET MOUSE</c>
 /// samples it, <c>LOCATE POINT</c> waits on it. Button events are read one per sample,
 /// so a click that starts and ends between two samples still reports "pressed", then
 /// "released".

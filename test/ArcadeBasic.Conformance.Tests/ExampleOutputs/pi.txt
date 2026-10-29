@@ -1,0 +1,3 @@
+Leibniz π (1000 terms):  3.14059265 
+built-in PI           :  3.14159265 
+absolute error        :  0.00099999975 

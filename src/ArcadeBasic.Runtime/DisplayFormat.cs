@@ -3,10 +3,8 @@ using Singulink.Numerics;
 namespace ArcadeBasic.Runtime;
 
 /// <summary>
-/// Shared BASIC-style numeric formatting for PRINT output. Lives in Runtime
-/// so the tree-walking interpreter and the bytecode VM call the same code —
-/// keeping their output byte-identical without each side reinventing the
-/// rounding / zero-trim rules.
+/// BASIC-style numeric formatting for PRINT output: the rounding and zero-trim
+/// rules, in one place for PRINT, STR$ and the files.
 /// </summary>
 public static class DisplayFormat
 {

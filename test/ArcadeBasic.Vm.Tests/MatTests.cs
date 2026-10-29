@@ -1,11 +1,11 @@
 using FluentAssertions;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Interpreter.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>Phase-4 MAT tests. Output capture and BASIC-side assertions.
 /// All tests run under OPTION BASE 1 (the typical convention for MAT
@@ -25,7 +25,7 @@ public class MatTests
         }
         var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
-        new BasicInterpreter(program, info, sw, sr).Run();
+        new BasicVm(BasicCompiler.Compile(program, info), sw, sr).Run();
         return sw.ToString();
     }
 
@@ -37,7 +37,7 @@ public class MatTests
         var program = new BasicParser(tokens, file, diags).ParseProgram();
         var info = Analyzer.Analyze(program, diags);
         if (diags.HasErrors) return 1;
-        return new BasicInterpreter(program, info, new StringWriter { NewLine = "\n" }, new StringReader(stdin)).Run();
+        return new BasicVm(BasicCompiler.Compile(program, info), new StringWriter { NewLine = "\n" }, new StringReader(stdin)).Run();
     }
 
     // -- Assignment ------------------------------------------------------

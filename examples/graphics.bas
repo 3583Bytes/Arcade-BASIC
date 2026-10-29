@@ -1,7 +1,5 @@
 ! Graphics demo — ECMA-116 §13 graphics module.  @category Graphics
 ! Render to SVG:   arcade-basic run examples/graphics.bas --svg out.svg
-!            (or)  arcade-basic vm  examples/graphics.bas --svg out.svg
-! Both engines produce byte-identical output.
 
 ! Problem coordinates: x over one full period in degrees, y over the sine range.
 SET WINDOW 0, 360, -1.5, 1.5

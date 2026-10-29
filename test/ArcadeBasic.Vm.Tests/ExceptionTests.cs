@@ -1,11 +1,11 @@
 using FluentAssertions;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Interpreter.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>Phase-6 exception-handling tests.</summary>
 public class ExceptionTests
@@ -24,7 +24,7 @@ public class ExceptionTests
         }
         var sw = new StringWriter { NewLine = "\n" };
         var sr = new StringReader(stdin);
-        var exit = new BasicInterpreter(program, info, sw, sr).Run();
+        var exit = new BasicVm(BasicCompiler.Compile(program, info), sw, sr).Run();
         return (sw.ToString(), exit);
     }
 
@@ -235,6 +235,71 @@ public class ExceptionTests
         output.Should().Contain("two");
         output.Should().Contain("three");
         output.Should().Contain("done");
+    }
+
+    [Fact]
+    public void AfterContinueTheBlockEndsWithoutDroppingTheHandlerAroundIt()
+    {
+        const string src = """
+            WHEN EXCEPTION IN
+              WHEN EXCEPTION IN
+                CAUSE EXCEPTION 1
+                PRINT "after 1"
+              USE
+                PRINT "inner"; EXTYPE
+                CONTINUE
+              END WHEN
+              CAUSE EXCEPTION 7
+              PRINT "not here"
+            USE
+              PRINT "outer"; EXTYPE
+            END WHEN
+            PRINT "end"
+            """;
+        Run(src).Output.Should().Be("inner 1 \nafter 1\nouter 7 \nend\n");
+    }
+
+    [Fact]
+    public void AnExceptionCaughtInsideAUseBodyLeavesTheOneItIsHandlingAlone()
+    {
+        const string src = """
+            WHEN EXCEPTION IN
+              PRINT "a"
+              CAUSE EXCEPTION 1
+              PRINT "b"
+            USE
+              WHEN EXCEPTION IN
+                CAUSE EXCEPTION 2
+              USE
+                PRINT "inner"; EXTYPE
+              END WHEN
+              PRINT "outer"; EXTYPE
+              CONTINUE
+            END WHEN
+            PRINT "end"
+            """;
+        Run(src).Output.Should().Be("a\ninner 2 \nouter 1 \nb\nend\n");
+    }
+
+    [Fact]
+    public void ExtypeIsZeroAgainOnceTheHandlerIsDone()
+    {
+        const string src = """
+            WHEN EXCEPTION IN
+              CAUSE EXCEPTION 6
+            USE
+              PRINT EXTYPE
+              EXIT HANDLER
+            END WHEN
+            PRINT EXTYPE
+            WHEN EXCEPTION IN
+              CAUSE EXCEPTION 4
+            USE
+              PRINT EXTYPE
+            END WHEN
+            PRINT EXTYPE
+            """;
+        Run(src).Output.Should().Be(" 6 \n 0 \n 4 \n 0 \n");
     }
 
     // -- EXIT WHEN / EXIT HANDLER --------------------------------------

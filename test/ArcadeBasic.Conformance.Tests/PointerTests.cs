@@ -2,7 +2,6 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Vm;
 using ArcadeBasic.Runtime;
@@ -10,8 +9,7 @@ using ArcadeBasic.Runtime;
 namespace ArcadeBasic.Conformance.Tests;
 
 /// <summary>
-/// LOCATE POINT / GET POINT and GET MOUSE agree on both engines, given the same
-/// scripted pointer: picks come back in window coordinates (picks outside the
+/// LOCATE POINT / GET POINT and GET MOUSE, given a scripted pointer: picks come back in window coordinates (picks outside the
 /// window are ignored), and GET MOUSE reports each button edge once.
 /// </summary>
 public class PointerTests
@@ -51,7 +49,7 @@ public class PointerTests
     private static PointerEvent Press(double x, double y) => new(true, new GfxPoint(x, y));
     private static PointerEvent Release(double x, double y) => new(false, new GfxPoint(x, y));
 
-    private static (string Interpreter, string Vm) RunBoth(string source, Func<IGraphicsDevice> screen, string stdin = "")
+    private static string Run(string source, Func<IGraphicsDevice> screen, string stdin = "")
     {
         var file = new SourceFile("pointer.bas", source);
         var diags = new DiagnosticBag();
@@ -60,31 +58,28 @@ public class PointerTests
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
-        var iOut = new StringWriter { NewLine = "\n" };
-        new BasicInterpreter(program, info, iOut, new StringReader(stdin), graphics: screen()).Run();
-        var vOut = new StringWriter { NewLine = "\n" };
-        new BasicVm(BasicCompiler.Compile(program, info), vOut, new StringReader(stdin), screen()).Run();
-        return (iOut.ToString(), vOut.ToString());
+        var output = new StringWriter { NewLine = "\n" };
+        new BasicVm(BasicCompiler.Compile(program, info), output, new StringReader(stdin), screen()).Run();
+        return output.ToString();
     }
 
     [Fact]
     public void LocatePointReturnsThePickInWindowCoordinates()
     {
         // The window fills the right half of the surface; a pick in the left half is outside it.
-        var (i, v) = RunBoth(
+        var output = Run(
             "DIM A(3)\nSET WINDOW 0, 100, 0, 50\nSET VIEWPORT 0.5, 1, 0, 1\nLOCATE POINT : X, Y\nPRINT X; Y\nGET POINT, AT 1, 2: A(1), B\nPRINT A(1); B\n",
             () => new ScriptedPointer(default,
                 Press(0.25, 0.2), Release(0.25, 0.2),      // outside the window: ignored
                 Press(0.75, 0.2), Release(0.75, 0.2),      // (50, 10)
                 Press(1.0, 1.0)));                         // (100, 50), for GET POINT
-        Assert.Equal(" 50  10 \n 100  50 \n", i);
-        Assert.Equal(i, v);
+        Assert.Equal(" 50  10 \n 100  50 \n", output);
     }
 
     [Fact]
     public void GetMouseReportsEachButtonEdgeOnce()
     {
-        var (i, v) = RunBoth(
+        var output = Run(
             "SET WINDOW 0, 100, 0, 50\nFOR I = 1 TO 6\nGET MOUSE X, Y, S\nPRINT S; X; Y\nNEXT I\n",
             () => new ScriptedPointer(new GfxPoint(0.1, 0.1), Press(0.5, 0.5), Release(0.6, 0.6)));
         Assert.Equal(
@@ -92,27 +87,24 @@ public class PointerTests
             " 2  50  25 \n" +     // pressed, where it was pressed
             " 1  10  5 \n" +      // held
             " 3  60  30 \n" +     // released, where it was released
-            " 0  10  5 \n 0  10  5 \n", i);
-        Assert.Equal(i, v);
+            " 0  10  5 \n 0  10  5 \n", output);
     }
 
     [Fact]
     public void WithoutAPointerLocateReadsTypedCoordinatesAndGetMouseSaysSo()
     {
-        var (i, v) = RunBoth(
+        var output = Run(
             "GET MOUSE X, Y, S\nPRINT S\nLOCATE POINT : X, Y\nPRINT X; Y\n",
             () => NullGraphicsDevice.Instance, stdin: "3, 4\n");
-        Assert.Equal("-1 \n?  3  4 \n", i);
-        Assert.Equal(i, v);
+        Assert.Equal("-1 \n?  3  4 \n", output);
     }
 
     [Fact]
     public void AnyDeviceButTheFirstIsAnError()
     {
-        var (i, v) = RunBoth(
+        var output = Run(
             "WHEN EXCEPTION IN\nLOCATE POINT(2): X, Y\nUSE\nPRINT EXTYPE\nEND WHEN\n",
             () => new ScriptedPointer(default));
-        Assert.Equal(" 11140 \n", i);
-        Assert.Equal(i, v);
+        Assert.Equal(" 11140 \n", output);
     }
 }

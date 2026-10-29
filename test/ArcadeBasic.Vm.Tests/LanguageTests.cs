@@ -1,13 +1,13 @@
 using FluentAssertions;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Interpreter.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
-public class InterpreterTests
+public class LanguageTests
 {
     private static (string Output, int ExitCode, DiagnosticBag Diagnostics) Run(string source, string stdin = "")
     {
@@ -21,8 +21,8 @@ public class InterpreterTests
 
         var output = new StringWriter { NewLine = "\n" };
         var input = new StringReader(stdin);
-        var interp = new BasicInterpreter(program, info, output, input);
-        var exit = interp.Run();
+        var vm = new BasicVm(BasicCompiler.Compile(program, info), output, input);
+        var exit = vm.Run();
         return (output.ToString(), exit, diags);
     }
 
@@ -64,7 +64,7 @@ public class InterpreterTests
 
         var output = new StringWriter { NewLine = "\n" };
         var kb = new QueueKeyboard("a");
-        new BasicInterpreter(program, info, output, new StringReader(""), default, null, kb).Run();
+        new BasicVm(BasicCompiler.Compile(program, info), output, new StringReader(""), null, kb).Run();
         output.ToString().Should().Be("[a]\n[]\n");
     }
 

@@ -1,6 +1,6 @@
 # Architecture
 
-Arcade BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, organised as a classic compiler-and-interpreter pipeline plus a stack-based bytecode VM. This document is the orientation map: if you have ten minutes and want to understand how a `.bas` file becomes program output, read this first.
+Arcade BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language, organised as a classic compiler pipeline feeding a stack-based bytecode VM. This document is the orientation map: if you have ten minutes and want to understand how a `.bas` file becomes program output, read this first.
 
 ## The pipeline
 
@@ -25,38 +25,29 @@ Arcade BASIC is a from-scratch implementation of the ISO/IEC 10279:1991 language
                        │ DataPool + CallTargets                  │
                        └────────────────────┬────────────────────┘
                                             │
-                ┌───────────────────────────┴───────────────────────────┐
-                ▼                                                       ▼
-   ┌─────────────────────────────────┐         ┌─────────────────────────────────┐
-   │ ArcadeBasic.Interpreter           │         │ ArcadeBasic.Compiler              │
-   │ Tree-walking interpreter        │         │ AST → Bytecode                  │
-   │ FlowControl-typed returns       │         │ (compiles a subset of the       │
-   │ Full-feature support            │         │  interpreter's surface)         │
-   └────────────────┬────────────────┘         └────────────────┬────────────────┘
-                    │                                           │
-                    │                                           ▼
-                    │                          ┌─────────────────────────────────┐
-                    │                          │ ArcadeBasic.Vm                    │
-                    │                          │ Stack VM over a Chunk           │
-                    │                          └────────────────┬────────────────┘
-                    │                                           │
-                    │                                           ▼
-                    │                          ┌─────────────────────────────────┐
-                    │                          │ ArcadeBasic.Cli `build`           │
-                    │                          │ Stub + appended payload =       │
-                    │                          │ self-extracting native binary   │
-                    │                          └─────────────────────────────────┘
-                    ▼
-   ┌─────────────────────────────────┐
-   │ stdout / stdin / files          │
-   └─────────────────────────────────┘
+                                            ▼
+                       ┌─────────────────────────────────────────┐
+   ArcadeBasic.Compiler ► │ Bytecode: a Chunk per program unit,     │
+                       │ constants, DATA pools, source files     │
+                       └────────────────────┬────────────────────┘
+                                            ▼
+                       ┌─────────────────────────────────────────┐
+   ArcadeBasic.Vm ─────► │ Stack VM: Run() to the end, or Step(n)  │
+                       │ from a host's frame loop                │
+                       └────────────────────┬────────────────────┘
+                                            │
+              ┌─────────────────────────────┼─────────────────────────────┐
+              ▼                             ▼                             ▼
+   ArcadeBasic.Web             ArcadeBasic.Cli `run`, `repl`   ArcadeBasic.Cli `build`
+   the browser IDE             stdout / stdin / files,         stub + appended payload =
+   (WebAssembly)               terminal graphics               self-extracting binary
 ```
 
-Three paths come out of the analyzer:
+Every program runs on the VM, wherever it runs:
 
-- **`run` path:** tree-walking interpreter, the most feature-complete. Supports the full surface — arrays, MAT, file I/O, exception handling, modules, `PRINT USING`, `INPUT`.
-- **`vm`/`build` path:** AST → bytecode → stack VM. Matches the tree-walker byte-for-byte on every example program in the repo. The compiler does deferred backfill for forward `GOTO`/`GOSUB` across statement boundaries, `PRINT TAB(n)` is its own opcode, `CallDef` is fully wired, and nested MAT constants resolve their shape from the assignment target via `MatPushConst`. The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
-- **`repl` path:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/ArcadeBasic.Cli/BasicRepl.cs`.
+- **The browser IDE** compiles and steps the VM a slice at a time from the page's animation loop (see `src/ArcadeBasic.Web`).
+- **`run`** (or `vm`, its old name) compiles and runs it in the terminal. The compiler does deferred backfill for forward `GOTO`/`GOSUB` across statement boundaries, `PRINT TAB(n)` is its own opcode, `CallDef` is fully wired, and nested MAT constants resolve their shape from the assignment target via `MatPushConst`. The `build` subcommand appends the serialised bytecode payload to the running CLI binary and chmods it executable.
+- **`repl`:** interactive accumulating session. Each accepted fragment is appended to a growing source buffer; on every turn the whole buffer is re-lexed / parsed / analyzed / executed against a captured `TextWriter`, and only the tail of new output is emitted; a fragment that stops the program with an error isn't kept. Variables and DATA pool state persist because the program runs end-to-end every turn. Implementation lives in `src/ArcadeBasic.Cli/BasicRepl.cs`.
 
 ## Project graph
 
@@ -77,17 +68,16 @@ ArcadeBasic.Parser
      │      ▲
      │      │ SemanticInfo, Scope, Symbol, ResolvedRef
      │      │
-     │      ├─► ArcadeBasic.Interpreter ──► ArcadeBasic.Runtime
-     │      │                              (Value, ActivationRecord,
-     │      │                               BuiltinImpls, FlowControl,
-     │      │                               BasicFile, PictureFormat)
-     │      │
      │      └─► ArcadeBasic.Compiler ──► ArcadeBasic.Bytecode (Chunk, Opcode, Serializer)
      │                                 │
      │                                 ▼
-     │                                 ArcadeBasic.Vm
+     │                                 ArcadeBasic.Vm ──► ArcadeBasic.Runtime
+     │                                 (+ BasicEngine)    (Value, ActivationRecord,
+     │                                                     BuiltinImpls, BasicFile,
+     │                                                     PictureFormat, devices)
      │
-     └─► ArcadeBasic.Cli (top-level orchestration, AOT self-extracting stub)
+     ├─► ArcadeBasic.Cli (top-level orchestration, AOT self-extracting stub)
+     └─► ArcadeBasic.Web (the browser IDE; not in the .sln — see its README)
 ```
 
 `ArcadeBasic.Cli` depends on every other project; everything else avoids cyclic references by sitting under one of the upstream projects.
@@ -145,32 +135,19 @@ For `SUB` / `FUNCTION` / `DEF FN`, the symbol also holds a `BodyScope` and a bac
 
 ### ArcadeBasic.Runtime
 
-Domain types shared by both the interpreter and the VM:
+The domain types the VM works on, and what it drives:
 
 - **`Value`** — sealed record class hierarchy: `NumericValue(BigDecimal)`, `StringValue(string)`, `NumericArrayValue`, `StringArrayValue`, `FileHandleValue`.
 - **`ActivationRecord`** — frame storage. A `Value?[]` of size `frameSize`, indexed by `Slot`. Carries a `Parent` link for static-link walks (currently only program ↔ inner scope).
-- **`FlowControl`** — non-local control-flow signal returned by every statement: `Next`, `Goto`, `Gosub`, `Return`, `Stop`, `End`, `Exit`, `Cause`, `Retry`, `Resume`. Avoids using .NET exceptions for BASIC-level control flow (important because `RETRY`/`CONTINUE` can't unwind through CLR stack frames cleanly).
 - **`BuiltinImpls`** — concrete implementations of `SQR`, `SIN`, `LEN`, `MID$`, etc., keyed by name in an `IReadOnlyDictionary`.
 - **`BasicFile`** — abstraction over a `Stream` for DISPLAY/INTERNAL/BYTE mode files.
 - **`PictureFormat`** — parser and applier for `PRINT USING` picture strings.
 - **§13 graphics core** — `GraphicsState` (window/viewport/clip + coordinate mapping and Cohen–Sutherland / Sutherland–Hodgman clipping), `Rasterizer` (Bresenham + scanline fill), and the `IGraphicsDevice` seam with backends `NullGraphicsDevice`, `RecordingGraphicsDevice` (tests) and `AnsiGraphicsDevice` (Braille + ANSI terminal). See *device seams* below.
 - **`IKeyboard`** — the seam behind `INKEY$` (non-blocking key poll); `NullKeyboard` is the default.
 
-### ArcadeBasic.Interpreter
-
-Tree-walking interpreter. The main loop is `ExecuteStatementList(stmts, frame)`: build a label map, walk a pc cursor, dispatch each statement to `ExecStmt`, and react to the returned `FlowControl`:
-
-- `Next` → `pc++`
-- `Goto(label)` → jump within this block, or propagate if label isn't local
-- `Gosub(label)` → if local, push return PC and jump; otherwise call `RunGosubAtLabel` which runs the subroutine inline against the program-level statement list and returns when its outermost `RETURN` fires
-- `Return` → pop the local gosub stack, or propagate (so `RunGosubAtLabel`'s loop can terminate)
-- `End` / `Stop` / `Cause` / `Exit` / `Retry` / `Resume` → propagate
-
-`ExecFor`, `ExecDo`, `ExecSelect`, `ExecWhen`, etc., are recursive — they call back into `ExecuteStatementList` for their bodies. The same `ActivationRecord` flows through all of them, so the FOR loop counter is reachable from inside any nested block or DEF FN body via static-link resolution.
-
 ### ArcadeBasic.Compiler + ArcadeBasic.Bytecode + ArcadeBasic.Vm
 
-The non-interpreter path. `BasicCompiler.Compile(program, info)` walks the AST and emits a `Chunk` per program-level body, SUB, FUNCTION, and DEF. Each `Chunk` carries:
+`BasicCompiler.Compile(program, info)` walks the AST and emits a `Chunk` per program-level body, SUB, FUNCTION, and DEF. Each `Chunk` carries:
 
 - A `byte[]` of opcode/operand stream
 - A constants pool (`BigDecimal[]`, `string[]`)
@@ -182,11 +159,11 @@ Opcodes are listed in `Opcode.cs`. They split into stack manipulation, constants
 
 Because all of that state lives in the VM rather than on the C# stack, the program can pause between any two instructions. `BasicVm.Step(maxInstructions)` runs at most that many and returns a `StepResult`: `Running` (budget spent), `Sleeping` (`SLEEP n`, after flushing the graphics device), `NeedsInput` (`INPUT`/`LINE INPUT`/`MAT INPUT` with nothing queued — only when the reader implements `INonBlockingLineReader`, e.g. `LineInputQueue`), `AwaitingAudio` (a foreground `SOUND`/`BEEP`/`PLAY`, or background music past GW-BASIC's 32-tone buffer on a device that can't block — `MaxQueuedTones` says how far to drain), `NeedsPoint` (`LOCATE POINT` waiting for a pick), `Paused` (a debugger stop, below), or `Halted` (exit code, plus the error text for an unhandled exception). A host that owns the main loop — a browser page, a game's frame update — calls `Step` each frame and does the waiting itself. `Run()` is that same loop with the waiting done on the calling thread (sleep, blocking read, `IAudioDevice.Flush()`), and `Run(CancellationToken)` can be stopped between slices.
 
-A program can span several files: `ProgramLoader` (in the parser) follows `LIBRARY` statements, asking the host to find each file, parses each once, and joins them into one program, the libraries' units first. Each statement keeps its `SourceFile`, so diagnostics name the file; the compiler numbers the files (`Program.SourceFiles`, the main program's first) and packs the number into each `LineNote` with the line, so runtime errors, `CurrentFile`/`CurrentLine` and breakpoints (`SourceLine(file, line)`) do too. A `MODULE`'s variables are slots in the program's frame, with the analyzer deciding which code sees them; each module's start-up statements are compiled at the head of the main chunk (and run first by the tree-walker); and `DATA` is kept per program-unit (`DataPools`), each `READ`/`RESTORE`/`MAT READ` naming its pool.
+A program can span several files: `ProgramLoader` (in the parser) follows `LIBRARY` statements, asking the host to find each file, parses each once, and joins them into one program, the libraries' units first. Each statement keeps its `SourceFile`, so diagnostics name the file; the compiler numbers the files (`Program.SourceFiles`, the main program's first) and packs the number into each `LineNote` with the line, so runtime errors, `CurrentFile`/`CurrentLine` and breakpoints (`SourceLine(file, line)`) do too. A `MODULE`'s variables are slots in the program's frame, with the analyzer deciding which code sees them; each module's start-up statements are compiled at the head of the main chunk; and `DATA` is kept per program-unit (`DataPools`), each `READ`/`RESTORE`/`MAT READ` naming its pool.
 
 The same pauses make a debugger. Every statement starts with a `LineNote` carrying its source line (the compiler also records each chunk's `StatementLines`), and each call frame remembers the line it's on. `BasicVm.Breakpoints` is a set of lines: before the first statement of one, `Step` returns `Paused` with `CurrentLine` set, and the next `Step` runs that statement. `PauseAt(DebugStep)` stops again at the next statement (`Pause`), the next line (`Into`), the next line at this call-and-GOSUB depth or shallower (`Over`), or once the current call returns (`Out`); a line with several statements is one stop. `CallStack()` lists the frames innermost first, each with its chunk, name, line and slots — the analyzer's scopes name the slots. The checks cost a flag test per statement when nothing is set. `Run()` has no one to show a pause to and carries on.
 
-The runtime uses the same `Value` types and `ActivationRecord` as the tree-walker, and the shared `MatOps` / `DisplayFormat` / `PictureFormat` / `ChannelTable` / `BuiltinImpls` helpers in `ArcadeBasic.Runtime` so the two engines produce byte-identical output on every program. The remaining `BasicCompiler.UnsupportedFeatureException` sites are defensive fallbacks for sema-invariants (e.g. "MAT target is not a known array") that well-formed input never reaches.
+The VM works on the Runtime's `Value` types and `ActivationRecord`s, with its `MatOps` / `DisplayFormat` / `PictureFormat` / `ChannelTable` / `BuiltinImpls` helpers. `BasicEngine.Run(source, …)` (in the VM project) is the one-call way in for a host: load with libraries, analyze, compile, run to the end, and report diagnostics and the error that stopped the program. Until 2026 a tree-walking interpreter ran programs too; it was retired once the VM was faster everywhere, to keep one engine. The remaining `BasicCompiler.UnsupportedFeatureException` sites are defensive fallbacks for sema-invariants (e.g. "MAT target is not a known array") that well-formed input never reaches.
 
 ### ArcadeBasic.Cli + Phase-10 self-extracting binary
 
@@ -209,7 +186,7 @@ See [**standalone-builds.md**](standalone-builds.md) for a deeper write-up: the 
 
 By default every numeric value is an arbitrary-precision decimal. No integer fast path — `42` and `42.0` are the same. The PRINT output rounds to 9 significant digits for display (`DisplayFormat.FormatNumeric`); internal arithmetic keeps full precision.
 
-Why: ISO 10279 says numeric values are decimal, with implementation-defined precision and range. BigDecimal gets us the decimal semantics for free; the runtime cost is acceptable for a teaching/conformance interpreter.
+Why: ISO 10279 says numeric values are decimal, with implementation-defined precision and range. BigDecimal gets us the decimal semantics for free; the runtime cost is acceptable for a teaching/conformance implementation.
 
 `OPTION ARITHMETIC NATIVE` (sema records it as `SemanticInfo.Arithmetic`; the compiler copies it into the bytecode header) switches the whole program to IEEE doubles for speed. A `NumericValue` holds either representation and exposes both views — `V` (decimal) and `D` (double) — so code that only needs "a number" (file I/O, PRINT USING, graphics coordinates) works unchanged under either mode. The operators in `Numbers` work in double whenever an operand is native; the engines create every fresh value (literals, INPUT/READ data, builtin results, booleans) in the program's mode; and `NumericArrayValue` stores `double[]` under NATIVE. The decimal path is untouched, so `DECIMAL` output is byte-identical to what it was before NATIVE existed.
 
@@ -230,9 +207,9 @@ BASIC's `GOTO`, `GOSUB`, `EXIT`, `WHEN`/`USE`/`RETRY`/`CONTINUE` are all modelle
 ### Device seams: graphics and keyboard
 
 The §13 graphics module and `INKEY$` both reach the outside world through small
-interfaces injected into *both* engines, so all the device-independent logic
-lives once in `ArcadeBasic.Runtime` and the interpreter and VM stay byte-for-byte
-identical (the same pattern as `MatOps`/`PictureFormat`).
+interfaces injected into the VM, so all the device-independent logic lives once
+in `ArcadeBasic.Runtime` and a new device only draws (the same pattern as
+`MatOps`/`PictureFormat`).
 
 - **`IGraphicsDevice`** — the core (`GraphicsState`) does all coordinate mapping
   and clipping, then hands the backend already-clipped vector primitives in the
@@ -241,18 +218,18 @@ identical (the same pattern as `MatOps`/`PictureFormat`).
   CLI/standalone; it draws on a `CellSurface`: box-drawing lines, block fills,
   Braille for the rest, text in cells) and the browser's `CanvasGraphicsDevice`
   (`ArcadeBasic.Web`, an HTML canvas). `RecordingGraphicsDevice` captures the primitive stream so the
-  conformance suite can assert interpreter == VM. `SLEEP` calls `Flush()`, which
+  conformance suite can assert on what a program draws. `SLEEP` calls `Flush()`, which
   is the frame boundary that makes the terminal backends present each frame of a
   game loop.
 - **`IKeyboard`** — a non-blocking `ReadKey()` behind `INKEY$`; `ConsoleKeyboard`
   (CLI/standalone, via `Console.ReadKey`) and the browser's `BrowserKeyboard`
   supply real keys, `NullKeyboard`
-  yields `""` when there's no interactive keyboard. Both engines read it through
+  yields `""` when there's no interactive keyboard. The VM reads it through
   `KeyboardState`, which also answers `KEYDOWN`: exactly, from a keyboard that also
   implements **`IKeyState`** (one that sees key releases, like the browser's), or else estimated from presses and auto-repeat (terminals).
 - **`IPointer`** — an optional companion to `IGraphicsDevice` for a surface the
   user can point at: the pointer's position and primary-button press/release events,
-  in the device unit square. Both engines read it through `PointerState` for
+  in the device unit square. The VM reads it through `PointerState` for
   `LOCATE POINT` (wait for a press) and `GET MOUSE` (sample), mapping back to problem
   coordinates with `GraphicsState.ToProblem`. The browser canvas implements it; elsewhere `LOCATE POINT` reads typed coordinates.
 - **`ICellArrayDevice`, `IColorMixDevice`** — optional too: a device that draws
@@ -271,7 +248,7 @@ and the browser.
 
 ### Frame storage: slot-indexed activation records
 
-Every scope (`Program`, `Sub`, `Function`, `Def`, `Module`) hands out integer slots from `AllocateSlot()` at sema time. At runtime, `ActivationRecord.Slots[i]` holds the `Value`. Reads/writes of a name compile to `(scope, slot)` pairs; the interpreter walks the static-link chain via `ResolveFrameForScope` to find the correct frame.
+Every scope (`Program`, `Sub`, `Function`, `Def`, `Module`) hands out integer slots from `AllocateSlot()` at sema time. At runtime, `ActivationRecord.Slots[i]` holds the `Value`. Reads/writes of a name compile to `LoadLocal`/`StoreLocal` slot (this frame) or `LoadOuter`/`StoreOuter` depth, slot — the VM walks that many `Parent` links to find the frame.
 
 This buys us:
 
@@ -301,6 +278,6 @@ The libs are deliberately framework-thin: no `System.Text.Rune` (rewritten as su
 
 ## Where to look next
 
-- **Code entry points:** `src/ArcadeBasic.Lexer/Lexer.cs` for tokenizing, `src/ArcadeBasic.Parser/BasicParser.cs` for `ParseStatement` dispatch, `src/ArcadeBasic.Sema/Analyzer.cs` for the two-pass analyzer, `src/ArcadeBasic.Interpreter/BasicInterpreter.cs` for the `ExecuteStatementList` loop.
+- **Code entry points:** `src/ArcadeBasic.Lexer/Lexer.cs` for tokenizing, `src/ArcadeBasic.Parser/BasicParser.cs` for `ParseStatement` dispatch, `src/ArcadeBasic.Sema/Analyzer.cs` for the two-pass analyzer, `src/ArcadeBasic.Compiler/BasicCompiler.cs` for the lowering, `src/ArcadeBasic.Vm/BasicVm.cs` for the `RunFrames` dispatch loop.
 - **Adding things:** see [`CONTRIBUTING.md`](../CONTRIBUTING.md) for "how to add a builtin / statement / opcode" recipes.
 - **What's spec-compliant vs implementation-defined:** see [`conformance.md`](conformance.md).

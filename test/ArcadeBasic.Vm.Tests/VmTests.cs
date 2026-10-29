@@ -9,9 +9,7 @@ using ArcadeBasic.Vm;
 namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>
-/// VM tests. The VM is feature-complete against the tree-walker and matches
-/// its output byte-for-byte on every example program (startrek.bas uses
-/// non-deterministic RND so the engines agree structurally, not literally).
+/// VM tests: snippets compiled and run, asserting on what they print.
 /// </summary>
 public class VmTests
 {
@@ -826,7 +824,7 @@ public class VmTests
     [InlineData("PRINT USING \"*****\": 42", "***42")]
     public void PrintUsingAdvancedFields(string source, string expected)
     {
-        // Grouping / floating currency / asterisk-fill must match the tree-walker.
+        // Grouping / floating currency / asterisk-fill.
         Run(source).Output.TrimEnd('\n', '\r').Should().Be(expected);
     }
 
@@ -853,11 +851,10 @@ public class VmTests
     }
 
     [Fact]
-    public void PrintUsingMatchesTreeWalkerForFormattedExample()
+    public void PrintUsingRunsTheFormattedExample()
     {
         // formatted.bas exercises >, ###, ##.##, +#.####, $$, ',', and string fields.
-        // We don't pin a literal byte-for-byte expected here — instead delegate to
-        // the tree-walker (the canonical formatter) and assert parity.
+        // (ExampleTests pins its whole output.)
         var source = File.ReadAllText("../../../../../examples/formatted.bas");
         var vm = Run(source);
         vm.Exit.Should().Be(0);
@@ -1585,7 +1582,7 @@ public class VmTests
     public void ExitDefReturnsEarly()
     {
         // Multi-line DEF that returns early via EXIT DEF. Multi-line DEFs return
-        // zero/empty (a tree-walker gap with multi-line DEF's name-slot) regardless
+        // zero/empty (a gap: sema gives a multi-line DEF's name no slot) regardless
         // of whether they exit early or fall through — EXIT DEF still has to compile
         // and run without crashing.
         const string src = """

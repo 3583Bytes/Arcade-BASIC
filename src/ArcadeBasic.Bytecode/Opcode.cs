@@ -87,20 +87,21 @@ public enum Opcode : byte
     //              truncates the stack, and jumps to usePc.
     //
     //   PopHandler operand: none. Pops the topmost handler. Emitted at the
-    //              end of the IN body (normal exit). Use bodies fall through.
+    //              end of the IN body (normal exit), and before EXIT WHEN there.
+    //              A USE body ends with EndUse.
     //
     //   Cause      operand: none. Pops a numeric type from the stack and
     //              throws a BasicRuntimeException carrying that type. The
     //              same dispatch path that catches runtime errors handles it.
     //
-    //   Retry      operand: i32 beginWhenOffset (relative to next pc). Jumps
-    //              back to the matching BeginWhen so its push of a fresh
-    //              handler re-executes; in-body runs again from the top.
+    //   Retry      operand: i32 beginWhenOffset (relative to next pc). Ends the
+    //              USE body and jumps back to the matching BeginWhen so its push
+    //              of a fresh handler re-executes; in-body runs again from the top.
     //
-    //   Continue   operand: none. Inside a USE body, jumps to _currentContinuePc
-    //              — the PC of the statement immediately after the one that
-    //              raised the exception. Snapshot of the local stmtEndPc
-    //              taken when the exception was dispatched.
+    //   Continue   operand: none. Ends the USE body, puts its handler back and
+    //              jumps to the statement immediately after the one that raised
+    //              the exception (the catching frame's stmtEndPc, snapshotted
+    //              when the exception was dispatched) — still protected.
     LineNote,
     BeginWhen,
     PopHandler,
@@ -174,8 +175,8 @@ public enum Opcode : byte
     //                   u32 rank          (0 for scalar, else array)
     //   stack: for each array target in declaration order, `rank` subscripts.
     //
-    //   Restore operand: u32 pool. Mirrors the tree-walker — RESTORE label is
-    //                    parsed but treated as plain RESTORE (cursor → 0).
+    //   Restore operand: u32 pool. RESTORE label is parsed but treated as
+    //                    plain RESTORE (cursor → 0).
     //
     //   MatRead operand: u32 pool, u32 depth, u32 slot, u32 isString. Fills the array
     //                    with consecutive DATA items.
@@ -237,8 +238,8 @@ public enum Opcode : byte
     StoreElementOuter,     // operand: u32 depth, u32 slot, u32 rank
 
     // -- Graphics (§13) --
-    // Operands flow through the stack; opcodes drive the same shared
-    // GraphicsState the tree-walker uses, so output is byte-identical.
+    // Operands flow through the stack; opcodes drive the Runtime's GraphicsState,
+    // which does the mapping and clipping for every device.
     GfxSetBounds,          // operand: u32 rectKind (matches Parser.Ast.GfxRectKind) — stack (top last): left, right, bottom, top
     GfxSetClip,            // stack: onOff (string)
     GfxSetStyle,           // operand: u32 prim (0=point,1=line) — stack: index
@@ -276,4 +277,12 @@ public enum Opcode : byte
     GfxCells,              // operand: u32 depth, u32 slot (the array) — stack (top last): x1, y1, x2, y2; MAT GRAPH CELLS
     GfxSetColorMix,        // stack (top last): index, red, green, blue; SET COLOR MIX
     GfxAskColorMix,        // operand: u32 component (0 red, 1 green, 2 blue, 3 status) — stack: index; pushes ASK COLOR MIX's value
+
+    // -- NEXT in one instruction (appended so the values above stay stable) --
+    ForNext,               // operand: u32 varSlot, u32 limitSlot, u32 stepSlot, i32 offset — adds the step to the (local) control
+                           // variable and jumps by offset (from the next instruction) back into the body unless the loop is finished
+
+    // -- The end of a USE body (appended so the values above stay stable) --
+    EndUse,                // operand: none — the handler body is done (fell off its end, or EXIT WHEN / EXIT HANDLER): EXTYPE,
+                           // EXLINE and EXTEXT$ go back to the exception an enclosing USE body is handling, if any
 }

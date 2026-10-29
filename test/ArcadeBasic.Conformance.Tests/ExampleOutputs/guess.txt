@@ -1,0 +1,2 @@
+guess the number from 1 to 10:
+? got it in 1 tries!

@@ -1,0 +1,10 @@
+-- catch division by zero --
+caught at line 6 type 1001 
+
+-- retry until ATTEMPTS = 3 --
+attempt 1 
+  handler saw type 9001 
+attempt 2 
+  handler saw type 9002 
+attempt 3 
+succeeded after 3 tries

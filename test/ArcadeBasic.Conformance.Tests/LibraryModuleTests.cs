@@ -1,7 +1,6 @@
 using ArcadeBasic.Bytecode;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Runtime;
 using ArcadeBasic.Sema;
@@ -14,7 +13,6 @@ namespace ArcadeBasic.Conformance.Tests;
 /// Programs in several files: LIBRARY "file" brings in another file's MODULEs and
 /// procedures, and modules have their own variables (SHARE, PUBLIC — and DECLARE PUBLIC
 /// to use them elsewhere), their own start-up code, and their own DATA (ISO 10279).
-/// Both engines must agree on all of it.
 /// </summary>
 public class LibraryModuleTests
 {
@@ -29,22 +27,17 @@ public class LibraryModuleTests
         return diags.HasErrors ? (null, null, [.. diags.All]) : (program, info, [.. diags.All]);
     }
 
-    /// <summary>Run on both engines; they must print the same. The output.</summary>
+    /// <summary>Run it to the end in one step; the output.</summary>
     private static string Run(Dictionary<string, string> files)
     {
         var (program, info, problems) = Load(files);
         Assert.True(program is not null, string.Join("\n", problems.Select(p => p.Render(false))));
-
-        var interpreted = new StringWriter { NewLine = "\n" };
-        Assert.Equal(0, new BasicInterpreter(program!, info!, interpreted, TextReader.Null).Run());
 
         var stepped = new StringWriter { NewLine = "\n" };
         var vm = new BasicVm(BasicCompiler.Compile(program!, info!), stepped, TextReader.Null);
         var result = vm.Step(1_000_000);
         Assert.Equal(StepStatus.Halted, result.Status);
         Assert.Null(result.Error);
-
-        Assert.Equal(interpreted.ToString(), stepped.ToString());
         return stepped.ToString();
     }
 
@@ -258,8 +251,6 @@ public class LibraryModuleTests
         var result = vm.Step(10_000);
         Assert.Equal("unhandled exception type 1001 at line 3 in lib.bas: division by zero", result.Error);
 
-        var interpreted = new BasicInterpreter(program!, info!, new StringWriter(), TextReader.Null);
-        Assert.Equal(1, interpreted.Run());
         Assert.Equal("line 3 in lib.bas", new BasicException(1001, 3, "", "lib.bas").Where);
     }
 }

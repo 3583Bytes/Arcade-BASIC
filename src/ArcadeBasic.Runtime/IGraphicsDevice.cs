@@ -10,8 +10,8 @@ public readonly record struct GfxDeviceSize(double Width, double Height, string 
 public enum GfxColorTarget { Point, Line, Text, Area }
 
 /// <summary>What an <c>ASK</c> statement queries. The ordinal values must stay
-/// in lock-step with the parser's <c>GfxAskObject</c> enum — both engines cast
-/// between them by ordinal when lowering/executing ASK.</summary>
+/// in lock-step with the parser's <c>GfxAskObject</c> enum — the compiler casts
+/// between them by ordinal when lowering ASK.</summary>
 public enum GfxQuery
 {
     Window, Viewport, DeviceWindow, DeviceViewport, DeviceSize, Clip,

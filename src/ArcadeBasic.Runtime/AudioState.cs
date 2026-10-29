@@ -4,8 +4,7 @@ namespace ArcadeBasic.Runtime;
 
 /// <summary>
 /// The device-independent core of the audio extension (Microsoft BASIC /
-/// GW-BASIC dialect), shared by the interpreter and the VM so both engines
-/// produce identical audio. It owns the musical state that persists across
+/// GW-BASIC dialect), which the VM drives. It owns the musical state that persists across
 /// statements (octave, default length, tempo, articulation, foreground/background
 /// mode), lowers `SOUND`/`BEEP`/`PLAY` to <see cref="ToneEvent"/>s, and hands them
 /// to an <see cref="IAudioDevice"/>. Mirrors the role of <see cref="GraphicsState"/>.

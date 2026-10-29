@@ -8,9 +8,9 @@ using BcProgram = ArcadeBasic.Bytecode.Program;
 namespace ArcadeBasic.Vm;
 
 /// <summary>
-/// Phase-9 stack-based bytecode VM. Same Value record types and activation-
-/// record model as the tree-walker, so shared helpers (BuiltinImpls,
-/// FormatNumeric) compose without translation.
+/// The stack-based bytecode VM that runs every program. Its values and frames are
+/// the Runtime's Value types and ActivationRecords, so the Runtime's helpers
+/// (BuiltinImpls, FormatNumeric) work on them directly.
 /// </summary>
 public sealed class BasicVm
 {
@@ -30,15 +30,21 @@ public sealed class BasicVm
     /// <summary>Stack of active exception handlers — pushed by BeginWhen, popped by PopHandler or by an exception dispatch.</summary>
     private readonly Stack<HandlerFrame> _handlerStack = new();
 
-    /// <summary>Currently-active exception inside a USE body. Read by EXTYPE / EXLINE / EXTEXT$.</summary>
-    private BasicException? _currentException;
+    /// <summary>The USE bodies running, innermost on top. Each has the exception it is
+    /// handling (EXTYPE / EXLINE / EXTEXT$ read the top one's), and for CONTINUE the
+    /// statement to resume at and the handler to put back. <see cref="ActiveUse.Position"/>
+    /// is where that handler sat in <see cref="_handlerStack"/>; <see cref="ActiveUse.Frames"/>,
+    /// how many call frames were active.</summary>
+    private readonly Stack<ActiveUse> _activeUses = new();
+
+    private readonly record struct ActiveUse(BasicException Exception, int ContinuePc, HandlerFrame Handler, int Position, int Frames);
+
+    /// <summary>The exception the innermost running USE body is handling, if any.</summary>
+    private BasicException? CurrentException => _activeUses.Count > 0 ? _activeUses.Peek().Exception : null;
 
     /// <summary>Source line of the statement currently executing. Updated by LineNote; used as EXLINE when an exception fires.</summary>
     private int _currentLine;
     private int _currentFile;                 // which of the program's SourceFiles _currentLine is in
-
-    /// <summary>PC at which CONTINUE should resume — the start of the statement immediately after the one that raised. Set by <see cref="Dispatch"/> from the catching frame's StmtEndPc.</summary>
-    private int _currentContinuePc;
 
     private readonly record struct HandlerFrame(int UsePc, int StackBaseline, int GosubDepth);
 
@@ -196,9 +202,13 @@ public sealed class BasicVm
     private readonly BuiltinKind[] _builtinKinds;
     private readonly BuiltinImpls.BuiltinFn?[] _builtinFns;
 
+    /// <summary>Where <see cref="Run()"/> reports an exception the program doesn't handle
+    /// (the console's error stream unless the host says otherwise).</summary>
+    public TextWriter Errors { get; set; } = Console.Error;
+
     /// <summary>Run the program to the end on this thread, doing the waiting itself —
     /// SLEEP sleeps, INPUT blocks on the reader, foreground audio drains. Returns the
-    /// exit code (0 normal end, 1 unhandled exception — reported on stderr).</summary>
+    /// exit code (0 normal end, 1 unhandled exception — reported on <see cref="Errors"/>).</summary>
     public int Run() => Run(CancellationToken.None);
 
     /// <summary><see cref="Run()"/>, stopping with <see cref="OperationCanceledException"/>
@@ -218,7 +228,7 @@ public sealed class BasicVm
                         if (r.Error is not null)
                         {
                             _out.Flush();
-                            Console.Error.WriteLine(r.Error);
+                            Errors.WriteLine(r.Error);
                         }
                         return r.ExitCode;
                     case StepStatus.Sleeping:
@@ -301,7 +311,6 @@ public sealed class BasicVm
                 {
                     // Hand it to the innermost active WHEN handler, or end the program.
                     // _currentLine is the most recent LineNote: the failing statement.
-                    // (Same "unhandled exception" text as the tree-walker.)
                     if (!Dispatch(ex))
                         return Finish(StepResult.Failed(1,
                             $"unhandled exception type {ex.TypeCode} at line {_currentLine}{InFile()}: {ex.Message}"));
@@ -437,6 +446,7 @@ public sealed class BasicVm
         _final = result;
         _frames.Clear();
         _handlerStack.Clear();
+        _activeUses.Clear();
         _channels.Dispose();
         return result;
     }
@@ -452,14 +462,17 @@ public sealed class BasicVm
         var cf = _frames.Peek();
         var top = _handlerStack.Pop();
         _stack.Truncate(top.StackBaseline);
-        _currentException = new BasicException(ex.TypeCode, _currentLine, ex.Message);
+        // Getting here ended any USE body inside this handler's block (one that
+        // raised, or ran a block that raised). One whose block holds this one goes on.
+        while (_activeUses.Count > 0 && _activeUses.Peek().Position > _handlerStack.Count) _activeUses.Pop();
         // A CONTINUE inside the USE body resumes at the statement after the one
         // that raised — in the catching frame, so after a CALL that raised. And after a
         // GOSUB that raised: a subroutine the protected block called is over (its
         // RETURN addresses go), as in the interpreter.
         var continuePc = cf.StmtEndPc;
         while (cf.Gosubs is { } gosubs && gosubs.Count > top.GosubDepth) continuePc = gosubs.Pop();
-        _currentContinuePc = continuePc;
+        _activeUses.Push(new ActiveUse(new BasicException(ex.TypeCode, _currentLine, ex.Message), continuePc, top,
+            _handlerStack.Count, _frames.Count));
         cf.Pc = top.UsePc;
         return true;
     }
@@ -479,6 +492,7 @@ public sealed class BasicVm
     {
         var done = _frames.Pop();
         while (_handlerStack.Count > done.HandlerBase) _handlerStack.Pop();
+        while (_activeUses.Count > 0 && _activeUses.Peek().Frames > _frames.Count) _activeUses.Pop();   // EXIT SUB from a USE body
         _stack.Truncate(done.StackBase);
         if (_frames.Count == 0) return false;
         if (done.ReturnsValue)
@@ -610,6 +624,28 @@ public sealed class BasicVm
                         stack.Push(NumericValue.Bool(step.IsNegative ? cmp < 0 : cmp > 0, _native));
                         break;
                     }
+                case Opcode.ForNext:
+                    {
+                        var slot = (int)ReadU32(code, ref pc);
+                        var limit = (NumericValue)frame.Get((int)ReadU32(code, ref pc));
+                        var step = (NumericValue)frame.Get((int)ReadU32(code, ref pc));
+                        var off = ReadI32(code, ref pc);
+                        int cmp;
+                        if (_native)
+                        {
+                            var v = Finite((frame.TryGetUnboxed(slot, out var n) ? n : ((NumericValue)frame.GetOrDefault(slot, _zero)).D) + step.D);
+                            frame.SetNumber(slot, v);
+                            cmp = v.CompareTo(limit.D);
+                        }
+                        else
+                        {
+                            var v = Numbers.Add((NumericValue)frame.GetOrDefault(slot, _zero), step);
+                            frame.Set(slot, v);
+                            cmp = Numbers.Compare(v, limit);
+                        }
+                        if (step.IsNegative ? cmp >= 0 : cmp <= 0) pc += off;
+                        break;
+                    }
                 case Opcode.Sleep:
                     {
                         // Frame boundary: present what's drawn, then pause.
@@ -623,7 +659,7 @@ public sealed class BasicVm
                         break;
                     }
 
-                // -- Audio (SOUND/BEEP/PLAY): drive the same AudioState as the tree-walker --
+                // -- Audio (SOUND/BEEP/PLAY): drive the Runtime's AudioState --
                 case Opcode.Sound:
                     {
                         _graphics.Flush();
@@ -649,7 +685,7 @@ public sealed class BasicVm
                         break;
                     }
 
-                // -- Graphics (§13): drive the same GraphicsState as the tree-walker --
+                // -- Graphics (§13): drive the Runtime's GraphicsState --
                 case Opcode.GfxSetBounds:
                     {
                         var kind = (int)ReadU32(code, ref pc);
@@ -978,15 +1014,13 @@ public sealed class BasicVm
                         switch (kind)
                         {
                             case BuiltinKind.Extype:
-                                stack.Push(NumericValue.From(_currentException?.Type ?? 0, _native));
+                                stack.Push(NumericValue.From(CurrentException?.Type ?? 0, _native));
                                 break;
                             case BuiltinKind.Exline:
-                                stack.Push(NumericValue.From(_currentException?.Line ?? 0, _native));
+                                stack.Push(NumericValue.From(CurrentException?.Line ?? 0, _native));
                                 break;
                             case BuiltinKind.Extext:
-                                stack.Push(_currentException is null
-                                    ? StringValue.Empty
-                                    : new StringValue(_currentException.Text));
+                                stack.Push(CurrentException is { } handled ? new StringValue(handled.Text) : StringValue.Empty);
                                 break;
                             case BuiltinKind.Inkey:
                                 stack.Push(new StringValue(_keys.ReadKey()));   // non-blocking key poll
@@ -1124,11 +1158,21 @@ public sealed class BasicVm
                 case Opcode.Retry:
                     {
                         var off = ReadI32(code, ref pc);
+                        if (_activeUses.Count > 0) _activeUses.Pop();
                         pc += off;
                         break;
                     }
                 case Opcode.Continue:
-                    pc = _currentContinuePc;
+                    {
+                        // Back into the protected block, which is protected again.
+                        if (_activeUses.Count == 0) break;
+                        var use = _activeUses.Pop();
+                        _handlerStack.Push(use.Handler);
+                        pc = use.ContinuePc;
+                        break;
+                    }
+                case Opcode.EndUse:
+                    if (_activeUses.Count > 0) _activeUses.Pop();
                     break;
 
                 case Opcode.Open:
@@ -1331,7 +1375,7 @@ public sealed class BasicVm
                         var slot = (int)ReadU32(code, ref pc);
                         var f = ResolveOuter(frame, programFrame, depth);
                         var arr = f.GetOrDefault(slot, NumericValue.Zero);
-                        // Push a copy, like the tree-walker's MatRhsName: after MAT A = B the
+                        // Push a copy: after MAT A = B the
                         // two arrays must not share storage.
                         stack.Push(arr switch
                         {
@@ -1619,8 +1663,8 @@ public sealed class BasicVm
     private List<string>? _matInputValues;
 
     /// <summary>Collect MAT INPUT's <paramref name="n"/> comma-separated values, prompting
-    /// "? " per line (mirrors BasicInterpreter.ExecMatInput). False if a non-blocking
-    /// reader runs dry first — the values so far are kept for the retry.</summary>
+    /// "? " per line. False if a non-blocking reader runs dry first — the values so far
+    /// are kept for the retry.</summary>
     private bool TryCollectMatInput(int n, out List<string> values)
     {
         values = _matInputValues ??= new List<string>();
@@ -1643,7 +1687,7 @@ public sealed class BasicVm
         return true;
     }
 
-    /// <summary>Store MAT INPUT's values; errors line up with the tree-walker (4002 non-numeric).</summary>
+    /// <summary>Store MAT INPUT's values (4002 for a non-numeric one).</summary>
     private static void AssignMatInput(Value arr, bool isString, List<string> values)
     {
         var n = values.Count;
@@ -1693,7 +1737,7 @@ public sealed class BasicVm
         return true;
     }
 
-    // -- File-I/O helpers (mirror BasicInterpreter.File.cs) ---------------
+    // -- File-I/O helpers -------------------------------------------------
 
     private void OpenChannel(int channel, string path, uint access, uint create, uint rectype)
     {
@@ -1902,8 +1946,7 @@ public sealed class BasicVm
     }
 
     /// <summary>Split and convert an INPUT reply, one value per target. A short or
-    /// non-numeric reply prints the "redo from start" message and returns null.
-    /// Mirrors BasicInterpreter.ExecInput: same messages, so the engines agree.</summary>
+    /// non-numeric reply prints the "redo from start" message and returns null.</summary>
     private Value[]? ParseInputReply(string rawLine, InputTargetDesc[] descs)
     {
         var fields = rawLine.Split(',');

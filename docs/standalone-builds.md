@@ -168,8 +168,8 @@ dotnet publish src/ArcadeBasic.Cli -c Release -r osx-arm64 -o out
 out/arcade-basic build examples/factorial.bas -o factorial
 ./factorial
 
-# Same source under the VM (interpreted, no AOT), for comparison
-out/arcade-basic vm examples/factorial.bas
+# The same program compiled and run on the spot, for comparison
+out/arcade-basic run examples/factorial.bas
 
 # Inspect the trailer of a bundled binary
 tail -c 12 factorial | xxd

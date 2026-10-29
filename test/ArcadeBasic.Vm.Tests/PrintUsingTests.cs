@@ -1,11 +1,11 @@
 using FluentAssertions;
 using ArcadeBasic.Core;
-using ArcadeBasic.Interpreter;
+using ArcadeBasic.Compiler;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
 
-namespace ArcadeBasic.Interpreter.Tests;
+namespace ArcadeBasic.Vm.Tests;
 
 /// <summary>Phase-8a tests for PRINT USING.</summary>
 public class PrintUsingTests
@@ -22,7 +22,7 @@ public class PrintUsingTests
             return string.Join("\n", diags.All.Select(d => d.Render(false)));
         }
         var sw = new StringWriter { NewLine = "\n" };
-        new BasicInterpreter(program, info, sw, new StringReader("")).Run();
+        new BasicVm(BasicCompiler.Compile(program, info), sw, new StringReader("")).Run();
         return sw.ToString();
     }
 

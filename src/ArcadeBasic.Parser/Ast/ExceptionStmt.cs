@@ -25,6 +25,6 @@ public sealed record class RetryStmt(SourceSpan Span) : Stmt(Span);
 /// <summary>
 /// CONTINUE — resume the IN body of the enclosing WHEN block immediately
 /// after the statement that raised. Named ContinueResumeStmt to avoid
-/// confusion with the FlowControl "go to next statement" signal.
+/// confusion with "go on to the next statement".
 /// </summary>
 public sealed record class ContinueResumeStmt(SourceSpan Span) : Stmt(Span);

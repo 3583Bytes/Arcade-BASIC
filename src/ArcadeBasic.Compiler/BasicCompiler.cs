@@ -9,7 +9,7 @@ using BcProgram = ArcadeBasic.Bytecode.Program;
 namespace ArcadeBasic.Compiler;
 
 /// <summary>
-/// AST → bytecode compiler. Feature-complete against the tree-walker:
+/// AST → bytecode compiler. It covers the whole language:
 /// literals, variables, all unary/binary arithmetic + comparison + logical,
 /// PRINT (positional, expressions + separators + TAB), assignments, IF
 /// (block + single-line), FOR/NEXT, DO/LOOP (pre/post WHILE/UNTIL),
@@ -48,6 +48,7 @@ public sealed class BasicCompiler
     /// <summary>Per open WHEN block: placeholder Jump PCs from EXIT WHEN / EXIT HANDLER
     /// inside it. Patched to the byte just past the WHEN once compilation reaches that point.</summary>
     private readonly Stack<List<int>> _exitWhenJumps = new();
+    private readonly Stack<bool> _inUseBody = new();   // per WHEN being compiled: in its USE body (else its IN body)
 
     /// <summary>Identifies the kind of chunk currently being compiled so EXIT
     /// SUB/FUNCTION/DEF can emit the right epilogue (and reject invalid uses).</summary>
@@ -192,8 +193,8 @@ public sealed class BasicCompiler
             {
                 // Multi-line DEF body is statement list; return value defaults
                 // to zero/empty unless the body assigns to the DEF's name (a
-                // documented gap the tree-walker has too — sema doesn't
-                // currently allocate a name-slot for DEF).
+                // documented gap — sema doesn't currently allocate a name-slot
+                // for DEF).
                 ResetChunkLabelTracking();
                 CompileStatements(ds.Stmt.MultiLineBody);
                 PatchPendingLabelJumps();
@@ -286,8 +287,7 @@ public sealed class BasicCompiler
     /// <summary>
     /// Lower ON index GOTO/GOSUB l1,...,ln [ELSE s] to a compare-and-jump chain
     /// over existing primitives — no dedicated opcode. The index is rounded via
-    /// the ROUND builtin so it matches the tree-walker (which rounds with the
-    /// same banker's mode) byte-for-byte. For each target k the chain re-tests
+    /// the ROUND builtin. For each target k the chain re-tests
     /// ROUND(index) == k (mirroring how SELECT CASE re-evaluates its subject).
     /// </summary>
     private void CompileOnJump(OnJumpStmt on)
@@ -478,8 +478,7 @@ public sealed class BasicCompiler
                         // Sema couldn't resolve the target — most commonly an
                         // assignment to a DEF's own name (multi-line DEF return
                         // value), which sema doesn't currently allocate a slot
-                        // for. The tree-walker silently ignores; we match by
-                        // discarding the value.
+                        // for. Discard the value.
                         _current.Emit(Opcode.Pop);
                         break;
                     default:
@@ -554,7 +553,7 @@ public sealed class BasicCompiler
 
     private void CompileAskColorMix(AskColorMixStmt am)
     {
-        // The index is evaluated once (like the tree-walker), into a temp; then each
+        // The index is evaluated once, into a temp; then each
         // target gets its component — red, green, blue, then the status.
         var indexSlot = AllocTemp();
         CompileExpr(am.Index);
@@ -789,13 +788,17 @@ public sealed class BasicCompiler
         var beginWhenPc = _current.EmitJumpPlaceholder(Opcode.BeginWhen);
         _retryTargets.Push(beginWhenPc);
         _exitWhenJumps.Push(new List<int>());
+        _inUseBody.Push(false);
         try
         {
             CompileStatements(w.InBody);
             _current.Emit(Opcode.PopHandler);
             var skipUsePc = _current.EmitJumpPlaceholder(Opcode.Jump);
             _current.PatchJump(beginWhenPc);
+            _inUseBody.Pop();
+            _inUseBody.Push(true);
             CompileStatements(useBody);
+            _current.Emit(Opcode.EndUse);
             _current.PatchJump(skipUsePc);
             // Patch every EXIT WHEN / EXIT HANDLER inside this block to land
             // here — the byte just past the WHEN.
@@ -803,6 +806,7 @@ public sealed class BasicCompiler
         }
         finally
         {
+            _inUseBody.Pop();
             _exitWhenJumps.Pop();
             _retryTargets.Pop();
         }
@@ -992,7 +996,7 @@ public sealed class BasicCompiler
 
     /// <summary>
     /// Resolves a MAT statement's named array to its (depth, slot) coordinate.
-    /// MAT statements (like the tree-walker) operate on program-scope arrays.
+    /// MAT statements operate on program-scope arrays.
     /// </summary>
     private (int Depth, int Slot) LookupMatTarget(string name, bool isString)
     {
@@ -1205,7 +1209,7 @@ public sealed class BasicCompiler
         // LET v = initial, then DO UNTIL (v - own1) * SGN(own2) > 0 … LET v = v + own2.
         // So limit and step are evaluated once, in that order, into hidden temps,
         // and the increment reads v's current value (a body that assigns v steers
-        // the loop). Mirrors the tree-walker's ExecFor.
+        // the loop).
         var limitSlot = AllocTemp();
         var stepSlot = AllocTemp();
         CompileExpr(f.To);
@@ -1216,20 +1220,33 @@ public sealed class BasicCompiler
         EmitStoreSymbolSlot(ownerScope, slot);
 
         _exitForJumps.Push([]);
-        var loopStart = _current.CodeLength;
 
+        // The test before the first pass; NEXT tests again at the bottom.
         EmitLoadSymbolSlot(ownerScope, slot);
         _current.Emit(Opcode.ForTest); _current.EmitU32(limitSlot); _current.EmitU32(stepSlot);
         var exitJump = _current.EmitJumpPlaceholder(Opcode.JumpIfTrue);
 
+        var bodyStart = _current.CodeLength;
         CompileStatements(f.Body);
 
-        // NEXT: v = v + own2
-        EmitLoadSymbolSlot(ownerScope, slot);
-        _current.Emit(Opcode.LoadLocal); _current.EmitU32(stepSlot);
-        _current.Emit(Opcode.Add);
-        EmitStoreSymbolSlot(ownerScope, slot);
-        _current.EmitJumpToAbsolute(Opcode.Jump, loopStart);
+        // NEXT: v = v + own2, then back to the body unless that's past the limit. A
+        // variable in this frame (the usual case) does it all in one instruction.
+        if (ScopeDepth(ownerScope) == 0)
+        {
+            _current.Emit(Opcode.ForNext);
+            _current.EmitU32((uint)slot); _current.EmitU32(limitSlot); _current.EmitU32(stepSlot);
+            _current.EmitI32(bodyStart - (_current.CodeLength + 4));
+        }
+        else
+        {
+            EmitLoadSymbolSlot(ownerScope, slot);
+            _current.Emit(Opcode.LoadLocal); _current.EmitU32(stepSlot);
+            _current.Emit(Opcode.Add);
+            EmitStoreSymbolSlot(ownerScope, slot);
+            EmitLoadSymbolSlot(ownerScope, slot);
+            _current.Emit(Opcode.ForTest); _current.EmitU32(limitSlot); _current.EmitU32(stepSlot);
+            _current.EmitJumpToAbsolute(Opcode.JumpIfFalse, bodyStart);
+        }
 
         _current.PatchJump(exitJump);
         foreach (var j in _exitForJumps.Pop()) _current.PatchJump(j);
@@ -1275,7 +1292,7 @@ public sealed class BasicCompiler
 
     private void CompileSelect(SelectStmt s)
     {
-        // The subject is evaluated exactly once (like the tree-walker) and parked in
+        // The subject is evaluated exactly once and parked in
         // a temp, so a side-effecting subject — SELECT CASE INKEY$, a FUNCTION call —
         // isn't re-run for every CASE comparison.
         var subjectSlot = AllocTemp();
@@ -1369,6 +1386,7 @@ public sealed class BasicCompiler
                 // so they share the same exit target).
                 if (_exitWhenJumps.Count == 0)
                     throw new UnsupportedFeatureException($"EXIT {e.Target} not inside a WHEN block");
+                _current.Emit(_inUseBody.Peek() ? Opcode.EndUse : Opcode.PopHandler);
                 _exitWhenJumps.Peek().Add(_current.EmitJumpPlaceholder(Opcode.Jump));
                 break;
             case ExitTarget.Sub:

@@ -2,7 +2,6 @@ using ArcadeBasic.Core;
 using ArcadeBasic.Lexer;
 using ArcadeBasic.Parser;
 using ArcadeBasic.Sema;
-using ArcadeBasic.Interpreter;
 using ArcadeBasic.Compiler;
 using ArcadeBasic.Vm;
 using ArcadeBasic.Runtime;
@@ -10,8 +9,8 @@ using ArcadeBasic.Runtime;
 namespace ArcadeBasic.Conformance.Tests;
 
 /// <summary>
-/// MAT GRAPH CELLS (ANSI X3.113 §13.3.4.4) and SET / ASK COLOR MIX (§13.2), run on
-/// both engines, which must draw and print the same.
+/// MAT GRAPH CELLS (ANSI X3.113 §13.3.4.4) and SET / ASK COLOR MIX (§13.2): what a
+/// program draws and prints.
 /// </summary>
 public class CellArrayTests
 {
@@ -35,10 +34,9 @@ public class CellArrayTests
         public GfxDeviceSize DeviceSize => new(1, 1, "OTHER");
     }
 
-    /// <summary>Run <paramref name="source"/> on the tree-walker and on the VM, each with a
-    /// fresh device from <paramref name="device"/>; both must print the same, and draw the
-    /// same as <paramref name="drawing"/> reports it. Returns what was printed and drawn.</summary>
-    private static (string Output, string Drawing) Both<TDevice>(string source, Func<TDevice> device, Func<TDevice, string> drawing)
+    /// <summary>Run <paramref name="source"/> on a fresh device from <paramref name="device"/>;
+    /// what it printed, and drew as <paramref name="drawing"/> reports it.</summary>
+    private static (string Output, string Drawing) Run<TDevice>(string source, Func<TDevice> device, Func<TDevice, string> drawing)
         where TDevice : IGraphicsDevice
     {
         var file = new SourceFile("cells.bas", source);
@@ -47,21 +45,14 @@ public class CellArrayTests
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
-        var interpOut = new StringWriter { NewLine = "\n" };   // the same on every OS
-        var interpDevice = device();
-        new BasicInterpreter(program, info, interpOut, TextReader.Null, default, interpDevice).Run();
-
-        var vmOut = new StringWriter { NewLine = "\n" };
-        var vmDevice = device();
-        new BasicVm(BasicCompiler.Compile(program, info), vmOut, TextReader.Null, vmDevice).Run();
-
-        Assert.Equal(interpOut.ToString(), vmOut.ToString());
-        Assert.Equal(drawing(interpDevice), drawing(vmDevice));
-        return (interpOut.ToString(), drawing(interpDevice));
+        var output = new StringWriter { NewLine = "\n" };   // the same on every OS
+        var screen = device();
+        new BasicVm(BasicCompiler.Compile(program, info), output, TextReader.Null, screen).Run();
+        return (output.ToString(), drawing(screen));
     }
 
-    private static (string Output, string Transcript) Both(string source, int maxColor = 255) =>
-        Both(source, () => new RecordingGraphicsDevice(maxColor), d => d.Transcript);
+    private static (string Output, string Transcript) Run(string source, int maxColor = 255) =>
+        Run(source, () => new RecordingGraphicsDevice(maxColor), d => d.Transcript);
 
     /// <summary>The standard's own example: A(1,1)=5, A(2,1)=6, A(3,1)=7 along the
     /// bottom, A(1,2)=7, A(2,2)=8, A(3,2)=9 along the top.</summary>
@@ -81,7 +72,7 @@ public class CellArrayTests
     [Fact]
     public void TheFirstPointHoldsTheLowestSubscripts()
     {
-        var (_, drawing) = Both(StandardsExample + "MAT GRAPH CELLS, IN 1, 1; 6, 2: A\n");
+        var (_, drawing) = Run(StandardsExample + "MAT GRAPH CELLS, IN 1, 1; 6, 2: A\n");
         // Devices get the cells row by row from the top-left: 7 8 9, then 5 6 7.
         Assert.Contains("CELLS 0.1000,0.2000 0.6000,0.4000 3x2 VISIBLE 0.1000,0.2000 0.6000,0.4000: 7 8 9 5 6 7", drawing);
     }
@@ -90,24 +81,24 @@ public class CellArrayTests
     public void TheFirstPointCanBeAnyCorner()
     {
         // From the top-right corner: A(1,1) is there, so the top row reads backwards.
-        var (_, drawing) = Both(StandardsExample + "MAT GRAPH CELLS, IN 6, 2; 1, 1: A\n");
+        var (_, drawing) = Run(StandardsExample + "MAT GRAPH CELLS, IN 6, 2; 1, 1: A\n");
         Assert.Contains("3x2 VISIBLE 0.1000,0.2000 0.6000,0.4000: 7 6 5 9 8 7", drawing);
     }
 
     [Fact]
     public void CellsAreClippedToTheViewport()
     {
-        var (_, drawing) = Both(StandardsExample + "SET VIEWPORT 0, 0.3, 0, 1\nMAT GRAPH CELLS, IN 1, 1; 6, 2: A\n");
+        var (_, drawing) = Run(StandardsExample + "SET VIEWPORT 0, 0.3, 0, 1\nMAT GRAPH CELLS, IN 1, 1; 6, 2: A\n");
         // The window now maps onto the left 0.3, so the cells span 0.03–0.18; all visible.
         Assert.Contains("CELLS 0.0300,0.2000 0.1800,0.4000 3x2 VISIBLE 0.0300,0.2000 0.1800,0.4000:", drawing);
-        var (_, cut) = Both(StandardsExample + "SET VIEWPORT 0, 0.3, 0, 1\nMAT GRAPH CELLS, IN 1, 1; 16, 2: A\n");
+        var (_, cut) = Run(StandardsExample + "SET VIEWPORT 0, 0.3, 0, 1\nMAT GRAPH CELLS, IN 1, 1; 16, 2: A\n");
         Assert.Contains("CELLS 0.0300,0.2000 0.4800,0.4000 3x2 VISIBLE 0.0300,0.2000 0.3000,0.4000:", cut);
     }
 
     [Fact]
     public void ElementsAreRoundedAndColoursOutOfRangeAreSeeThrough()
     {
-        var (_, drawing) = Both("""
+        var (_, drawing) = Run("""
             DIM A(0 TO 3, 0 TO 0)
             LET A(0, 0) = 2.6
             LET A(1, 0) = 3.4
@@ -121,7 +112,7 @@ public class CellArrayTests
     [Fact]
     public void ADeviceThatOnlyFillsAreasGetsARectanglePerRunOfColour()
     {
-        var (_, drawing) = Both("""
+        var (_, drawing) = Run("""
             DIM A(0 TO 3, 0 TO 1)
             LET A(0, 1) = 2
             LET A(1, 1) = 2
@@ -146,7 +137,7 @@ public class CellArrayTests
     [Fact]
     public void SeeThroughCellsGetNoRectangle()
     {
-        var (_, drawing) = Both("""
+        var (_, drawing) = Run("""
             DIM A(0 TO 2, 0 TO 0)
             LET A(0, 0) = 2
             LET A(1, 0) = -1
@@ -161,7 +152,7 @@ public class CellArrayTests
     [Fact]
     public void ColorMixReadsBackWhatWasSetAndKeepsIntensitiesInRange()
     {
-        var (output, drawing) = Both("""
+        var (output, drawing) = Run("""
             SET COLOR MIX (40) 0.2, 1.5, -1
             ASK COLOR MIX (40) R, G, B STATUS S
             PRINT R; G; B; S
@@ -173,7 +164,7 @@ public class CellArrayTests
     [Fact]
     public void AskColorMixReportsTheStartingColoursAndABadIndex()
     {
-        var (output, _) = Both("""
+        var (output, _) = Run("""
             ASK COLOR MIX (2) R, G, B
             PRINT R; G; B
             ASK COLOR MIX (21) R, G, B
@@ -189,7 +180,7 @@ public class CellArrayTests
     [Fact]
     public void SetColorMixPastTheDevicesColoursIsIgnored()
     {
-        var (output, drawing) = Both("""
+        var (output, drawing) = Run("""
             SET COLOR MIX (20) 1, 1, 1
             ASK COLOR MIX (20) R, G, B STATUS S
             PRINT S
@@ -201,7 +192,7 @@ public class CellArrayTests
     [Fact]
     public void ARedimensionedArrayDrawsAtItsNewSize()
     {
-        var (_, drawing) = Both("""
+        var (_, drawing) = Run("""
             DIM A(1, 1)
             MAT REDIM A(2, 3)
             MAT GRAPH CELLS, IN 0, 0; 1, 1: A

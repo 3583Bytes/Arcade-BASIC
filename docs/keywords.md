@@ -1121,9 +1121,8 @@ See [`examples/kanban.bas`](../examples/kanban.bas) — drag cards between lanes
 ## Notes on coverage
 
 - Every keyword above is **implemented end-to-end** — parser → semantic
-  analysis → tree-walker → bytecode VM. The bytecode `vm` and `build`
-  paths produce byte-identical output to the tree-walking `run` path on
-  every example program.
+  analysis → compiler → bytecode VM, which runs programs everywhere: the
+  browser IDE, `arcade-basic run`, and standalone binaries.
 - The §13 graphics statements (`SET`/`ASK`/`GRAPH`/`CLEAR` — see
   [Graphics](#graphics) below) are implemented. A handful of other keywords are
   still reserved by the lexer for future spec features (DISPLAY, PLOT, DRAW,
