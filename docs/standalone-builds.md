@@ -204,6 +204,21 @@ So a Windows or Linux app is made from that OS's player, on any computer. The wi
 title is the app's name. Files a program writes (a high score, a kanban board) are kept
 in the window's storage, per game.
 
+**Its icon** is Arcade BASIC's, or the one `--icon <file>` gives: a PNG, or the OS's own
+kind of icon file.
+
+| App for | `--icon` takes | Where it goes |
+|---|---|---|
+| macOS | an `.icns`, or a PNG of 128, 256, 512 or 1024 pixels square | `Contents/Resources/icon.icns` |
+| Windows | an `.ico`, or a PNG of up to 256 pixels square | into the player, over its own icon (Explorer's, and the window's) |
+| Linux | a PNG | appended before the program (`[PNG][u32 length]["FB-ICEND"]`), for the window |
+
+The Windows player is built with a placeholder icon whose images each leave room for any
+PNG of their size (`desktop/player/icons/make-icons.mjs` pads them), so a game's icon is
+written over it in place; images too big for any room left are left out. (A Linux
+desktop shows a window's icon on X11; GNOME on Wayland takes one only from an
+installed launcher, a `.desktop` file.)
+
 Build the player for the computer you're on with `desktop/player/build.sh` (it needs
 the .NET `wasm-tools` workload and Rust); see [building.md](building.md).
 
@@ -232,5 +247,9 @@ in the page, then:
   damaged.
 - **Windows, Linux**: the player with the program appended, as `build --desktop` does.
 
-Each comes as a zip (`Maze 3D (Mac).zip`), keeping the app's executable bit. A desktop
-player that's missing from the site — its build failed — just isn't offered.
+Each comes as a zip (`Maze 3D (Mac).zip`), keeping the app's executable bit, and has an
+icon — a picture in the program (one named `icon` is chosen for you), its screen as it
+was last, a picture file, or Arcade BASIC's — drawn at every size each OS wants
+(`wwwroot/icons.js`): a picture's pixels stay square. A Linux app's zip has the icon
+beside it too, `Maze 3D.png`, for a launcher. A desktop player that's missing from the
+site — its build failed — just isn't offered.

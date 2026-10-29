@@ -244,6 +244,15 @@ dialog.files { width: min(520px, calc(100vw - 32px)); }
 dialog.export { width: min(520px, calc(100vw - 32px)); }
 dialog.export .name { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
 dialog.export .name input { flex: 1; }
+dialog.export .icon { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+dialog.export .icon[hidden], dialog.export .icon .hint[hidden] { display: none; }
+dialog.export .icon canvas {
+  width: 48px; height: 48px; flex: none; border-radius: 6px;
+  background: repeating-conic-gradient(var(--border) 0 25%, transparent 0 50%) 0 0 / 12px 12px;
+}
+dialog.export .icon label { display: flex; align-items: center; gap: 10px; }
+dialog.export .icon select { max-width: 340px; }
+dialog.export .icon .hint { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 dialog.export .kinds { border: 0; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 6px; }
 dialog.export .kinds[hidden], dialog.export .after [hidden] { display: none; }
 dialog.export .kind { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }

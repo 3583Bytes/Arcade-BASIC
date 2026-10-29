@@ -23,8 +23,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- A game's Info.plist, for the desktop build on macOS; the IDE's Export uses the same file. -->
+    <!-- A game's Info.plist and default icon, for the desktop build on macOS; the IDE's Export uses the same plist. -->
     <EmbeddedResource Include="..\..\desktop\player\app-Info.plist" LogicalName="app-Info.plist" />
+    <EmbeddedResource Include="..\..\desktop\player\icons\icon.icns" LogicalName="icon.icns" />
   </ItemGroup>
 
 </Project>

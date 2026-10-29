@@ -188,7 +188,17 @@ desktop/player/add-to-site.sh publish/site desktop/player/target/universal/arcad
 ```
 
 `add-to-site.sh` takes players for any OS (it tells them apart by their first bytes);
-the Pages workflow builds one on each and adds all three.
+the Pages workflow builds one on each and adds all three, and on Windows checks that
+Windows reads an icon written into its player (`desktop/player/icons/check-windows-icon.mjs`).
+
+Arcade BASIC's icon is drawn as a picture in `desktop/player/icons/make-icons.mjs`,
+which makes the player's icons from it (`icon.png`, `icon.ico`, `icon.icns`) and the
+IDE's (`src/ArcadeBasic.Web/wwwroot/icon.png`). After changing it, run it with Node 22 or
+later and rebuild the player and the CLI (which has `icon.icns` built in):
+
+```sh
+node desktop/player/icons/make-icons.mjs
+```
 
 ---
 

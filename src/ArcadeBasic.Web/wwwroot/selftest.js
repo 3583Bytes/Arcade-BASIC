@@ -3,6 +3,7 @@
 // API, so this covers Open and Save's fallbacks: a downloaded file, here caught
 // before it reaches the disk.
 import { findPictures } from './pictures.js';
+import { windowsIconImages } from './icons.js';
 
 export async function ideSelftest({ P, editor, documents, pack, openAddress, $, audio }) {
   const pause = (ms = 300) => new Promise(r => setTimeout(r, ms));
@@ -201,20 +202,35 @@ export async function ideSelftest({ P, editor, documents, pack, openAddress, $, 
   await step('export', async () => {
     // File → Export: maze3d (and its two libraries) compiled and packed, as each kind this
     // site offers — a web page titled with the name given; a Mac app with the program in its
-    // Resources; Windows and Linux players with it appended — and a program with an error
-    // isn't exported.
+    // Resources; Windows and Linux players with it appended — each with one of its pictures
+    // as its icon; and a program with an error isn't exported.
     const dialog = $('exportDialog'), nameInput = dialog.querySelector('input[name="name"]');
+    const iconSelect = dialog.querySelector('select[name="icon"]'), preview = dialog.querySelector('.icon canvas');
     const same = (a, b) => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+    /** A PNG's width and height, or null for something else. */
+    const pngSize = data => data && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47
+      ? [new DataView(data.buffer, data.byteOffset).getUint32(16), new DataView(data.buffer, data.byteOffset).getUint32(20)] : null;
+    const drawn = () => preview.getContext('2d').getImageData(0, 0, preview.width, preview.height).data.some(v => v);
     const before = downloads.length;
     documents.openExample('maze3d.bas');
     document.querySelector('[data-action="export"]').click();
     await waitUntil(() => dialog.querySelector('.kinds input'));
+    await waitUntil(drawn);
     const result = {
       opened: { open: dialog.open, heading: dialog.querySelector('h2').textContent, name: nameInput.value,
-                kinds: [...dialog.querySelectorAll('.kinds input')].map(i => i.value + (i.checked ? ' (chosen)' : '')) },
+                kinds: [...dialog.querySelectorAll('.kinds input')].map(i => i.value + (i.checked ? ' (chosen)' : '')),
+                icons: [...iconSelect.options].map(o => o.text + (o.selected ? ' (chosen)' : '')),
+                hint: !dialog.querySelector('.icon .hint').hidden, previewDrawn: drawn() },
     };
+    // Its first picture as its icon (and the choice is kept for the next export).
+    const blank = preview.getContext('2d').getImageData(0, 0, preview.width, preview.height).data.join();
+    iconSelect.value = iconSelect.options[1].value;
+    iconSelect.dispatchEvent(new Event('change'));
+    await waitUntil(() => preview.getContext('2d').getImageData(0, 0, preview.width, preview.height).data.join() !== blank);
+    result.opened.iconChosen = iconSelect.selectedOptions[0].text;
     for (const kind of [...dialog.querySelectorAll('.kinds input')].map(i => i.value)) {
       if (!dialog.open) { document.querySelector('[data-action="export"]').click(); await waitUntil(() => dialog.querySelector('.kinds input')); }
+      if (iconSelect.selectedOptions[0].text !== result.opened.iconChosen) return { ...result, iconForgotten: iconSelect.selectedOptions[0].text };
       dialog.querySelector(`.kinds input[value="${kind}"]`).checked = true;
       nameInput.value = 'Maze 3D';
       const count = downloads.length;
@@ -226,22 +242,39 @@ export async function ideSelftest({ P, editor, documents, pack, openAddress, $, 
       const out = { file: exported.name, megabytes: +(bytes.length / 1048576).toFixed(2), entries: [...files.keys()].length,
                     after: !dialog.querySelector('.after').hidden && [...dialog.querySelectorAll('.after [data-kind]')].find(d => !d.hidden)?.dataset.kind };
       if (kind === 'web') {
-        out.has = ['index.html', 'player.js', 'screen.js', '_framework/dotnet.js', 'game.bin'].filter(n => files.has(n));
-        out.title = /<title>(.*?)<\/title>/.exec(new TextDecoder().decode(files.get('index.html')))?.[1];
+        out.has = ['index.html', 'player.js', 'screen.js', '_framework/dotnet.js', 'game.bin', 'icon.png'].filter(n => files.has(n));
+        const page = new TextDecoder().decode(files.get('index.html'));
+        out.title = /<title>(.*?)<\/title>/.exec(page)?.[1];
+        out.iconLinked = page.includes('<link rel="icon" href="icon.png">');
+        out.icon = pngSize(files.get('icon.png'));
         out.gameIsTheProgram = same(files.get('game.bin'), bytecode);
       } else if (kind === 'macos') {
         const app = 'Maze 3D.app/Contents/';
-        out.has = ['Info.plist', 'MacOS/Maze 3D', 'Resources/game.bin', '_CodeSignature/CodeResources'].filter(n => files.has(app + n));
+        out.has = ['Info.plist', 'MacOS/Maze 3D', 'Resources/game.bin', 'Resources/icon.icns', '_CodeSignature/CodeResources'].filter(n => files.has(app + n));
         out.executableMode = files.get(app + 'MacOS/Maze 3D')?.mode.toString(8);
-        out.named = new TextDecoder().decode(files.get(app + 'Info.plist')).includes('<key>CFBundleExecutable</key><string>Maze 3D</string>');
+        const plist = new TextDecoder().decode(files.get(app + 'Info.plist'));
+        out.named = plist.includes('<key>CFBundleExecutable</key><string>Maze 3D</string>');
+        out.iconNamed = plist.includes('<key>CFBundleIconFile</key><string>icon</string>');
+        const icns = files.get(app + 'Resources/icon.icns');
+        out.icns = icns && new TextDecoder().decode(icns.subarray(0, 4)) === 'icns' && new DataView(icns.buffer, icns.byteOffset).getUint32(4) === icns.length;
+        out.sealed = ['game.bin', 'icon.icns'].filter(n => new TextDecoder().decode(files.get(app + '_CodeSignature/CodeResources')).includes(`<key>Resources/${n}</key>`));
         out.gameIsTheProgram = same(files.get(app + 'Resources/game.bin'), bytecode);
       } else {
         const name = kind === 'windows' ? 'Maze 3D.exe' : 'Maze 3D', exe = files.get(name);
         const n = exe?.length ?? 0, trailer = exe && new TextDecoder().decode(exe.subarray(n - 8));
-        const length = exe ? new DataView(exe.buffer, exe.byteOffset).getUint32(n - 12, true) : 0;
-        out.has = files.has(name) ? [name] : [];
+        const at = exe && new DataView(exe.buffer, exe.byteOffset), length = exe ? at.getUint32(n - 12, true) : 0;
+        out.has = [name, `${name}.png`].filter(f => files.has(f));
         out.mode = exe?.mode.toString(8);
         out.appended = trailer === 'FB-BCEND' && same(exe.subarray(n - 12 - length, n - 12), bytecode);
+        if (kind === 'windows') {
+          out.icon = windowsIconImages(exe).map(({ size, data }) => `${size}: ${pngSize(data)?.join('×') ?? 'not a PNG'}`);
+          out.iconNote = dialog.querySelector('.status').textContent;
+        } else {
+          const end = n - 12 - length, iconLength = exe ? at.getUint32(end - 12, true) : 0;
+          const icon = exe && new TextDecoder().decode(exe.subarray(end - 8, end)) === 'FB-ICEND' && exe.subarray(end - 12 - iconLength, end - 12);
+          out.icon = pngSize(icon);
+          out.iconBeside = same(icon, files.get(`${name}.png`));
+        }
       }
       if (location.search.includes('keepzip')) {     // (for a test server to unpack and run)
         let binary = '';

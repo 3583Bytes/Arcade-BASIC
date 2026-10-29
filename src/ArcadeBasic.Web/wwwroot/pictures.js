@@ -10,7 +10,7 @@
 // colours, and changing one rewrites that line too. Otherwise the editor picks
 // colours — digits a dark-to-light ramp, letters their own hues, "." and " "
 // see-through — and remembers any you change, in this browser.
-import { StateField, EditorView, Decoration, WidgetType } from './lib/codemirror.js';
+import { EditorState, StateField, EditorView, Decoration, WidgetType } from './lib/codemirror.js';
 
 const PICTURE_LINE = /^(\s*\d+\s+)?\s*DATA\s+"([^"]*)"\s*(!.*)?$/i;
 const NUMBER_LINE = /^(\s*\d+\s+)?\s*DATA\s+(.*?)\s*(!.*)?$/i;
@@ -103,6 +103,38 @@ function defaultColour(ch) {
   return `hsl(${hue} 65% ${light}%)`;
 }
 
+/** A character's colour (CSS, or null for see-through): from `colours`, the linked DATA's,
+ *  for a digit it has; else from `custom`, those picked in this browser; else the default. */
+const colourFrom = (colours, custom, ch) =>
+  colours && /\d/.test(ch) && +ch < colours.length ? hex(colours[+ch]) : custom[ch] ?? defaultColour(ch);
+
+/** Where the colours picked for a picture are kept: by the program's name (key), and the
+ *  picture's name and size. */
+const storeKeyOf = (key, picture) => `${key}|${picture.name || 'line ' + picture.firstLine}|${picture.width}x${picture.height}`;
+const storedColours = storeKey => { try { return JSON.parse(localStorage.getItem(COLOUR_STORE))?.[storeKey] ?? {}; } catch { return {}; } };
+
+/** The pictures in `text`, a program's (`key` its name, as for openPictureEditor): name,
+ *  size, line, and draw() — the picture on a canvas of its own, a pixel a character, in the
+ *  colours the pixel editor shows. (File → Export makes icons of them.) */
+export function picturesIn(text, key = '') {
+  const doc = EditorState.create({ doc: text }).doc;
+  return findPictures(doc).map(picture => ({
+    name: picture.name, width: picture.width, height: picture.height, line: picture.firstLine,
+    draw() {
+      const colours = findColours(doc, picture)?.colours, custom = storedColours(storeKeyOf(key, picture));
+      const canvas = document.createElement('canvas');
+      canvas.width = picture.width;
+      canvas.height = picture.height;
+      const ctx = canvas.getContext('2d');
+      picture.rows.forEach((row, y) => [...row].forEach((ch, x) => {
+        const colour = colourFrom(colours, custom, ch);
+        if (colour) { ctx.fillStyle = colour; ctx.fillRect(x, y, 1, 1); }
+      }));
+      return canvas;
+    },
+  }));
+}
+
 // -- The label above each picture -------------------------------------------------------
 
 class Lens extends WidgetType {
@@ -173,8 +205,8 @@ export function openPictureEditor(view, firstLine, { key = '', ask, extra = [] }
   const picture = findPictures(doc).find(p => p.firstLine === firstLine);
   if (!picture) return;
   const linked = findColours(doc, picture);
-  const storeKey = `${key}|${picture.name || 'line ' + firstLine}|${picture.width}x${picture.height}`;
-  const stored = (() => { try { return JSON.parse(localStorage.getItem(COLOUR_STORE))?.[storeKey] ?? {}; } catch { return {}; } })();
+  const storeKey = storeKeyOf(key, picture);
+  const stored = storedColours(storeKey);
 
   const { width: W, height: H } = picture;
   let grid = picture.rows.map(r => [...r]);
@@ -183,10 +215,7 @@ export function openPictureEditor(view, firstLine, { key = '', ask, extra = [] }
   const history = [], future = [];
   let ink = null, tool = 'pen', mirror = false, hover = null;
 
-  const colourOf = ch => {
-    if (colours && /\d/.test(ch) && +ch < colours.length) return hex(colours[+ch]);
-    return custom[ch] ?? defaultColour(ch);
-  };
+  const colourOf = ch => colourFrom(colours, custom, ch);
   const isLinked = ch => colours && /\d/.test(ch) && +ch < colours.length;
   const order = ch => SEE_THROUGH.has(ch) ? -1 : /\d/.test(ch) ? +ch : 100 + ch.charCodeAt(0);
   let alphabet = [...new Set([...grid.flat(), ...extra, ...(colours ? colours.map((_, i) => String(i)) : [])])].sort((a, b) => order(a) - order(b));

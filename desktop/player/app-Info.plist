@@ -3,12 +3,14 @@
 <!-- A game's app bundle (Name.app/Contents/Info.plist), made by arcade-basic's desktop
      build and by the IDE's File → Export: __NAME__ is the app's name, XML-escaped (its
      executable is Contents/MacOS/__NAME__), and __ID__ the name in lower case with
-     anything but letters and digits as "-", which keeps each game's data apart. -->
+     anything but letters and digits as "-", which keeps each game's data apart. Its icon is
+     Contents/Resources/icon.icns. -->
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key><string>__NAME__</string>
   <key>CFBundleDisplayName</key><string>__NAME__</string>
   <key>CFBundleExecutable</key><string>__NAME__</string>
+  <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundleIdentifier</key><string>io.github.arcadebasic.game.__ID__</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>

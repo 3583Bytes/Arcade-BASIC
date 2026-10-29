@@ -20,6 +20,7 @@
     // A play link (#play=…) shows just the program's screen: no flash of the editor first.
     if (location.hash.startsWith('#play=')) document.documentElement.classList.add('player');
   </script>
+  <link rel="icon" href="icon.png">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -204,6 +205,14 @@
       <h2 id="exportHeading">Export</h2>
       <p>The program, ready to give to people: compiled, without its source.</p>
       <label class="name">Name <input type="text" name="name" spellcheck="false" autocomplete="off"></label>
+      <div class="icon">
+        <canvas width="96" height="96" aria-hidden="true"></canvas>
+        <div>
+          <label>Icon <select name="icon"></select></label>
+          <p class="hint">Draw a picture named <i>icon</i> (Tools → Insert a new picture…) and it's chosen for you.</p>
+        </div>
+        <input type="file" accept="image/*" hidden>
+      </div>
       <fieldset class="kinds"></fieldset>
       <p class="status" aria-live="polite"></p>
       <div class="after" hidden>
@@ -222,7 +231,8 @@
           <p class="note">It shows the game with Microsoft Edge WebView2, which Windows 10 and 11 have.</p>
         </div>
         <div data-kind="linux">
-          <p>Unzip it, then run <b class="app"></b> (double-click it, or start it from a terminal).</p>
+          <p>Unzip it, then run <b class="app"></b> (double-click it, or start it from a terminal). Its icon is
+            beside it, <b class="iconFile"></b>, for a launcher if you make one.</p>
           <p class="note">It shows the game with WebKitGTK, which most Linux desktops have; if yours doesn't, on
             Debian or Ubuntu: <code>sudo apt install libwebkit2gtk-4.1-0</code>.</p>
         </div>

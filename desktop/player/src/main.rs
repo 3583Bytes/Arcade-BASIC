@@ -5,6 +5,11 @@
 // appends one ([program][u32 length]["FB-BCEND"]) — and `quit`, which the page asks for
 // once the program has ended. `arcade-basic build --desktop`, and the IDE's File → Export,
 // make the apps.
+//
+// The app's icon: a macOS app's is in its Resources (Info.plist names it), and a Windows
+// one's is this executable's own, written over the placeholder icon it's built with
+// (icons/make-icons.mjs). A Linux app's is appended before the program, [PNG][u32 length]
+// ["FB-ICEND"], and goes on the window.
 
 // A window, not a console program, on Windows.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -15,35 +20,49 @@ use std::path::Path;
 use tauri::http::Response;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
-const MAGIC: &[u8; 8] = b"FB-BCEND";
+const PROGRAM: &[u8; 8] = b"FB-BCEND";
+const ICON: &[u8; 8] = b"FB-ICEND";
 
-/// The program appended to `exe`, if there is one.
-fn appended(exe: &Path) -> Option<Vec<u8>> {
-    let mut file = File::open(exe).ok()?;
-    let size = file.metadata().ok()?.len();
-    if size < 12 {
+/// What ends at `end` in `file`, followed by its length (u32, little-endian) and `magic`:
+/// it, and where it starts.
+fn ending_at(file: &mut File, end: u64, magic: &[u8; 8]) -> Option<(Vec<u8>, u64)> {
+    if end < 12 {
         return None;
     }
     let mut trailer = [0u8; 12];
-    file.seek(SeekFrom::End(-12)).ok()?;
+    file.seek(SeekFrom::Start(end - 12)).ok()?;
     file.read_exact(&mut trailer).ok()?;
-    if &trailer[4..] != MAGIC {
+    if &trailer[4..] != magic {
         return None;
     }
     let len = u32::from_le_bytes(trailer[..4].try_into().ok()?) as u64;
-    if len == 0 || len > size - 12 {
+    if len == 0 || len > end - 12 {
         return None;
     }
-    let mut program = vec![0u8; len as usize];
-    file.seek(SeekFrom::End(-12 - len as i64)).ok()?;
-    file.read_exact(&mut program).ok()?;
-    Some(program)
+    let start = end - 12 - len;
+    let mut data = vec![0u8; len as usize];
+    file.seek(SeekFrom::Start(start)).ok()?;
+    file.read_exact(&mut data).ok()?;
+    Some((data, start))
 }
 
-/// The program to play: appended to this executable, or in a macOS app, game.bin in its
-/// Resources (Contents/MacOS/<name> → Contents/Resources/game.bin).
-fn program(exe: &Path) -> Option<Vec<u8>> {
-    appended(exe).or_else(|| std::fs::read(exe.parent()?.parent()?.join("Resources").join("game.bin")).ok())
+/// The program appended to `exe`, if there is one, and the icon before it, if there's that.
+fn appended(exe: &Path) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    let Ok(mut file) = File::open(exe) else { return (None, None) };
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    match ending_at(&mut file, size, PROGRAM) {
+        Some((program, start)) => (Some(program), ending_at(&mut file, start, ICON).map(|(icon, _)| icon)),
+        None => (None, None),
+    }
+}
+
+/// The program to play — appended to this executable, or in a macOS app, game.bin in its
+/// Resources (Contents/MacOS/<name> → Contents/Resources/game.bin) — and its icon, if it's
+/// appended too.
+fn program(exe: &Path) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    let (program, icon) = appended(exe);
+    let program = program.or_else(|| std::fs::read(exe.parent()?.parent()?.join("Resources").join("game.bin")).ok());
+    (program, icon)
 }
 
 /// `text` for a URL's query: anything but letters, digits and -._~ as %XX.
@@ -56,7 +75,7 @@ fn query_text(text: &str) -> String {
 fn main() {
     let exe = std::env::current_exe().unwrap_or_default();
     let title = exe.file_stem().and_then(|s| s.to_str()).unwrap_or("Arcade BASIC").to_string();
-    let game = program(&exe);
+    let (game, icon) = program(&exe);
 
     tauri::Builder::default()
         .register_uri_scheme_protocol("arcade", move |ctx, request| {
@@ -86,11 +105,18 @@ fn main() {
             if let Ok(report) = std::env::var("ARCADE_PLAYER_REPORT") {
                 page += &format!("&report={}", query_text(&report));   // (tests: where the page posts what happened)
             }
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::CustomProtocol(page.parse()?))
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::CustomProtocol(page.parse()?))
                 .title(&title)
                 .inner_size(960.0, 600.0)
-                .min_inner_size(320.0, 200.0)
-                .build()?;
+                .min_inner_size(320.0, 200.0);
+            #[cfg(target_os = "linux")]
+            let window = match icon.as_deref().map(tauri::image::Image::from_bytes) {
+                Some(Ok(image)) => window.icon(image)?,
+                _ => window,
+            };
+            #[cfg(not(target_os = "linux"))]
+            let _ = &icon;
+            window.build()?;
             Ok(())
         })
         .run(tauri::generate_context!())

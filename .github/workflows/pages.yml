@@ -108,6 +108,33 @@ jobs:
           name: desktop-${{ matrix.os }}
           path: out/
 
+      # File → Export writes a game's icon into the Windows player, over the placeholder it's
+      # built with (desktop/player/icons). Check Windows reads both: the player's own (green
+      # in the middle), then a test icon written the same way (orange above, blue below). A
+      # failure doesn't stop the player being published; Windows apps' icons need a look.
+      - uses: actions/setup-node@v4
+        if: matrix.os == 'windows'
+        with:
+          node-version: 22
+      - name: Check the Windows icon
+        if: matrix.os == 'windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          function Pixels($exe) {
+            $bitmap = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $exe).Path).ToBitmap()
+            $x = [int]($bitmap.Width / 2)
+            return @($bitmap.GetPixel($x, 2), $bitmap.GetPixel($x, [int]($bitmap.Height / 2)), $bitmap.GetPixel($x, $bitmap.Height - 3))
+          }
+          $own = Pixels "out/arcade-player.exe"
+          "The player's own icon (top, middle, bottom): $own"
+          if ($own[1].G -lt 200 -or $own[1].R -gt 150) { throw "the player's icon isn't Arcade BASIC's" }
+          node desktop/player/icons/check-windows-icon.mjs out/arcade-player.exe checked.exe
+          $test = Pixels "checked.exe"
+          "The test icon (top, middle, bottom): $test"
+          if ($test[0].R -lt 200 -or $test[0].B -gt 80 -or $test[2].B -lt 200 -or $test[2].R -gt 80) { throw "Windows doesn't read the icon written into the player" }
+
   publish:
     name: Put the site together
     needs: [site, desktop]

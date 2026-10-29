@@ -12,7 +12,8 @@ const CRC_TABLE = (() => {
   return table;
 })();
 
-function crc32(data) {
+/** CRC-32, as zip and PNG (icons.js) check data with. */
+export function crc32(data) {
   let c = 0xFFFFFFFF;
   for (let i = 0; i < data.length; i++) c = CRC_TABLE[(c ^ data[i]) & 0xFF] ^ (c >>> 8);
   return (c ^ 0xFFFFFFFF) >>> 0;

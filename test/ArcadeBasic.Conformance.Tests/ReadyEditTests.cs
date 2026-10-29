@@ -174,11 +174,10 @@ public sealed class ReadyEditTests : IDisposable
         // a tab character runs on to the next stop of 4, a faint → where it starts
         Assert.Equal("→   This line starts with a tab,", screen.Line(6));
         Assert.StartsWith("→   →   and this one with two.", screen.Line(7));
-        Assert.StartsWith("READY. Type away", screen.Status);
-        // the keys bar: Esc, then a letter
-        Assert.Equal("Esc, then  S Save  E Save as  O Open  N New  W Close  T Next tab  P Prev tab", screen.Row(21).Trim());
-        Assert.Equal("B Select  A Select all  X Cut  C Copy  V Paste  G Help  Q Quit", screen.Row(22).Trim());
-        Assert.EndsWith("Ln 1, Col 1   Tabs: 4", screen.Status);
+        Assert.EndsWith("Ln 1, Col 1   Indent: tabs", screen.Row(1));   // top right
+        // the keys bar, the bottom two rows: Esc, then a letter
+        Assert.Equal("Esc, then  S Save  E Save as  O Open  N New  W Close  T Next tab  P Prev tab", screen.Row(22).Trim());
+        Assert.Equal("B Select  A Select all  X Cut  C Copy  V Paste  G Help  Q Quit", screen.Row(23).Trim());
     }
 
     [Fact]
@@ -194,7 +193,7 @@ public sealed class ReadyEditTests : IDisposable
         Assert.Equal("hello→  world", screen.Line(0));
         Assert.Equal("  indented", screen.Line(1));
         Assert.Equal("  x", screen.Line(2));                           // Enter kept the indent
-        Assert.EndsWith("Ln 3, Col 4   Tabs: 4", screen.Status);
+        Assert.EndsWith("Ln 3, Col 4   Indent: tabs", screen.Row(1));
 
         // F2 on a new file asks for a name
         screen.Type(F2);
@@ -371,15 +370,15 @@ public sealed class ReadyEditTests : IDisposable
         var screen = new Screen();
         var vm = Start(screen);
 
-        // Esc: the status bar waits for a letter
+        // Esc: the last message makes way for the keys, to pick a letter from
+        Assert.StartsWith("Opened 1 file(s) from last time", screen.Status);
         screen.Type(Escape);
         NextFrame(vm);
-        Assert.StartsWith("Esc: now a letter", screen.Status);
+        Assert.StartsWith("B Select", screen.Status);
 
         // B starts selecting, and moving selects; C copies, V pastes
         screen.Type("b", Right, Right, Right, Right, Right);
         NextFrame(vm);
-        Assert.StartsWith("Selecting:", screen.Status);
         screen.Type([.. Esc('c'), End, .. Esc('v')]);
         NextFrame(vm);
         Assert.Equal("alpha betaalpha", screen.Line(0));
@@ -405,7 +404,10 @@ public sealed class ReadyEditTests : IDisposable
         Assert.StartsWith("Copied 1 line", screen.Status);
         Assert.Equal(["alpha betaalpha", "gamma"], [screen.Line(0), screen.Line(1)]);
 
-        // the keys bar can be clicked: Select all
+        // the keys bar can be clicked: Select all (back once the next key clears the message)
+        Assert.DoesNotContain(screen.Frame, t => t.Text == "Select all");
+        screen.Type(End);
+        NextFrame(vm);
         var all = screen.Frame.First(t => t.Text == "Select all").At;
         screen.Click(all with { X = all.X + 0.005, Y = all.Y + 0.01 });
         NextFrame(vm, 2);
@@ -418,6 +420,49 @@ public sealed class ReadyEditTests : IDisposable
         screen.Type([.. Esc('w')]);
         NextFrame(vm);
         Assert.False(screen.Shows("notes.txt"));
+    }
+
+    [Fact]
+    public void ShiftUpAndDownSelectWholeLines()
+    {
+        File.WriteAllLines("notes.txt", ["one", "two", "three", "four"]);
+        OpenLastTime("notes.txt");
+        var screen = new Screen();
+        var vm = Start(screen);
+
+        // Shift+↓ in the middle of "two": all of "two"; again: "three" too; Shift+↑ gives it back
+        screen.Click(Screen.Text(1, 1));
+        NextFrame(vm, 2);
+        Shifted(screen, vm, Down);
+        screen.Type([.. Esc('c')]);
+        NextFrame(vm);
+        Assert.StartsWith("Copied 1 line", screen.Status);
+        Shifted(screen, vm, Down);
+        screen.Type([.. Esc('c')]);
+        NextFrame(vm);
+        Assert.StartsWith("Copied 2 lines", screen.Status);
+        Shifted(screen, vm, Up);
+        screen.Type([.. Esc('c')]);
+        NextFrame(vm);
+        Assert.StartsWith("Copied 1 line", screen.Status);
+
+        // a few characters picked with Shift+→, then Shift+↑: the whole line, then the one above
+        screen.Click(Screen.Text(1, 2));
+        NextFrame(vm, 2);
+        Shifted(screen, vm, Right);
+        Shifted(screen, vm, Up);
+        Shifted(screen, vm, Up);
+        screen.Type([.. Esc('x'), .. Esc('s')]);
+        NextFrame(vm);
+        Assert.Equal(["one", "four"], File.ReadAllLines("notes.txt"));
+
+        // and from the last line, Shift+↑ takes all of it
+        screen.Click(Screen.Text(2, 1));
+        NextFrame(vm, 2);
+        Shifted(screen, vm, Up);
+        screen.Type([.. Esc('x'), .. Esc('s')]);
+        NextFrame(vm);
+        Assert.Equal(["one", ""], File.ReadAllLines("notes.txt"));
     }
 
     [Fact]

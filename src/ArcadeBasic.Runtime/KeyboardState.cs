@@ -20,6 +20,19 @@ public interface IKeyState
 }
 
 /// <summary>
+/// Optional companion to <see cref="IKeyboard"/> for one that reports presses only —
+/// a terminal — but knows whether Shift was held for each: a terminal sends Shift+→ as
+/// its own sequence, never Shift by itself. <c>KEYDOWN</c> then counts Shift as held
+/// while keys pressed with it arrive (estimated, like any key there), so a program can
+/// tell Shift+→ from →.
+/// </summary>
+public interface IKeyModifiers
+{
+    /// <summary>Was Shift held for the press <see cref="IKeyboard.ReadKey"/> last returned?</summary>
+    bool LastKeyShifted { get; }
+}
+
+/// <summary>
 /// The key names <c>KEYDOWN</c> understands: what <c>INKEY$</c> returns for a key
 /// (a character, or <c>CHR$(0)</c> + a GW-BASIC extended key code), and the W3C UI
 /// Events <c>KeyboardEvent.code</c> names, ignoring case.
@@ -121,7 +134,10 @@ public static class KeyNames
 /// state is estimated: a lone press reads as held for <see cref="TapSeconds"/>, and
 /// once repeats arrive the key stays held until <see cref="RepeatSeconds"/> after
 /// the last one. So a tap nudges, a hold moves smoothly once the OS starts
-/// repeating, and a release takes effect within a fifth of a second.
+/// repeating, and a release takes effect within a fifth of a second. Shift, which a
+/// terminal only reports along with a key, is held the same way for each key pressed
+/// with it (when the keyboard implements <see cref="IKeyModifiers"/>), and let go as
+/// soon as a key comes without it.
 /// </summary>
 public sealed class KeyboardState
 {
@@ -140,6 +156,7 @@ public sealed class KeyboardState
 
     private readonly IKeyboard _keyboard;
     private readonly IKeyState? _keyState;
+    private readonly IKeyModifiers? _modifiers;
     private readonly Func<double> _clock;
     private readonly Queue<string> _pending = new();
     private readonly Dictionary<string, (double At, bool Repeating)> _lastPress = new(StringComparer.Ordinal);
@@ -150,6 +167,7 @@ public sealed class KeyboardState
     {
         _keyboard = keyboard ?? throw new ArgumentNullException(nameof(keyboard));
         _keyState = keyboard as IKeyState;
+        _modifiers = keyboard as IKeyModifiers;
         _clock = clock ?? (() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
     }
 
@@ -192,8 +210,23 @@ public sealed class KeyboardState
     private void Record(string key)
     {
         if (_keyState is not null || key.Length == 0) return;
-        if (KeyNames.Canonical(key) is not { } canonical) return;
         var now = _clock();
+        if (KeyNames.Canonical(key) is { } canonical) Pressed(canonical, now);
+        if (_modifiers is null) return;
+        if (_modifiers.LastKeyShifted)
+        {
+            Pressed("ShiftLeft", now);                   // (a terminal doesn't say which)
+            Pressed("ShiftRight", now);
+        }
+        else
+        {
+            _lastPress.Remove("ShiftLeft");
+            _lastPress.Remove("ShiftRight");
+        }
+    }
+
+    private void Pressed(string canonical, double now)
+    {
         var repeating = _lastPress.TryGetValue(canonical, out var last) && now - last.At <= RepeatDetectSeconds;
         _lastPress[canonical] = (now, repeating);
     }

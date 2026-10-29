@@ -109,9 +109,13 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   - A **web page**: the player page (`src/ArcadeBasic.Player`, in `player/`). Upload
     it to itch.io as an HTML game, or put its files on any website.
 
-  It offers what the site has players for, choosing your own OS. A program with
-  errors isn't exported: the code view shows the first. (`wwwroot/export.js` packs
-  it, `wwwroot/zip.js` zips it, `Playground.Export.cs` compiles it.)
+  It offers what the site has players for, choosing your own OS. Each has an **icon**:
+  a picture in the program (one named `icon` is chosen for you), its screen as it was
+  last, a picture file, or Arcade BASIC's (`wwwroot/icon.png`, the IDE's own). A
+  picture's pixels stay square at every size. A program with errors isn't exported:
+  the code view shows the first. (`wwwroot/export.js` packs it, `wwwroot/icons.js`
+  makes the icon of each kind, `wwwroot/zip.js` zips it, `Playground.Export.cs`
+  compiles it.)
 
 It's live at <https://3583bytes.github.io/Arcade-BASIC/>, published by
 [`.github/workflows/pages.yml`](../../.github/workflows/pages.yml) whenever `main`
@@ -202,6 +206,8 @@ npm ci && npm run build
 | `wwwroot/files.js` | the files programs write, kept in the browser; File → Program files… (the player keeps its game's too) |
 | `wwwroot/export.js`, `wwwroot/zip.js` | File → Export…: the dialog, and the program packed with the player into a zip |
 | `wwwroot/macsign.js` | signing a Mac app ad hoc, as `codesign --sign -` does: each architecture's code directory, the sealed resources |
+| `wwwroot/icons.js` | Export's icons: a picture drawn at each size, as PNGs, a Mac `.icns`, and written into the Windows player's icon |
+| `wwwroot/icon.png` | Arcade BASIC's icon, 16 × 16 (made by `desktop/player/icons/make-icons.mjs`): the IDE's, and Export's unless you choose one |
 | `Playground.Export.cs` | Export's compiling: the program as bytecode (`game.bin`) |
 | `build-site.sh` | the site: the IDE, with the player in `player/` (what Pages publishes, with the desktop players from `desktop/player/add-to-site.sh`) |
 | `wwwroot/style.css` | the layout and the themes |

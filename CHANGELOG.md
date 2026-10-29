@@ -18,6 +18,11 @@ the last one. Releases before 2.0.0 are on the
   **web page** to upload to itch.io or put on any website — a zip of a player and the
   compiled program, no source. The Mac app is signed ad hoc in the browser, so a Mac
   that downloads it offers Open Anyway; the dialog says how to open each the first time.
+- **App icons**: an exported app (or web page) has an icon — a picture in the program
+  (one named `icon` is chosen for you), its screen as it was last, a picture file, or
+  Arcade BASIC's, a space invader. `arcade-basic build --desktop --icon <file>` takes a
+  PNG, or an `.icns` or `.ico`; without one, a desktop app has Arcade BASIC's. The IDE
+  has it as its tab's icon too.
 - `arcade-basic build --desktop` on a Mac signs the Mac app ad hoc, so it opens on other
   Macs (after Open Anyway) rather than being called damaged.
 - The desktop player passes the app's name to the page as its title, and doesn't open a

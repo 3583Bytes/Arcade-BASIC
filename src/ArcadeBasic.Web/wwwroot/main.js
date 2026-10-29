@@ -11,7 +11,7 @@ import { createDocuments } from './documents.js';
 import { createAudio } from './audio.js';
 import { createScreen, connectInput } from './screen.js';
 import { stepFrame, newRun, NEEDS_INPUT, NEEDS_POINT, PAUSED, HALTED } from './runner.js';
-import { openPictureEditor, insertPicture } from './pictures.js';
+import { openPictureEditor, insertPicture, picturesIn } from './pictures.js';
 import { setDefaultPalette, openPalette } from './colours.js';
 import { setTuneEngine, openTuneEditor, insertTune } from './tunes.js';
 import { createOutline, openGoTo } from './outline.js';
@@ -47,6 +47,7 @@ const store = {
 const audio = createAudio();
 const programFiles = createFiles({ store, ask });   // the files programs write, kept in the browser
 let run = null;   // the running program's loop state
+let screenOf = null;   // the tab whose program the screen shows (for Export's icon)
 
 // -- The editor and its tabs ------------------------------------------------------
 
@@ -286,6 +287,7 @@ function start(text, onHalt, doc = null, stopAtFirst = false, program = null) {
   stop();
   output.replaceChildren();
   root.classList.remove('drawn', 'printed');
+  screenOf = doc;
   editor.clearRuntimeError();
   const name = doc?.name ?? program?.name ?? 'program.bas';
   const diagnostics = P.Load(name, text, ...(doc ? openPrograms(doc) : program?.libraries ?? [[], []]));
@@ -826,6 +828,12 @@ const exporter = createExport({
     const problems = P.Export(doc.name, textOf(doc), ...openPrograms(doc));
     return problems ? { doc, name: doc.name, problems } : { doc, name: doc.name, bytecode: new Uint8Array(P.ExportedBytecode()) };
   },
+  pictures() {
+    const doc = programFor(documents.active);
+    const libraries = libraryNames(textOf(doc)).map(n => documents.all.find(d => d.name.toLowerCase() === n.toLowerCase()));
+    return [doc, ...libraries.filter(Boolean)].flatMap(d => picturesIn(textOf(d), d.name).map(p => ({ ...p, file: d.name })));
+  },
+  screen: () => root.classList.contains('drawn') && screenOf === programFor(documents.active) ? screen.picture(1280, 768) : null,
   onProblems({ doc, name, problems }) {
     const go = () => { goToCode(doc); editor.goToFirstProblem(); };
     log(`${name} can't be exported:\n${problems}`, 'error', go);

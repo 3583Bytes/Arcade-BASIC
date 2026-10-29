@@ -1424,8 +1424,9 @@ it (`"a"`, `" "`, `CHR$(0) & CHR$(72)`) or by its W3C name, in any case: `"Arrow
 `"Space"`, `"Enter"`, `"KeyW"`, `"ShiftLeft"`, `"F1"`. A W3C name is a place on the
 keyboard, so `"KeyW"` is where W is on a US keyboard, whatever the layout. `KEYDOWN`
 doesn't use up presses: `INKEY$` still gets each one. In a terminal, which reports
-presses but not releases, a key counts as held while it repeats. **Extension:** Arcade
-BASIC (like QB64's `_KEYDOWN`).
+presses but not releases, a key counts as held while it repeats, and Shift counts as
+held along with a key pressed with it, so `KEYDOWN("ShiftLeft")` tells Shift+→ from →.
+**Extension:** Arcade BASIC (like QB64's `_KEYDOWN`).
 
 ```basic
 SET WINDOW 0, 100, 0, 100

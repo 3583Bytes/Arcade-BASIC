@@ -8,7 +8,7 @@
 ! files uploads one for Ready Edit to open, or downloads what you've written.)
 !
 ! Tabs: the Tab key puts in a tab character — drawn out to the next stop of 4, with a
-! faint → — or spaces (the status bar's Tabs button switches). With several lines
+! faint → — or spaces (the Indent button, top right, switches). With several lines
 ! selected Tab indents them all and Shift+Tab undents; Enter keeps the line's indent.
 !
 ! Cut, Copy and Paste work between all the tabs; with nothing selected, Cut and Copy
@@ -20,10 +20,11 @@
 ! V paste, G help, Q quit — and the bar at the bottom lists them. In a terminal Ctrl and
 ! the letter does it straight away (Ctrl+K copies: Ctrl+C never reaches a program). B
 ! starts selecting without a mouse or Shift: then the arrows, Home, End, PgUp and PgDn
-! select as they move. Shift and the arrows select too, where Shift can be seen (the
-! browser, not a terminal); and the F keys still work: F1 help, F2 save, F3 open, F4
-! save as, F7 new, F8 close, F9 next tab, Shift+Del cut, Shift+Ins paste. (The IDE
-! keeps Ctrl and ⌘ for itself, so a program in the browser never sees them: hence Esc.)
+! select as they move (↑ and ↓ by whole lines). Shift with the arrows, Home and End
+! selects too (KEYDOWN sees Shift in a terminal as well as the browser); and the F keys still work: F1 help, F2
+! save, F3 open, F4 save as, F7 new, F8 close, F9 next tab, Shift+Del cut, Shift+Ins
+! paste. (The IDE keeps Ctrl and ⌘ for itself, so a program in the browser never sees
+! them: hence Esc.)
 !
 ! The screen is a grid of character cells, one window unit each (from ASK DEVICE SIZE,
 ! as in kanban.bas), and text is drawn in a monospace font, so the columns of the text
@@ -194,7 +195,7 @@ FUNCTION NLINES$(N)
 END FUNCTION
 
 ! ---- colours: SET COLOR MIX makes a calm palette (0, the background, included) ----
-LET CBAR = 16           ! the menu, tab and status bars
+LET CBAR = 16           ! the menu, tab and keys bars
 LET CBTN = 17           ! a button
 LET CHOV = 18           ! the button or tab under the pointer
 LET CTAB = 19           ! a tab not showing
@@ -295,14 +296,14 @@ LET K$ = ""
 LET ACT = 0             ! a menu button's number (8800)
 LET HOVK = 0            ! what the pointer is over (9700's HITK, HITN)
 LET HOVN = 0
-LET TIPOFF = 0          ! 1: a click or key since it got there, so the status bar shows
+LET TIPOFF = 0          ! 1: a click or key since it got there, so the bottom row shows
                         !    what came of it, not what the button does
 LET CMDKEY = 0          ! 1 after Esc: the next key is a command's letter
 LET MARK = 0            ! 1 while selecting from the keyboard (B): moving extends it
 LET C$ = ""             ! 8050: a command's letter
 LET NFOOT = 0
 LET HITK = 0            ! 1 a menu button, 2 a tab, 3 a tab's ×, 4 +, 5 the text,
-LET HITN = 0            ! 6 the scroll bar, 7 Tabs/Spaces, 8 a file in the Open box,
+LET HITN = 0            ! 6 the scroll bar, 7 Indent, 8 a file in the Open box,
                         ! 9 its buttons, 10 the rest of it, 11 a key in the keys bar
 LET DRAG = 0            ! 1 selecting text, 2 the scroll bar
 LET THGRAB = 0          ! where the scroll bar was grabbed, from its top
@@ -377,7 +378,7 @@ DATA "  T next tab   P previous tab   G this help   Q quit"
 DATA "  B select: then the arrows, Home, End, PgUp, PgDn select"
 DATA "  A select all   X cut   C copy (Ctrl+K)   V paste"
 DATA "Esc Esc       no selection"
-DATA "Shift+arrows  select too; Shift+Del cut, Shift+Ins paste"
+DATA "Shift+arrows  select (↑ ↓: whole lines); Shift+Del cut, Shift+Ins paste"
 DATA "Cut or copy with nothing selected: the whole line"
 DATA "Tab           indent (lines selected: all of them); Shift+Tab undent"
 DATA "Enter         a new line, indented like this one"
@@ -425,7 +426,7 @@ LET MSGW = 0
 IF NTABS = 0 THEN
   GOSUB 7200
   GOSUB 7250                       ! a few words on how it works
-  LET MSG$ = "READY. Type away; the keys are in the bar above"
+  LET MSG$ = ""
 ELSE
   FOR SI = 1 TO NTABS
     IF TNAME$(SI) = SACT$ THEN LET NEWT = SI
@@ -828,7 +829,7 @@ DATA ""
 DATA "Tab characters show out to the next stop, with a faint arrow:"
 DATA "^This line starts with a tab,"
 DATA "^^and this one with two. Select lines and press Tab or Shift+Tab."
-DATA "The Tabs button in the status bar makes the Tab key put in spaces."
+DATA "The Indent button, top right, switches the Tab key to spaces."
 DATA ""
 DATA "This file has no name yet: Save as gives it one. Files you open"
 DATA "come back next time. The bar at the bottom lists the keys."
@@ -1144,12 +1145,14 @@ RETURN
 8000 REM ---- a key ----
 IF K$ = KESC$ AND CMDKEY = 0 AND MODE = 0 AND HELP = 0 THEN
   LET CMDKEY = 1                   ! the next key is a command (and a second go at
-  RETURN                           !  closing or quitting still counts after it)
+  IF CONFIRM = 0 THEN LET MSG$ = ""   !  closing or quitting still counts after it,
+  RETURN                           !  its question still showing)
 END IF
 LET WASCONF = CONFIRM              ! (a second go at closing or quitting counts only
 LET CONFIRM = 0                    !  if it comes next)
 LET MSGW = 0
 LET TIPOFF = 1
+LET MSG$ = ""                      ! (a message shows until the next key or click)
 IF HELP = 1 THEN
   LET HELP = 0                     ! any key leaves the help box
   RETURN
@@ -1308,6 +1311,10 @@ RETURN
 ! ----------------------------------------------------------------------
 8200 REM ---- move the cursor ----
 GOSUB 7000
+IF (SHIFT = 1 OR MARK = 1) AND (K$ = KUP$ OR K$ = KDN$) THEN
+  GOSUB 8250                       ! selecting up or down: whole lines
+  RETURN
+END IF
 IF SHIFT = 1 OR MARK = 1 THEN
   IF SELON = 0 THEN
     LET SELON = 1
@@ -1380,6 +1387,62 @@ ELSEIF K$ = KPGUP$ OR K$ = KPGDN$ THEN
   LET CY = MIN(MAX(CY + PG, 1), NL)
   LET TOPL = TOPL + PG             ! (9100 keeps it in range)
   LET CX = CHAT(TX$(CT, CY), WANTC)
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 8250  SELECTING UP OR DOWN — by whole lines. The first ↓ or ↑ selects the line
+!        the cursor is on; each one after adds the line below or above (or, back
+!        the other way, gives one up). The selection's other end, the anchor, is
+!        kept on the edge of a line, so a selection made some other way becomes
+!        whole lines too. The cursor goes to the start of a line — or the end of
+!        the last one.
+! ----------------------------------------------------------------------
+8250 REM ---- select whole lines ----
+IF HASSEL = 0 OR SY = EY THEN
+  LET SELON = 1
+  IF K$ = KDN$ THEN                ! from the start of this line down
+    LET AY = CY
+    LET AX = 0
+    GOSUB 8270
+  ELSE                             ! from the end of this line up
+    IF CY < NL THEN
+      LET AY = CY + 1
+      LET AX = 0
+    ELSE
+      LET AY = CY
+      LET AX = LEN(TX$(CT, CY))
+    END IF
+    LET CX = 0
+  END IF
+ELSE
+  IF AY < CY OR (AY = CY AND AX < CX) THEN
+    LET AX = 0                     ! the anchor above: to the start of its line
+  ELSEIF AX > 0 THEN               ! below: to the start of the next (or the end)
+    IF AY < NL THEN
+      LET AY = AY + 1
+      LET AX = 0
+    ELSE
+      LET AX = LEN(TX$(CT, AY))
+    END IF
+  END IF
+  IF K$ = KDN$ THEN
+    GOSUB 8270
+  ELSEIF CX > 0 THEN
+    LET CX = 0
+  ELSEIF CY > 1 THEN
+    LET CY = CY - 1
+  END IF
+END IF
+LET WANTC = DCOL(TX$(CT, CY), CX)
+RETURN
+
+8270 REM ---- the cursor to the start of the next line (or the end of the last) ----
+IF CY < NL THEN
+  LET CY = CY + 1
+  LET CX = 0
+ELSE
+  LET CX = LEN(TX$(CT, CY))
 END IF
 RETURN
 
@@ -1506,6 +1569,7 @@ LET CONFIRM = 0
 LET MSGW = 0
 LET TIPOFF = 1
 LET CMDKEY = 0
+LET MSG$ = ""
 LET BLINK0 = FRAME
 LET REDRAW = 1
 IF HELP = 1 THEN
@@ -1619,7 +1683,7 @@ RETURN
 8680 REM ---- the pointer's place in the text ----
 LET PK = ROWS - 1 - INT(MY)        ! its row, from the top
 IF PK < 2 THEN LET PK = 2
-IF PK > ROWS - 4 THEN LET PK = ROWS - 4
+IF PK > ROWS - 3 THEN LET PK = ROWS - 3
 LET PL = TOPL + PK - 2
 LET PCOL = INT(MX - GUT + LEFTC + 0.5)
 IF PCOL < 0 THEN LET PCOL = 0
@@ -1640,7 +1704,7 @@ IF DRAG = 1 THEN
   LET WAS$ = STR$(TOPL) & " " & STR$(LEFTC) & " " & STR$(CY) & " " & STR$(CX)
   LET PK = ROWS - 1 - INT(MY)
   IF PK < 2 AND TOPL > 1 THEN LET TOPL = TOPL - 1
-  IF PK > ROWS - 4 AND TOPL < MAXTOP THEN LET TOPL = TOPL + 1
+  IF PK > ROWS - 3 AND TOPL < MAXTOP THEN LET TOPL = TOPL + 1
   IF MX < GUT AND LEFTC > 0 THEN LET LEFTC = LEFTC - 1
   IF MX >= SCX0 AND LEFTC + TW < DCOL(TX$(CT, CY), LEN(TX$(CT, CY))) THEN LET LEFTC = LEFTC + 1
   GOSUB 8680
@@ -1716,8 +1780,8 @@ RETURN
 ! 9000  DRAW the screen, measuring the layout as it goes: ROWS x COLS cells,
 !        the menu bar on row 0 (counting from the top), the tabs on row 1, the
 !        text from row 2 (TROWS rows: line numbers in GUT columns, then TW
-!        columns of text, then the scroll bar), the keys bar's two rows, and the
-!        status bar at the bottom.
+!        columns of text, then the scroll bar), and the keys bar's two rows at
+!        the bottom.
 !        Text sits on a row's baseline, a quarter of a row up from its bottom.
 ! ======================================================================
 9000 REM ---- draw ----
@@ -1731,7 +1795,7 @@ LET COLS = 80                      ! one window unit per column (see kanban.bas,
 IF DEVW >= 2 AND DEVH <= 160 THEN LET COLS = INT(DEVW / 2)
 IF COLS < 60 THEN LET COLS = 60
 SET WINDOW 0, COLS, 0, ROWS
-LET TROWS = ROWS - 5
+LET TROWS = ROWS - 4
 LET GUT = MAX(5, LEN(STR$(NL)) + 2)
 LET TW = COLS - GUT - 1
 LET SCX0 = COLS - 1
@@ -1746,7 +1810,6 @@ FOR RI = 0 TO TROWS - 1
 NEXT RI
 GOSUB 9300                         ! the scroll bar
 GOSUB 9460                         ! the keys bar
-GOSUB 9350                         ! the status bar
 IF MODE = 2 THEN GOSUB 9500
 IF HELP = 1 THEN GOSUB 9600
 RETURN
@@ -1767,7 +1830,7 @@ RETURN
 
 ! ----------------------------------------------------------------------
 ! 9150  THE MENU BAR — the file's buttons, then Cut Copy Paste, at the left;
-!        Help and Quit at the right. (The status bar says what the one under the
+!        Help and Quit at the right. (The bottom row says what the one under the
 !        pointer does, and its key.)
 ! ----------------------------------------------------------------------
 9150 REM ---- the menu bar ----
@@ -1802,7 +1865,20 @@ RETURN
 9200 REM ---- the tabs ----
 SET AREA COLOR CBAR
 GRAPH AREA: 0, ROWS - 2; COLS, ROWS - 2; COLS, ROWS - 1; 0, ROWS - 1
-LET TNW = INT((COLS - 5) / NTABS) - 4   ! the room for each name
+! at the right: where the cursor is, and the Indent button — what the Tab key puts in
+LET TB$ = "Indent: tabs"
+IF TABSP = 1 THEN LET TB$ = "Indent: " & STR$(TABW) & " spaces"
+LET SBX1 = COLS - 1
+LET SBX0 = SBX1 - LEN(TB$) - 2
+LET R$ = "Ln " & STR$(CY) & ", Col " & STR$(DCOL(TX$(CT, CY), CX) + 1)
+SET AREA COLOR CBTN
+IF HOVK = 7 THEN SET AREA COLOR CHOV
+GRAPH AREA: SBX0, ROWS - 1.92; SBX1, ROWS - 1.92; SBX1, ROWS - 1.08; SBX0, ROWS - 1.08
+SET TEXT COLOR CTEXT
+GRAPH TEXT, AT SBX0 + 1, ROWS - 1.75: TB$
+SET TEXT COLOR CDIM
+GRAPH TEXT, AT SBX0 - 2 - LEN(R$), ROWS - 1.75: R$
+LET TNW = INT((SBX0 - LEN(R$) - 8) / NTABS) - 4   ! the room for each name
 IF TNW > 24 THEN LET TNW = 24
 IF TNW < 3 THEN LET TNW = 3
 LET BXX = 0
@@ -1866,32 +1942,21 @@ LET THH = MAX(1, TROWS * TROWS / NL)
 LET THTOP = (ROWS - 2) - (TOPL - 1) / (MAXTOP - 1) * (TROWS - THH)
 LET THBOT = THTOP - THH
 SET AREA COLOR CLINE
-GRAPH AREA: SBL, 3; SBR, 3; SBR, ROWS - 2; SBL, ROWS - 2
+GRAPH AREA: SBL, 2; SBR, 2; SBR, ROWS - 2; SBL, ROWS - 2
 SET AREA COLOR CTHUMB
 IF DRAG = 2 OR HOVK = 6 THEN SET AREA COLOR CHOV
 GRAPH AREA: SBL, THBOT; SBR, THBOT; SBR, THTOP; SBL, THTOP
 RETURN
 
 ! ----------------------------------------------------------------------
-! 9350  THE STATUS BAR — the message (or Save as's name being typed), where the
-!        cursor is, and the Tabs/Spaces button.
+! 9350  THE MESSAGE — on the bottom row, in place of the keys' second row, while
+!        there's something to say: Save as's name being typed, what the menu
+!        button under the pointer does, or MSG$ (until the next key or click).
+!        SAYS = 1 if it said something.
 ! ----------------------------------------------------------------------
-9350 REM ---- the status bar ----
-SET AREA COLOR CBAR
-GRAPH AREA: 0, 0; COLS, 0; COLS, 1; 0, 1
-LET TB$ = "Tabs: " & STR$(TABW)
-IF TABSP = 1 THEN LET TB$ = "Spaces: " & STR$(TABW)
-LET SBX1 = COLS - 1
-LET SBX0 = SBX1 - LEN(TB$) - 2
-SET AREA COLOR CBTN
-IF HOVK = 7 THEN SET AREA COLOR CHOV
-GRAPH AREA: SBX0, 0.08; SBX1, 0.08; SBX1, 0.92; SBX0, 0.92
-SET TEXT COLOR CTEXT
-GRAPH TEXT, AT SBX0 + 1, 0.25: TB$
-LET R$ = "Ln " & STR$(CY) & ", Col " & STR$(DCOL(TX$(CT, CY), CX) + 1)
-SET TEXT COLOR CDIM
-GRAPH TEXT, AT SBX0 - 2 - LEN(R$), 0.25: R$
-LET AV = SBX0 - LEN(R$) - 6        ! the room left of that
+9350 REM ---- the message ----
+LET SAYS = 0
+LET AV = COLS - 2
 IF MODE = 1 AND CONFIRM <> 3 THEN
   SET TEXT COLOR CACC
   GRAPH TEXT, AT 1, 0.25: "Save as:"
@@ -1899,23 +1964,22 @@ IF MODE = 1 AND CONFIRM <> 3 THEN
   LET TAV = AV - 9
   LET TYB = 0.25
   GOSUB 9380
-ELSE
-  LET M$ = MSG$
+  LET SAYS = 1
+ELSEIF HOVK = 1 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! the pointer's on a menu button
   SET TEXT COLOR CDIM
-  IF M$ = "" THEN LET M$ = HINT$
-  IF CONFIRM > 0 OR MSGW = 1 THEN SET TEXT COLOR CWARN
-  IF MSG$ <> "" AND CONFIRM = 0 AND MSGW = 0 THEN SET TEXT COLOR CTEXT
-  IF HOVK = 1 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! the pointer's on a menu button: what it does
-    LET M$ = BTIP$(HOVN)
-    SET TEXT COLOR CDIM
-  ELSEIF CMDKEY = 1 THEN
-    LET M$ = "Esc: now a letter from the bar above (Esc: unselect)"
-    SET TEXT COLOR CCUR
-  ELSEIF MARK = 1 AND CONFIRM = 0 THEN
-    LET M$ = "Selecting: move, then X cut or C copy (B: stop)"
-    SET TEXT COLOR CACC
-  END IF
+  GRAPH TEXT, AT 1, 0.25: FIT$(BTIP$(HOVN), AV)
+  LET SAYS = 1
+ELSEIF HOVK = 7 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! ... or on Indent
+  LET M$ = "The Tab key puts in a tab character (a stop every " & STR$(TABW) & " columns) · click: spaces"
+  IF TABSP = 1 THEN LET M$ = "The Tab key puts in " & STR$(TABW) & " spaces · click: tab characters"
+  SET TEXT COLOR CDIM
   GRAPH TEXT, AT 1, 0.25: FIT$(M$, AV)
+  LET SAYS = 1
+ELSEIF MSG$ <> "" THEN
+  SET TEXT COLOR CTEXT
+  IF CONFIRM > 0 OR MSGW = 1 THEN SET TEXT COLOR CWARN
+  GRAPH TEXT, AT 1, 0.25: FIT$(MSG$, AV)
+  LET SAYS = 1
 END IF
 RETURN
 
@@ -2009,27 +2073,29 @@ END IF
 RETURN
 
 ! ----------------------------------------------------------------------
-! 9460  THE KEYS BAR — two rows above the status bar: each command's key and
-!        what it does (Esc, then the letter; in a terminal ^ for Ctrl). Clicking
-!        one does it too.
+! 9460  THE KEYS BAR — the bottom two rows: each command's key and what it does
+!        (Esc, then the letter; in a terminal ^ for Ctrl). Clicking one does it
+!        too. A message (9350) takes the second row's place while it shows.
 ! ----------------------------------------------------------------------
 9460 REM ---- the keys bar ----
 SET AREA COLOR CBAR
-GRAPH AREA: 0, 1; COLS, 1; COLS, 3; 0, 3
+GRAPH AREA: 0, 0; COLS, 0; COLS, 2; 0, 2
+GOSUB 9350                         ! a message instead of the second row?
 LET FXX = 1
 IF HASMOUSE = 1 THEN
   SET TEXT COLOR CDIM
   IF CMDKEY = 1 THEN SET TEXT COLOR CCUR
-  GRAPH TEXT, AT 1, 2.25: "Esc, then"
+  GRAPH TEXT, AT 1, 1.25: "Esc, then"
   LET FXX = 12
 END IF
 LET FXS = FXX                      ! (both rows start there)
-LET FRW = ROWS - 3                 ! the row, from the top
+LET FRW = ROWS - 2                 ! the row, from the top
 FOR FI = 1 TO NFOOT
+  LET FROW(FI) = -1                ! (not drawn: not clickable)
   IF FKEY$(FI) = "/" THEN
-    LET FRW = ROWS - 2
+    LET FRW = ROWS - 1
     LET FXX = FXS
-  ELSE
+  ELSEIF FRW = ROWS - 2 OR SAYS = 0 THEN
     LET FW = LEN(FKEY$(FI)) + 1 + LEN(FLAB$(FI))
     LET FX0(FI) = FXX - 0.5
     LET FX1(FI) = FXX + FW + 0.5
@@ -2177,9 +2243,8 @@ ELSEIF HK = 1 THEN
     END IF
   NEXT TI
   IF MX >= PLX0 AND MX < PLX1 THEN LET HITK = 4
-ELSEIF HK = ROWS - 1 THEN
   IF MX >= SBX0 AND MX < SBX1 THEN LET HITK = 7
-ELSEIF HK >= ROWS - 3 THEN
+ELSEIF HK >= ROWS - 2 THEN
   FOR FI = 1 TO NFOOT
     IF FKEY$(FI) <> "/" AND FROW(FI) = HK AND MX >= FX0(FI) AND MX < FX1(FI) THEN
       LET HITK = 11

@@ -11,6 +11,10 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 
+# A Linux app's icon is a PNG appended to it, for its window (src/main.rs).
+[target.'cfg(target_os = "linux")'.dependencies]
+tauri = { version = "2", features = ["image-png"] }
+
 # Small: the player is copied into every app `arcade-basic build --desktop` makes.
 [profile.release]
 opt-level = "s"

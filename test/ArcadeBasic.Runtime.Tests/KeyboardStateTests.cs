@@ -26,8 +26,54 @@ public class KeyboardStateTests
         public bool IsKeyDown(string key) { Asked.Add(key); return down.Contains(key); }
     }
 
+    /// <summary>A terminal-like keyboard that also says whether Shift came with each press.</summary>
+    private sealed class ShiftedPresses : IKeyboard, IKeyModifiers
+    {
+        private readonly Queue<(string Key, bool Shift)> _keys = new();
+        public bool LastKeyShifted { get; private set; }
+        public void Press(string key, bool shift) => _keys.Enqueue((key, shift));
+        public string ReadKey()
+        {
+            if (_keys.Count == 0) return "";
+            (var key, LastKeyShifted) = _keys.Dequeue();
+            return key;
+        }
+    }
+
     private double _now;
     private KeyboardState State(IKeyboard keyboard) => new(keyboard, () => _now);
+
+    [Fact]
+    public void ShiftReadsAsHeldWithAKeyPressedWithItAndLetGoWithOneWithout()
+    {
+        var kb = new ShiftedPresses();
+        var keys = State(kb);
+        kb.Press("\0M", shift: true);                // Shift+→
+        Assert.Equal("\0M", keys.ReadKey());
+        Assert.True(keys.IsDown("ShiftLeft"));
+        Assert.True(keys.IsDown("ShiftRight"));       // (a terminal doesn't say which)
+        Assert.True(keys.IsDown("ArrowRight"));
+
+        kb.Press("\0M", shift: false);               // → without it: Shift's been let go
+        Assert.Equal("\0M", keys.ReadKey());
+        Assert.False(keys.IsDown("ShiftLeft"));
+
+        kb.Press("A", shift: true);                   // held only briefly, like any key here
+        keys.ReadKey();
+        Assert.True(keys.IsDown("ShiftLeft"));
+        _now = KeyboardState.TapSeconds;
+        Assert.False(keys.IsDown("ShiftLeft"));
+    }
+
+    [Fact]
+    public void WithoutModifiersAKeyboardThatOnlyReportsPressesNeverHasShiftHeld()
+    {
+        var kb = new Presses();
+        kb.Press("A", "\0M");
+        var keys = State(kb);
+        Assert.Equal("A", keys.ReadKey());
+        Assert.False(keys.IsDown("ShiftLeft"));
+    }
 
     [Fact]
     public void InkeyReadsTheKeyboardOncePerCall()

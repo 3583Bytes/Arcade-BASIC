@@ -86,7 +86,8 @@ static int PrintUsage()
           run <file>            Compile <file> and run it (vm does the same).
           build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
             --desktop             ... a desktop app instead: the program in a window
-                                  (needs the desktop player, arcade-player; --player <path>)
+                                  (needs the desktop player, arcade-player; --player <path>;
+                                  --icon <file>: a PNG, or an .icns or .ico for Mac or Windows)
           repl                  Start an interactive Arcade BASIC session.
           --version             Print version info.
           --bigdecimal-spike    Run the BigDecimal smoke test.
@@ -175,16 +176,18 @@ static int RunParse(ReadOnlySpan<string> args)
 
 static int RunBuild(ReadOnlySpan<string> args)
 {
-    const string usage = "usage: arcade-basic build <source> [-o <output>] [--desktop [--player <arcade-player>]]";
+    const string usage = "usage: arcade-basic build <source> [-o <output>] [--desktop [--player <arcade-player>] [--icon <file>]]";
     string? source = null;
     string? output = null;
     string? player = null;
+    string? icon = null;
     var desktop = false;
     for (var i = 0; i < args.Length; i++)
     {
         if (args[i] == "-o" && i + 1 < args.Length) { output = args[i + 1]; i++; }
         else if (args[i] == "--desktop") desktop = true;
         else if (args[i] == "--player" && i + 1 < args.Length) { player = args[i + 1]; desktop = true; i++; }
+        else if (args[i] == "--icon" && i + 1 < args.Length) { icon = args[i + 1]; desktop = true; i++; }
         else if (source is null) source = args[i];
         else { Console.Error.WriteLine(usage); return 2; }
     }
@@ -220,7 +223,7 @@ static int RunBuild(ReadOnlySpan<string> args)
     }
 
     var payload = BytecodeSerializer.Serialize(compiled);
-    if (desktop) return BuildDesktop(source, output, payload, player);
+    if (desktop) return BuildDesktop(source, output, payload, player, icon);
 
     output ??= Path.ChangeExtension(source, null) ?? "a.out";
     if (string.IsNullOrEmpty(output) || output == source) output = "a.out";
@@ -239,9 +242,9 @@ static int RunBuild(ReadOnlySpan<string> args)
 }
 
 /// <summary>`build --desktop`: the program in the desktop player (desktop/player), a window
-/// showing just the program (see <see cref="Bundles"/>). The player is the one given, else
-/// `arcade-player` next to this CLI.</summary>
-static int BuildDesktop(string source, string? output, byte[] payload, string? player)
+/// showing just the program (see <see cref="Bundles"/>), with the icon given, if one is. The
+/// player is the one given, else `arcade-player` next to this CLI.</summary>
+static int BuildDesktop(string source, string? output, byte[] payload, string? player, string? icon)
 {
     if (player is null)
     {
@@ -257,7 +260,12 @@ static int BuildDesktop(string source, string? output, byte[] payload, string? p
     }
     try
     {
-        var written = Bundles.WriteDesktopApp(player, output, Path.GetFileNameWithoutExtension(source), payload);
+        if (icon is not null && !File.Exists(icon))
+        {
+            Console.Error.WriteLine($"build error: no icon at {icon}");
+            return 1;
+        }
+        var written = Bundles.WriteDesktopApp(player, output, Path.GetFileNameWithoutExtension(source), payload, icon);
         Console.WriteLine($"wrote {written} (program {payload.Length:N0} bytes)");
         if (Bundles.OsOf(player) == Bundles.Os.MacOS && OperatingSystem.IsMacOS()) SignAdHoc(written);
         return 0;

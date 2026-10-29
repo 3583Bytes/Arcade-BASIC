@@ -177,6 +177,23 @@ export function createScreen(canvas, { glow = () => false } = {}) {
       : null,
     /** The last frame's text: [{ x, y, text }] in unit coordinates. */
     get texts() { return lastTexts; },
+    /** The last frame drawn at width × height on a canvas of its own (File → Export's icon,
+     *  even while the screen is hidden); null before one. */
+    picture(width, height) {
+      if (!lastFrame) return null;
+      const [w, h] = [canvas.width, canvas.height];
+      canvas.width = width;
+      canvas.height = height;
+      drawFrame(...lastFrame);
+      const copy = document.createElement('canvas');
+      copy.width = width;
+      copy.height = height;
+      copy.getContext('2d').drawImage(canvas, 0, 0);
+      canvas.width = w;
+      canvas.height = h;
+      drawFrame(...lastFrame);
+      return copy;
+    },
     geometry,
     /** A pointer event's position in the unit square (origin bottom-left). */
     unitPoint(e) {
