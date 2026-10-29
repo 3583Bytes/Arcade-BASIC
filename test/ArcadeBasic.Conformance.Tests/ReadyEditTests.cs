@@ -9,17 +9,17 @@ using ArcadeBasic.Runtime;
 namespace ArcadeBasic.Conformance.Tests;
 
 /// <summary>
-/// examples/editor.bas with a mouse and keys, driven the way the browser playground
+/// examples/readyedit.bas (Ready Edit) with a mouse and keys, driven the way the browser playground
 /// drives it: step the VM a frame at a time, read the text it drew, click, drag, type.
-/// It keeps the files it has open in editor.files (in the working directory), so each
+/// It keeps the files it has open in readyedit.files (in the working directory), so each
 /// test starts without one.
 /// </summary>
 [Collection(ScoreFiles.Collection)]
-public sealed class EditorTests : IDisposable
+public sealed class ReadyEditTests : IDisposable
 {
-    private static readonly string[] Files = ["editor.files", "notes.txt", "other.txt"];
+    private static readonly string[] Files = ["readyedit.files", "notes.txt", "other.txt"];
 
-    public EditorTests() => DeleteFiles();
+    public ReadyEditTests() => DeleteFiles();
     public void Dispose() => DeleteFiles();
 
     private static void DeleteFiles()
@@ -143,8 +143,8 @@ public sealed class EditorTests : IDisposable
 
     private static BasicVm Start(Screen screen)
     {
-        var source = File.ReadAllText(Path.Combine(ExamplesDir(), "editor.bas"));
-        var file = new SourceFile("editor.bas", source);
+        var source = File.ReadAllText(Path.Combine(ExamplesDir(), "readyedit.bas"));
+        var file = new SourceFile("readyedit.bas", source);
         var diags = new DiagnosticBag();
         var program = new BasicParser(new BasicLexer(file, diags).Lex(), file, diags).ParseProgram();
         var info = Analyzer.Analyze(program, diags);
@@ -156,7 +156,7 @@ public sealed class EditorTests : IDisposable
 
     /// <summary>Start with <paramref name="names"/> open, as if they were open last time.</summary>
     private static void OpenLastTime(params string[] names) =>
-        File.WriteAllLines("editor.files", ["ARCADE-EDITOR 1", names[0], names.Length.ToString(), .. names, "0"]);
+        File.WriteAllLines("readyedit.files", ["READY-EDIT 1", names[0], names.Length.ToString(), .. names, "0"]);
 
     [Fact]
     public void TheFirstRunShowsANewFileThatSaysHowItWorks()
@@ -166,11 +166,11 @@ public sealed class EditorTests : IDisposable
 
         Assert.Equal("New   Open   Save   Save as   Close     Cut   Copy   Paste       Help   Quit", screen.Row(0).Trim());
         Assert.True(screen.Shows("untitled-1"));
-        Assert.Equal("Welcome to the Arcade BASIC editor.", screen.Line(0));
+        Assert.Equal("Welcome to Ready Edit, a text editor written in Arcade BASIC.", screen.Line(0));
         // a tab character runs on to the next stop of 4, a faint → where it starts
         Assert.Equal("→   This line starts with a tab,", screen.Line(6));
         Assert.StartsWith("→   →   and this one with two.", screen.Line(7));
-        Assert.StartsWith("Welcome: type away", screen.Status);
+        Assert.StartsWith("READY. Type away", screen.Status);
         Assert.EndsWith("Ln 1, Col 1   Tabs: 4", screen.Status);
     }
 
@@ -199,7 +199,7 @@ public sealed class EditorTests : IDisposable
         Assert.StartsWith("Saved notes.txt · 3 lines", screen.Status);
         Assert.True(screen.Shows("notes.txt"));
         Assert.False(screen.Shows("●"));
-        Assert.Equal(["ARCADE-EDITOR 1", "notes.txt", "1", "notes.txt", "1", "notes.txt"], File.ReadAllLines("editor.files"));
+        Assert.Equal(["READY-EDIT 1", "notes.txt", "1", "notes.txt", "1", "notes.txt"], File.ReadAllLines("readyedit.files"));
 
         // next time it opens again, in its own tab
         var again = new Screen();

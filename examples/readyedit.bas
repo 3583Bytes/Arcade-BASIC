@@ -1,10 +1,11 @@
-! editor.bas — a text editor for your own files: several open at once, each in a tab,   @category Graphics
-! used with the mouse and the keyboard. Click to put the cursor anywhere, drag (or
+! readyedit.bas — Ready Edit, a text editor for your own files: several open at once,   @category Graphics
+! each in a tab, used with the mouse and the keyboard (named for the READY. prompt of
+! the Commodore and Microsoft BASICs). Click to put the cursor anywhere, drag (or
 ! Shift+click) to select, double-click a word. The bar at the top has New, Open, Save,
 ! Save as and Close; each file gets a tab (click to show it, × to close it, + for a new
 ! one). The files it had open come back next time: it keeps their names in
-! editor.files. (In the browser IDE files stay in the browser: File → Program files
-! uploads one for the editor to open, or downloads what you've written.)
+! readyedit.files. (In the browser IDE files stay in the browser: File → Program
+! files uploads one for Ready Edit to open, or downloads what you've written.)
 !
 ! Tabs: the Tab key puts in a tab character — drawn out to the next stop of 4, with a
 ! faint → — or spaces (the status bar's Tabs button switches). With several lines
@@ -35,7 +36,7 @@ LET TABSP = 0           ! 1: the Tab key puts in spaces instead of a tab charact
 LET MAXTAB = 8          ! files open at once
 LET MAXL = 3000         ! lines in a file
 LET MAXREC = 20         ! files Open remembers
-LET SESSION$ = "editor.files"
+LET SESSION$ = "readyedit.files"
 
 ! ---- the files: tab T's lines are TX$(T, 1) to TX$(T, its line count) ----
 DIM TX$(9, 3000)        ! (row 9: where a file is read before it gets a tab)
@@ -350,7 +351,7 @@ DO
   LET NHLP = NHLP + 1
   LET HLP$(NHLP) = H$
 LOOP
-DATA "THE EDITOR'S KEYS AND CLICKS"
+DATA "READY EDIT: THE KEYS AND CLICKS"
 DATA ""
 DATA "Click         put the cursor there"
 DATA "Drag          select (Shift+click: from the cursor to there)"
@@ -385,14 +386,14 @@ DATA "Close", "Close this tab  ·  F8"
 DATA "Cut", "Cut what's selected, or the whole line  ·  Shift+Del"
 DATA "Copy", "Copy what's selected, or the whole line"
 DATA "Paste", "Paste what was cut or copied  ·  Shift+Ins"
-DATA "Help", "The keys and clicks  ·  F1", "Quit", "Close the editor"
+DATA "Help", "The keys and clicks  ·  F1", "Quit", "Close Ready Edit"
 IF HASMOUSE = 1 THEN
   LET HINT$ = "F1 help · F2 save · F3 open · F4 save as"
 ELSE
   LET HINT$ = "Ctrl+S save · Ctrl+O open · Ctrl+Q quit"
 END IF
 
-GOSUB 7700                         ! editor.files: the files open last time, and recent ones
+GOSUB 7700                         ! readyedit.files: the files open last time, and recent ones
 FOR SI = 1 TO SNR
   LET OPN$ = SOPEN$(SI)
   GOSUB 7400
@@ -402,8 +403,8 @@ LET MSGW = 0
 IF NTABS = 0 THEN
   GOSUB 7200
   GOSUB 7250                       ! a few words on how it works
-  LET MSG$ = "Welcome: type away, or F1 for the keys"
-  IF HASMOUSE = 0 THEN LET MSG$ = "Welcome: type away (Ctrl+Q quits)"
+  LET MSG$ = "READY. Type away, or F1 for the keys"
+  IF HASMOUSE = 0 THEN LET MSG$ = "READY. Type away (Ctrl+Q quits)"
 ELSE
   FOR SI = 1 TO NTABS
     IF TNAME$(SI) = SACT$ THEN LET NEWT = SI
@@ -457,7 +458,7 @@ DO
 LOOP
 CLEAR
 SET TEXT COLOR CDIM
-GRAPH TEXT, AT 2, INT(ROWS / 2) + 0.25: "The editor has closed. Run it again to carry on where you were."
+GRAPH TEXT, AT 2, INT(ROWS / 2) + 0.25: "Ready Edit has closed. Run it again to carry on where you were."
 SLEEP 0.03
 END
 
@@ -729,7 +730,7 @@ GOSUB 7100
 LET CT = NEWT
 GOSUB 7110
 LET DRAG = 0
-GOSUB 7710                         ! (editor.files remembers which one shows)
+GOSUB 7710                         ! (readyedit.files remembers which one shows)
 RETURN
 
 ! ======================================================================
@@ -768,7 +769,7 @@ DO
   LET TX$(CT, NL) = W$
 LOOP
 RETURN
-DATA "Welcome to the Arcade BASIC editor."
+DATA "Welcome to Ready Edit, a text editor written in Arcade BASIC."
 DATA ""
 DATA "Type anywhere. Click to move the cursor; drag to select."
 DATA "The bar at the top opens and saves files, and each file gets a tab."
@@ -982,18 +983,18 @@ END WHEN
 RETURN
 
 ! ======================================================================
-! 7700  READ editor.files: the files open last time (SOPEN$(1 .. SNR)), the
+! 7700  READ readyedit.files: the files open last time (SOPEN$(1 .. SNR)), the
 !        one that showed (SACT$), and the recent ones. 7710 WRITE it.
-!        "ARCADE-EDITOR 1", the one showing, how many open, their names, how
+!        "READY-EDIT 1", the one showing, how many open, their names, how
 !        many recent, their names — a line each.
 ! ======================================================================
-7700 REM ---- read editor.files ----
+7700 REM ---- read readyedit.files ----
 LET SNR = 0
 LET NRECENT = 0
 WHEN EXCEPTION IN
   OPEN #3: NAME SESSION$, ACCESS INPUT
   LINE INPUT #3: RL$
-  IF RL$ = "ARCADE-EDITOR 1" THEN
+  IF RL$ = "READY-EDIT 1" THEN
     LINE INPUT #3: SACT$
     LINE INPUT #3: RL$
     LET SN = MIN(TONUM(RL$), MAXTAB)
@@ -1014,10 +1015,10 @@ USE
 END WHEN
 RETURN
 
-7710 REM ---- write editor.files ----
+7710 REM ---- write readyedit.files ----
 WHEN EXCEPTION IN
   OPEN #3: NAME SESSION$, ACCESS OUTPUT
-  PRINT #3: "ARCADE-EDITOR 1"
+  PRINT #3: "READY-EDIT 1"
   PRINT #3: TNAME$(CT)
   LET SN = 0
   FOR SSI = 1 TO NTABS
