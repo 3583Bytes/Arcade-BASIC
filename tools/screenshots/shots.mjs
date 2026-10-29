@@ -35,6 +35,10 @@ const helpers = `
   const key = (type, code, k) => canvas.dispatchEvent(new KeyboardEvent(type, { key: k, code, bubbles: true }));
   const hold = async (code, k, ms) => { key('keydown', code, k); await sleep(ms); key('keyup', code, k); };
   const tap = (code, k) => hold(code, k, 60);
+  const point = (kind, col, row) => { const r = canvas.getBoundingClientRect();     // (an 80 x 24 screen)
+    canvas.dispatchEvent(new PointerEvent(kind, { clientX: r.left + col / 80 * r.width, clientY: r.top + (row + 0.5) / 24 * r.height,
+                                                  button: 0, pointerId: 1, bubbles: true })); };
+  const click = async (col, row) => { point('pointermove', col, row); point('pointerdown', col, row); await sleep(80); point('pointerup', col, row); await sleep(80); };
   const theme = name => { $('theme').value = name; $('theme').dispatchEvent(new Event('change')); };
   const show = name => document.querySelector('#views [data-view="' + name + '"]').click();
   const run = async ms => { $('run').click(); await sleep(ms); };
@@ -105,7 +109,7 @@ const shots = [
          await sleep(1200);
          return rect(canvas);` },
   { name: 'kanban', open: 'kanban', size: game, js: `await run(2500); return rect(canvas);` },
-  { name: 'readyedit', open: 'readyedit', size: game, js: `await run(2500); return rect(canvas);` },
+  { name: 'readyedit', open: 'readyedit', size: game, js: `await run(2500); await click(4, 0); await sleep(300); return rect(canvas);` },
   { name: 'maze3d-walk', open: 'maze3d', size: game, gif: 2.8,
     // (down the first corridor, east, and right at its end into the turning south:
     // 3 tiles a second, a quarter turn in 0.8 s)
