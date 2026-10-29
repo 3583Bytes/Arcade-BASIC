@@ -1365,7 +1365,10 @@ column per screen column), floor and ceiling, and sprites with see-through parts
 ### Mouse: `LOCATE POINT` / `GET POINT`, `GET MOUSE`
 
 Pointer input comes back in the same problem coordinates you draw with. It works
-where there's a mouse over the drawing — the browser IDE.
+where there's a mouse over the drawing: the browser IDE, and a terminal that reports the
+mouse (macOS Terminal, iTerm2 and most others on macOS and Linux). A terminal's mouse
+counts from the first time it's moved or clicked; until then `GET MOUSE` says there's
+none (-1), and a click gives the cell it was in, not which half of it.
 
 <!-- fragment -->
 ```basic
@@ -1464,7 +1467,8 @@ LOOP
 
 `GET MOUSE x, y, s` reads where the pointer is and what its button is doing, without
 waiting; `LOCATE POINT` waits for a click. Both are in [Graphics](#mouse-locate-point--get-point-get-mouse),
-since they answer in the window's coordinates.
+since they answer in the window's coordinates. They work in a terminal too, once the
+mouse has been moved or clicked there.
 
 ---
 

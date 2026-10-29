@@ -133,6 +133,13 @@ public class ParserTests
     }
 
     [Fact]
+    public void DataWithUnquotedStrings()
+    {
+        var stmt = SingleStmt<DataStmt>("DATA red, 3 apples, -2, \"x\"");
+        stmt.Items.Select(i => (i.IsString, i.Text)).Should().Equal((true, "red"), (true, "3 apples"), (false, "-2"), (true, "x"));
+    }
+
+    [Fact]
     public void Restore()
     {
         var (prog, _) = Parse("RESTORE\nRESTORE 100");
@@ -580,6 +587,16 @@ public class ParserTests
         bin.Op.Should().Be(BinaryOp.Add);
         bin.Left.Should().BeOfType<CallOrIndexExpr>().Which.Name.Should().Be("SIN");
         bin.Right.Should().BeOfType<CallOrIndexExpr>().Which.Name.Should().Be("COS");
+    }
+
+    [Fact]
+    public void ModAndRemainderAreFunctionsWhereAnOperandStarts()
+    {
+        var stmt = SingleStmt<AssignStmt>("X = MOD(7, 3) MOD REMAINDER(5, 2)");
+        var bin = stmt.Value.Should().BeOfType<BinaryExpr>().Subject;
+        bin.Op.Should().Be(BinaryOp.Mod);
+        bin.Left.Should().BeOfType<CallOrIndexExpr>().Which.Should().Match<CallOrIndexExpr>(c => c.Name == "MOD" && c.Args.Count == 2);
+        bin.Right.Should().BeOfType<CallOrIndexExpr>().Which.Name.Should().Be("REMAINDER");
     }
 
     // -- Error recovery --------------------------------------------------

@@ -24,17 +24,19 @@ import { foldAt } from './outline.js';
 const reserved = new Set(), builtins = new Set();
 // After these a number is a line number: GOTO 100, ON K GOSUB 200, 300, THEN 400.
 const JUMPS = new Set(['GOTO', 'GOSUB', 'THEN', 'ELSE', 'RESTORE']);
+// A DATA item that's a number; any other unquoted one is a string (DATA RED, GREEN).
+const DATA_NUMBER = /^[+-]?[ \t]*(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 
 /** BASIC, a line at a time, the way the engine's lexer reads it. */
 function basic() {
   return StreamLanguage.define({
     name: 'basic',
-    startState: () => ({ start: true, jump: false, go: false }),
+    startState: () => ({ start: true, jump: false, go: false, data: false, item: false }),
     token(stream, state) {
-      if (stream.sol()) { state.start = true; state.jump = state.go = false; }
+      if (stream.sol()) { state.start = true; state.jump = state.go = state.data = state.item = false; }
       if (stream.eatSpace()) return null;
-      const start = state.start;
-      state.start = false;
+      const start = state.start, item = state.item;
+      state.start = state.item = false;
       const ch = stream.peek();
       if (ch === '!') { stream.skipToEnd(); return 'comment'; }
       if (ch === '"') {                                    // "" is a quote inside a string
@@ -43,6 +45,8 @@ function basic() {
         state.jump = false;
         return 'string';
       }
+      const unquoted = item && stream.match(/^[^,:!"]+/, false)?.[0].trimEnd();
+      if (unquoted && !DATA_NUMBER.test(unquoted)) { stream.pos += unquoted.length; return 'string'; }
       if (stream.match(/^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i)) return start || state.jump ? 'label' : 'number';
       if (stream.match(/^[a-z][a-z0-9_]*\$?/i)) {
         const word = stream.current().toUpperCase();
@@ -52,12 +56,15 @@ function basic() {
         state.go = word === 'GO';
         if (reserved.has(word)) {
           state.jump = JUMPS.has(word) || (go && (word === 'TO' || word === 'SUB'));   // GO TO, GO SUB
+          if (word === 'DATA') state.data = state.item = true;
           return 'keyword';
         }
         state.jump = false;
         return builtins.has(word) ? 'builtin' : 'variableName';
       }
       stream.next();
+      if (ch === ',' && state.data) state.item = true;
+      if (ch === ':') state.data = false;
       if (ch === ',' && state.jump) return 'punctuation';
       state.jump = state.go = false;
       return /[-+*/^=<>&]/.test(ch) ? 'operator' : 'punctuation';

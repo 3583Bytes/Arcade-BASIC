@@ -29,8 +29,12 @@ public sealed class ReadyEditTests : IDisposable
 
     /// <summary>An 80 x 24-cell screen (the browser's) that keeps each presented frame's
     /// text, with a pointer and a keyboard (that sees Shift held) the test drives.</summary>
-    private sealed class Screen : IGraphicsDevice, IPointer, IKeyboard, IKeyState
+    private sealed class Screen : IGraphicsDevice, IPointer, IPointerPresence, IKeyboard, IKeyState
     {
+        /// <summary>False: like a terminal, whose mouse only counts once it has reported.</summary>
+        public bool Seen = true;
+        public bool PointerSeen => Seen;
+
         private readonly List<(GfxPoint At, string Text)> _drawing = [];
         public List<(GfxPoint At, string Text)> Frame { get; private set; } = [];
         public readonly Queue<PointerEvent> Events = new();
@@ -168,16 +172,16 @@ public sealed class ReadyEditTests : IDisposable
         var screen = new Screen();
         Start(screen);
 
-        Assert.Equal("New   Open   Save   Save as   Close     Cut   Copy   Paste       Help   Quit", screen.Row(0).Trim());
+        Assert.Equal("New   Open   Save   Save as   Close     Cut   Copy   Paste" + new string(' ', 14) + "Quit", screen.Row(0).Trim());
         Assert.True(screen.Shows("untitled-1"));
         Assert.Equal("Welcome to Ready Edit, a text editor written in Arcade BASIC.", screen.Line(0));
         // a tab character runs on to the next stop of 4, a faint → where it starts
         Assert.Equal("→   This line starts with a tab,", screen.Line(6));
         Assert.StartsWith("→   →   and this one with two.", screen.Line(7));
-        Assert.EndsWith("Ln 1, Col 1   Indent: tabs", screen.Row(1));   // top right
+        Assert.EndsWith("Ln 1, Col 1", screen.Row(1));               // top right
         // the keys bar, the bottom two rows: Esc, then a letter
         Assert.Equal("Esc, then  S Save  E Save as  O Open  N New  W Close  T Next tab  P Prev tab", screen.Row(22).Trim());
-        Assert.Equal("B Select  A Select all  X Cut  C Copy  V Paste  G Help  Q Quit", screen.Row(23).Trim());
+        Assert.Equal("B Select  A Select all  X Cut  C Copy  V Paste  Q Quit", screen.Row(23).Trim());
     }
 
     [Fact]
@@ -193,7 +197,7 @@ public sealed class ReadyEditTests : IDisposable
         Assert.Equal("hello→  world", screen.Line(0));
         Assert.Equal("  indented", screen.Line(1));
         Assert.Equal("  x", screen.Line(2));                           // Enter kept the indent
-        Assert.EndsWith("Ln 3, Col 4   Indent: tabs", screen.Row(1));
+        Assert.EndsWith("Ln 3, Col 4", screen.Row(1));
 
         // F2 on a new file asks for a name
         screen.Type(F2);
@@ -463,6 +467,24 @@ public sealed class ReadyEditTests : IDisposable
         screen.Type([.. Esc('x'), .. Esc('s')]);
         NextFrame(vm);
         Assert.Equal(["one", ""], File.ReadAllLines("notes.txt"));
+    }
+
+    [Fact]
+    public void OnATerminalTheMouseWorksOnceItReportsAndAClickLandsBeforeTheLetter()
+    {
+        File.WriteAllLines("notes.txt", ["hello world"]);
+        OpenLastTime("notes.txt");
+        var screen = new Screen { Seen = false };
+        var vm = Start(screen);
+        Assert.StartsWith("^S Save  ^E Save as", screen.Row(22).Trim());   // drawn for a terminal
+
+        // the mouse reports: a click on the "w" (a terminal says only which cell) goes before it
+        screen.Seen = true;
+        screen.Click(Screen.Cell(5 + 6 + 0.5, 2));
+        NextFrame(vm, 2);
+        screen.Type("X");
+        NextFrame(vm);
+        Assert.Equal("hello Xworld", screen.Line(0));
     }
 
     [Fact]

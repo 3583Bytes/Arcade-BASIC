@@ -31,6 +31,35 @@ public class AnalyzerTests
         Analyzer.BuiltinNames.Should().NotContain("CHR");
     }
 
+    // -- Arrays, constants and functions aren't variables ------------------
+
+    [Theory]
+    [InlineData("DIM A(3)\nINPUT A", Analyzer.ErrCannotCall, "'A' is an array; index it with parentheses")]
+    [InlineData("INPUT A\nDIM A(3)", Analyzer.ErrCannotCall, "'A' is an array; index it with parentheses")]
+    [InlineData("DIM A$(3)\nREAD A$", Analyzer.ErrCannotCall, "'A$' is an array; index it with parentheses")]
+    [InlineData("DIM A(3)\nLET A = 1", Analyzer.ErrCannotCall, "'A' is an array; index it with parentheses")]
+    [InlineData("DIM A(3)\nFOR A = 1 TO 2\nNEXT A", Analyzer.ErrCannotCall, "'A' is an array; index it with parentheses")]
+    [InlineData("SUB S(B())\nLET B = 1\nEND SUB", Analyzer.ErrCannotCall, "'B' is an array; index it with parentheses")]
+    [InlineData("LET PI = 3", Analyzer.ErrInvalidAssignmentTarget, "'PI' is a constant; it can't be given a value")]
+    [InlineData("READ RND", Analyzer.ErrInvalidAssignmentTarget, "'RND' is a built-in function; it can't be given a value")]
+    [InlineData("FUNCTION F(X)\nLET F = X\nEND FUNCTION\nLET F = 1", Analyzer.ErrInvalidAssignmentTarget, "'F' is a FUNCTION; it's given its value inside it")]
+    public void OnlyAVariableIsGivenAValue(string source, string code, string message)
+    {
+        var (_, diags) = Analyze(source);
+        diags.All.Where(d => d.Severity == DiagnosticSeverity.Error).Should().ContainSingle()
+            .Which.Should().Match<Diagnostic>(d => d.Code == code && d.Message == message);
+    }
+
+    [Fact]
+    public void LboundAndUboundTakeAnArraysName()
+    {
+        Analyze("DIM A(3), B$(2, 2)\nPRINT LBOUND(A), UBOUND(B$, 2)").Diagnostics.HasErrors.Should().BeFalse();
+        Analyze("SUB S(B())\nPRINT UBOUND(B)\nEND SUB").Diagnostics.HasErrors.Should().BeFalse();
+        foreach (var call in new[] { "LBOUND(X)", "UBOUND(A(1))", "LBOUND(5)" })
+            ErrorsFor(Analyze($"DIM A(3)\nLET X = 1\nPRINT {call}").Diagnostics, Analyzer.ErrTypeMismatch).Should().ContainSingle(call)
+                .Which.Message.Should().EndWith("takes an array: its name, with no subscripts (" + call[..6] + "(A))");
+    }
+
     // -- Graphics: cell arrays ---------------------------------------------
 
     [Fact]

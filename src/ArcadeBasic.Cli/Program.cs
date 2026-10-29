@@ -457,7 +457,7 @@ static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, IKeyboard?,
     var device = ConsoleGraphics.TryCreate();
     // A console device means an interactive terminal, so INKEY$ gets a live
     // keyboard too (works even for a text-mode game that draws nothing).
-    IKeyboard? keyboard = device is null ? null : new ConsoleKeyboard();
+    IKeyboard? keyboard = device is null ? null : new ConsoleKeyboard(device);
     TextReader input = device is null ? Console.In : new PresentingTextReader(Console.In, device);
     try
     {

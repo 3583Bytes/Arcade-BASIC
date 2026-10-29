@@ -23,6 +23,8 @@ public sealed class BasicLexer
 
     private int _pos;
     private bool _atLineStart = true;
+    private bool _inData;        // in a DATA statement (until the end of the line or a ':')
+    private bool _dataItemNext;  // and where an item starts: after DATA, or a comma
 
     public BasicLexer(SourceFile file, DiagnosticBag diagnostics)
     {
@@ -48,6 +50,19 @@ public sealed class BasicLexer
 
     private Token NextToken()
     {
+        var token = LexToken();
+        switch (token.Kind)
+        {
+            case TokenKind.KwData: _inData = _dataItemNext = true; break;
+            case TokenKind.Comma: _dataItemNext = _inData; break;
+            case TokenKind.Colon or TokenKind.Newline or TokenKind.EndOfFile: _inData = _dataItemNext = false; break;
+            default: _dataItemNext = false; break;
+        }
+        return token;
+    }
+
+    private Token LexToken()
+    {
         SkipTrivia();
 
         if (_pos >= _text.Length)
@@ -72,6 +87,11 @@ public sealed class BasicLexer
         }
 
         _atLineStart = false;
+
+        if (_dataItemNext && TryLexUnquotedString(start, out var unquoted))
+        {
+            return unquoted;
+        }
 
         if (IsDigit(c) || (c == '.' && _pos + 1 < _text.Length && IsDigit(_text[_pos + 1])))
         {
@@ -234,6 +254,34 @@ public sealed class BasicLexer
 
         return MakeToken(TokenKind.NumericLiteral, start, _pos - start);
     }
+
+    /// <summary>A DATA item that's neither a quoted string nor a number — an unquoted string,
+    /// as in <c>DATA RED, GREEN</c>: the text up to the next comma, ':', '!' comment, quote or
+    /// end of line, less the spaces after it.</summary>
+    private bool TryLexUnquotedString(int start, out Token token)
+    {
+        var end = start;
+        while (end < _text.Length && _text[end] is not (',' or ':' or '!' or '"' or '\n' or '\r'))
+        {
+            end++;
+        }
+        while (end > start && IsSpace(_text[end - 1]))
+        {
+            end--;
+        }
+        if (end == start || DataNumber.IsMatch(_text.Substring(start, end - start)))
+        {
+            token = default;
+            return false;   // (lexed as it is: a number, or what the parser reports)
+        }
+        _pos = end;
+        token = MakeToken(TokenKind.UnquotedString, start, end - start);
+        return true;
+    }
+
+    /// <summary>A DATA item that's a number: a sign, perhaps, then a numeric constant.</summary>
+    private static readonly System.Text.RegularExpressions.Regex DataNumber =
+        new(@"^[+-]?[ \t]*(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     private Token LexString(int start)
     {

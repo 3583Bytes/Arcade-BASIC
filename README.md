@@ -162,7 +162,7 @@ The same engine — compiled to bytecode, run on a VM — runs everywhere:
 
 | | Command | |
 |---|---|---|
-| **Command line** | `arcade-basic run foo.bas` | Runs a program in a terminal; its graphics are drawn with Braille and ANSI colours, its sound played. `--svg out.svg` and `--wav out.wav` save them instead. |
+| **Command line** | `arcade-basic run foo.bas` | Runs a program in a terminal; its graphics are drawn with Braille and ANSI colours, its sound played, and the mouse works where the terminal reports it. `--svg out.svg` and `--wav out.wav` save them instead. |
 | **Native binary** | `arcade-basic build foo.bas -o foo` | One self-contained executable for Linux, macOS or Windows; no .NET needed where it runs. |
 | **Desktop app** | `arcade-basic build foo.bas --desktop` | Your program in a window of its own, as in the browser (a Mac `.app`, or a Windows or Linux executable). Needs the desktop player ([`desktop/player`](desktop/player)). |
 | **REPL** | `arcade-basic repl` | Type a line, see it run; blocks (`FOR`, `SUB`, …) continue on the next line. |

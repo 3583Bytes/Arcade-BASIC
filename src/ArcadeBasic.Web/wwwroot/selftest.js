@@ -39,16 +39,19 @@ export async function ideSelftest({ P, editor, documents, pack, openAddress, $, 
 
   await step('highlighting', async () => {
     documents.newProgram();
-    setText('10 LET X = INT(RND * 6) ! a die\n20 IF X > 3 THEN 10\n30 PRINT "X is"; X\nREM done\n');
+    setText('10 LET X = INT(RND * 6) ! a die\n20 IF X > 3 THEN 10\n30 PRINT "X is"; X\nREM done\nDATA red apple, 12: PRINT red\n');
     await pause(300);
     const spans = [...view.contentDOM.querySelectorAll('.cm-line span')];
-    const colourOf = word => { const s = spans.find(x => x.textContent === word); return s && getComputedStyle(s).color; };
+    const colourOf = (word, last = false) => { const s = spans[last ? 'findLast' : 'find'](x => x.textContent === word); return s && getComputedStyle(s).color; };
     const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return {
       spans: spans.length, colours: new Set(spans.map(s => getComputedStyle(s).color)).size,
       LET: colourOf('LET'), keyword: css('--syn-kw'), INT: colourOf('INT'), builtin: css('--syn-fn'),
       jumpTo: colourOf('10'), label: css('--syn-label'), comment: colourOf('! a die'), commentColour: css('--syn-com'),
       string: colourOf('"X is"'), stringColour: css('--syn-str'),
+      // DATA's unquoted items are strings; after the ':' it's code again.
+      unquoted: colourOf('red apple'), dataNumber: colourOf('12'), numberColour: css('--syn-num'),
+      afterColon: colourOf('red', true), variableColour: css('--syn-var'),
     };
   });
 

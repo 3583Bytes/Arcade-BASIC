@@ -23,6 +23,19 @@ public interface IPointer
 }
 
 /// <summary>
+/// Optional companion to <see cref="IPointer"/> for one that can't tell whether there's a
+/// mouse until it reports — a terminal's, which only says so once the user moves or
+/// clicks it (and an older terminal never will). Until then there's no pointer:
+/// <c>GET MOUSE</c> answers -1 and <c>LOCATE POINT</c> asks for typed coordinates.
+/// </summary>
+public interface IPointerPresence
+{
+    /// <summary>Has the mouse reported yet? Asking also tells the device the program is
+    /// looking for a pointer (a terminal starts reporting the mouse then).</summary>
+    bool PointerSeen { get; }
+}
+
+/// <summary>
 /// One run's pointer as the program sees it: <c>GET MOUSE</c>
 /// samples it, <c>LOCATE POINT</c> waits on it. Button events are read one per sample,
 /// so a click that starts and ends between two samples still reports "pressed", then
@@ -38,15 +51,16 @@ public sealed class PointerState(IGraphicsDevice graphics)
     private bool _down;
     private bool _requesting;
 
-    /// <summary>Is there a pointing device at all?</summary>
-    public bool Present => _pointer is not null;
+    /// <summary>Is there a pointing device at all? (Not yet, for one that hasn't reported
+    /// — see <see cref="IPointerPresence"/>.)</summary>
+    public bool Present => _pointer is not null && (_pointer is not IPointerPresence presence || presence.PointerSeen);
 
     /// <summary><c>GET MOUSE</c>: the button's state (<see cref="Up"/>, <see cref="Held"/>, or the
     /// next unread <see cref="Pressed"/>/<see cref="Released"/> edge) and where — the edge's
     /// position, else the pointer's. <see cref="NoPointer"/> without a pointing device.</summary>
     public int Sample(out GfxPoint at)
     {
-        if (_pointer is null)
+        if (_pointer is null || !Present)
         {
             at = default;
             return NoPointer;

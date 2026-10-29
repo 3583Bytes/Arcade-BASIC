@@ -25,6 +25,16 @@ the last one. Releases before 2.0.0 are on the
   has it as its tab's icon too.
 - `arcade-basic build --desktop` on a Mac signs the Mac app ad hoc, so it opens on other
   Macs (after Open Anyway) rather than being called damaged.
+- **The language**, closer to the standard:
+  - `DATA` takes unquoted strings, `DATA red, big apple, 3 apples`, as old listings
+    write them (the editor colours them as strings).
+  - `MOD(x, y)` and `REMAINDER(x, y)`, the standard's functions, as well as the
+    operators `x MOD y` and `x REMAINDER y`.
+  - `LBOUND(A)` and `UBOUND(A)`, and `UBOUND(M, 2)` for a dimension, give an array's
+    bounds; they were recognised but couldn't be called.
+  - Giving a value to an array's name (`INPUT A` when `A` is an array), a constant
+    (`LET PI = 3`) or a function is an error at its line, where it was an internal
+    compiler error, a crash (`FOR A = …`), or nothing at all (`LET A = 1`).
 - The desktop player passes the app's name to the page as its title, and doesn't open a
   console window on Windows.
 

@@ -7,9 +7,9 @@
 ! readyedit.files. (In the browser IDE files stay in the browser: File → Program
 ! files uploads one for Ready Edit to open, or downloads what you've written.)
 !
-! Tabs: the Tab key puts in a tab character — drawn out to the next stop of 4, with a
-! faint → — or spaces (the Indent button, top right, switches). With several lines
-! selected Tab indents them all and Shift+Tab undents; Enter keeps the line's indent.
+! Tabs: the Tab key puts in a tab character, drawn out to the next stop of 4 with a
+! faint →. With several lines selected Tab indents them all and Shift+Tab undents (a
+! tab, or up to 4 spaces); Enter keeps the line's indent.
 !
 ! Cut, Copy and Paste work between all the tabs; with nothing selected, Cut and Copy
 ! take the whole line, and Paste puts it back above the cursor's line. The clipboard
@@ -17,12 +17,12 @@
 !
 ! Keys: every command is Esc, then a letter — S save, E save as, O open, N new, W close
 ! the tab, T and P the next and previous tab, B select, A select all, X cut, C copy,
-! V paste, G help, Q quit — and the bar at the bottom lists them. In a terminal Ctrl and
-! the letter does it straight away (Ctrl+K copies: Ctrl+C never reaches a program). B
-! starts selecting without a mouse or Shift: then the arrows, Home, End, PgUp and PgDn
-! select as they move (↑ and ↓ by whole lines). Shift with the arrows, Home and End
-! selects too (KEYDOWN sees Shift in a terminal as well as the browser); and the F keys still work: F1 help, F2
-! save, F3 open, F4 save as, F7 new, F8 close, F9 next tab, Shift+Del cut, Shift+Ins
+! V paste, Q quit — and the bar at the bottom lists them. In a terminal Ctrl and the
+! letter does it straight away (Ctrl+K copies: Ctrl+C never reaches a program). B starts
+! selecting without a mouse or Shift: then the arrows, Home, End, PgUp and PgDn select as
+! they move (↑ and ↓ by whole lines). Shift with the arrows, Home and End selects too
+! (KEYDOWN sees Shift in a terminal as well as the browser); and the F keys still work:
+! F2 save, F3 open, F4 save as, F7 new, F8 close, F9 next tab, Shift+Del cut, Shift+Ins
 ! paste. (The IDE keeps Ctrl and ⌘ for itself, so a program in the browser never sees
 ! them: hence Esc.)
 !
@@ -35,7 +35,6 @@ OPTION BASE 1
 
 ! ---- settings ----
 LET TABW = 4            ! a tab stop every 4 columns
-LET TABSP = 0           ! 1: the Tab key puts in spaces instead of a tab character
 LET MAXTAB = 8          ! files open at once
 LET MAXL = 3000         ! lines in a file
 LET MAXREC = 20         ! files Open remembers
@@ -61,12 +60,11 @@ DIM TABX1(8)
 DIM TCLX(8)
 DIM RECENT$(20)         ! files opened or saved, the latest first
 DIM SOPEN$(8)           ! the files open last time
-DIM HLP$(30)            ! the help screen
 DIM CLIP$(3000)         ! the clipboard: CLIP$(1 .. NCLIP)
-DIM BLAB$(10)           ! the menu bar's buttons, what they do (shown when the pointer's
-DIM BTIP$(10)           ! on one), and where they were drawn
-DIM BX0(10)
-DIM BX1(10)
+DIM BLAB$(9)           ! the menu bar's buttons, what they do (shown when the pointer's
+DIM BTIP$(9)           ! on one), and where they were drawn
+DIM BX0(9)
+DIM BX1(9)
 DIM OBX0(2)             ! the Open box's buttons
 DIM OBX1(2)
 DIM FKEY$(16)           ! the keys bar at the bottom: each key, what it does, its
@@ -208,7 +206,7 @@ LET CACC = 25           ! the tab showing; a file's unsaved mark
 LET CWARN = 26
 LET CMARK = 27          ! a tab character's →
 LET CTHUMB = 28         ! the scroll bar
-LET CBOX = 29           ! the help and Open boxes
+LET CBOX = 29           ! the Open box
 SET COLOR MIX (0) 0.11, 0.12, 0.15
 SET COLOR MIX (CBAR) 0.07, 0.08, 0.10
 SET COLOR MIX (CBTN) 0.17, 0.18, 0.23
@@ -241,7 +239,6 @@ LET KPGUP$ = CHR$(0) & CHR$(73)
 LET KPGDN$ = CHR$(0) & CHR$(81)
 LET KDEL$ = CHR$(0) & CHR$(83)
 LET KINS$ = CHR$(0) & CHR$(82)
-LET KF1$ = CHR$(0) & CHR$(59)
 LET KF2$ = CHR$(0) & CHR$(60)
 LET KF3$ = CHR$(0) & CHR$(61)
 LET KF4$ = CHR$(0) & CHR$(62)
@@ -275,8 +272,9 @@ LET CLD$ = ""           ! 7065: what's on it, in words
 LET MSG$ = ""
 LET MSGW = 0            ! 1: MSG$ is a warning
 LET HINT$ = ""
-LET HASMOUSE = 0
-LET HELP = 0            ! 1 while the help box shows
+LET HASMOUSE = 0        ! 1: a pointer from the start — the browser's screen, drawn finely.
+                        !    0: a terminal (its mouse, if any, reports once it's used),
+                        !    drawn in whole character cells, with Ctrl keys
 LET MODE = 0            ! 1 typing a name for Save as, 2 the Open box
 LET TYPED$ = ""
 LET CURP = 0            ! the typing cursor, after this many characters
@@ -303,7 +301,7 @@ LET MARK = 0            ! 1 while selecting from the keyboard (B): moving extend
 LET C$ = ""             ! 8050: a command's letter
 LET NFOOT = 0
 LET HITK = 0            ! 1 a menu button, 2 a tab, 3 a tab's ×, 4 +, 5 the text,
-LET HITN = 0            ! 6 the scroll bar, 7 Indent, 8 a file in the Open box,
+LET HITN = 0            ! 6 the scroll bar, 8 a file in the Open box,
                         ! 9 its buttons, 10 the rest of it, 11 a key in the keys bar
 LET DRAG = 0            ! 1 selecting text, 2 the scroll bar
 LET THGRAB = 0          ! where the scroll bar was grabbed, from its top
@@ -332,7 +330,6 @@ LET EXISTS = 0
 LET NRECENT = 0
 LET SNR = 0
 LET SACT$ = ""
-LET NHLP = 0
 ! the layout, measured as it's drawn (9000)
 LET DEVW = 0
 LET DEVH = 0
@@ -346,8 +343,6 @@ LET MAXTOP = 1
 LET THTOP = 0
 LET THBOT = 0
 LET THH = 1
-LET SBX0 = 0
-LET SBX1 = 0
 LET PLX0 = 0
 LET PLX1 = 0
 LET ODX0 = 0
@@ -358,39 +353,10 @@ LET OLR0 = 0
 LET ONSHOW = 0
 LET OBR = 0
 
-! the help screen
-DO
-  READ H$
-  IF H$ = "*" THEN EXIT DO
-  LET NHLP = NHLP + 1
-  LET HLP$(NHLP) = H$
-LOOP
-DATA "READY EDIT: THE KEYS AND CLICKS"
-DATA ""
-DATA "Click         put the cursor there"
-DATA "Drag          select (Shift+click: from the cursor to there)"
-DATA "Double-click  select a word"
-DATA "Tabs          click one to show it, × to close it, + for a new file"
-DATA ""
-DATA "Esc, then a letter (in a terminal, Ctrl and the letter):"
-DATA "  S save   E save as   O open   N new   W close the tab"
-DATA "  T next tab   P previous tab   G this help   Q quit"
-DATA "  B select: then the arrows, Home, End, PgUp, PgDn select"
-DATA "  A select all   X cut   C copy (Ctrl+K)   V paste"
-DATA "Esc Esc       no selection"
-DATA "Shift+arrows  select (↑ ↓: whole lines); Shift+Del cut, Shift+Ins paste"
-DATA "Cut or copy with nothing selected: the whole line"
-DATA "Tab           indent (lines selected: all of them); Shift+Tab undent"
-DATA "Enter         a new line, indented like this one"
-DATA "F keys: F1 help, F2 save, F3 open, F4 save as, F7 new, F8 close"
-DATA ""
-DATA "Any key or click goes back"
-DATA "*"
-
 ! ---- start: the files open last time, or a new one that says how this works ----
 GET MOUSE MX, MY, MS
 IF MS >= 0 THEN LET HASMOUSE = 1
-FOR BI = 1 TO 10
+FOR BI = 1 TO 9
   READ BLAB$(BI), BTIP$(BI)
 NEXT BI
 DATA "New", "A new file  ·  Esc N", "Open", "Open a file  ·  Esc O"
@@ -399,7 +365,7 @@ DATA "Close", "Close this tab  ·  Esc W"
 DATA "Cut", "Cut what's selected, or the whole line  ·  Esc X"
 DATA "Copy", "Copy what's selected, or the whole line  ·  Esc C"
 DATA "Paste", "Paste what was cut or copied  ·  Esc V"
-DATA "Help", "The keys and clicks  ·  Esc G", "Quit", "Close Ready Edit  ·  Esc Q"
+DATA "Quit", "Close Ready Edit  ·  Esc Q"
 ! the keys bar: in the browser the letters (after Esc), in a terminal Ctrl and the letter
 DO
   READ K$, L$, A
@@ -412,9 +378,9 @@ DO
   IF HASMOUSE = 0 AND K$ = "C" THEN LET FKEY$(NFOOT) = "^K"
 LOOP
 DATA "S", "Save", 3, "E", "Save as", 4, "O", "Open", 2, "N", "New", 1, "W", "Close", 5
-DATA "T", "Next tab", 11, "P", "Prev tab", 12, "/", "", 0
-DATA "B", "Select", 13, "A", "Select all", 14, "X", "Cut", 6, "C", "Copy", 7
-DATA "V", "Paste", 8, "G", "Help", 9, "Q", "Quit", 10, "*", "", 0
+DATA "T", "Next tab", 10, "P", "Prev tab", 11, "/", "", 0
+DATA "B", "Select", 12, "A", "Select all", 13, "X", "Cut", 6, "C", "Copy", 7
+DATA "V", "Paste", 8, "Q", "Quit", 9, "*", "", 0
 
 GOSUB 7700                         ! readyedit.files: the files open last time, and recent ones
 FOR SI = 1 TO SNR
@@ -456,10 +422,11 @@ DO
     GOSUB 9000
     LET REDRAW = 0
   END IF
+  ! the mouse: 2 = pressed, 1 = held, 3 = released, 0 = up; -1 none (a terminal's
+  ! counts once it has reported, which it does once it's moved or clicked)
+  GET MOUSE MX, MY, MS
+  IF MS >= 0 THEN GOSUB 8500
   IF HASMOUSE = 1 THEN
-    ! the mouse: 2 = pressed, 1 = held, 3 = released, 0 = up
-    GET MOUSE MX, MY, MS
-    GOSUB 8500
     ! the cursor blinks: on for 20 frames, off for 14
     LET B = 1
     IF ((FRAME - BLINK0) MOD 34) >= 20 THEN LET B = 0
@@ -556,7 +523,6 @@ RETURN
 ! ----------------------------------------------------------------------
 7040 REM ---- indent or undent lines ----
 LET IND$ = KTAB$
-IF TABSP = 1 THEN LET IND$ = REPEAT$(" ", TABW)
 FOR INI = IY0 TO IY1
   LET L$ = TX$(CT, INI)
   IF SHIFT = 0 THEN
@@ -829,7 +795,6 @@ DATA ""
 DATA "Tab characters show out to the next stop, with a faint arrow:"
 DATA "^This line starts with a tab,"
 DATA "^^and this one with two. Select lines and press Tab or Shift+Tab."
-DATA "The Indent button, top right, switches the Tab key to spaces."
 DATA ""
 DATA "This file has no name yet: Save as gives it one. Files you open"
 DATA "come back next time. The bar at the bottom lists the keys."
@@ -1143,7 +1108,7 @@ RETURN
 ! 8000  A KEY (K$).
 ! ======================================================================
 8000 REM ---- a key ----
-IF K$ = KESC$ AND CMDKEY = 0 AND MODE = 0 AND HELP = 0 THEN
+IF K$ = KESC$ AND CMDKEY = 0 AND MODE = 0 THEN
   LET CMDKEY = 1                   ! the next key is a command (and a second go at
   IF CONFIRM = 0 THEN LET MSG$ = ""   !  closing or quitting still counts after it,
   RETURN                           !  its question still showing)
@@ -1153,10 +1118,6 @@ LET CONFIRM = 0                    !  if it comes next)
 LET MSGW = 0
 LET TIPOFF = 1
 LET MSG$ = ""                      ! (a message shows until the next key or click)
-IF HELP = 1 THEN
-  LET HELP = 0                     ! any key leaves the help box
-  RETURN
-END IF
 IF MODE > 0 THEN
   GOSUB 8100                       ! a file's name being typed
   RETURN
@@ -1213,12 +1174,11 @@ IF C$ = "W" OR K$ = KF8$ THEN LET ACT = 5
 IF C$ = "X" OR (K$ = KDEL$ AND SHIFT = 1) THEN LET ACT = 6
 IF C$ = "C" OR C$ = "K" THEN LET ACT = 7
 IF C$ = "V" OR (K$ = KINS$ AND SHIFT = 1) THEN LET ACT = 8
-IF C$ = "G" OR C$ = "H" OR K$ = KF1$ THEN LET ACT = 9
-IF C$ = "Q" THEN LET ACT = 10
-IF C$ = "T" OR (K$ = KF9$ AND SHIFT = 0) THEN LET ACT = 11
-IF C$ = "P" OR (K$ = KF9$ AND SHIFT = 1) THEN LET ACT = 12
-IF C$ = "B" THEN LET ACT = 13
-IF C$ = "A" THEN LET ACT = 14
+IF C$ = "Q" THEN LET ACT = 9
+IF C$ = "T" OR (K$ = KF9$ AND SHIFT = 0) THEN LET ACT = 10
+IF C$ = "P" OR (K$ = KF9$ AND SHIFT = 1) THEN LET ACT = 11
+IF C$ = "B" THEN LET ACT = 12
+IF C$ = "A" THEN LET ACT = 13
 RETURN
 
 ! ----------------------------------------------------------------------
@@ -1528,7 +1488,6 @@ ELSEIF SHIFT = 1 THEN
   GOSUB 7040
 ELSE
   LET INS$ = KTAB$
-  IF TABSP = 1 THEN LET INS$ = REPEAT$(" ", TABW - (DCOL(TX$(CT, CY), CX) MOD TABW))
   GOSUB 8380
 END IF
 RETURN
@@ -1572,10 +1531,6 @@ LET CMDKEY = 0
 LET MSG$ = ""
 LET BLINK0 = FRAME
 LET REDRAW = 1
-IF HELP = 1 THEN
-  LET HELP = 0
-  RETURN
-END IF
 IF MODE = 2 THEN
   IF HITK = 8 THEN                 ! a recent file
     LET MODE = 0
@@ -1611,13 +1566,6 @@ ELSEIF HITK = 6 THEN
 ELSEIF HITK = 11 THEN
   LET ACT = FACT(HITN)
   GOSUB 8800
-ELSEIF HITK = 7 THEN
-  LET TABSP = 1 - TABSP
-  IF TABSP = 1 THEN
-    LET MSG$ = "The Tab key puts in spaces, to the next stop"
-  ELSE
-    LET MSG$ = "The Tab key puts in a tab character"
-  END IF
 END IF
 RETURN
 
@@ -1685,7 +1633,8 @@ LET PK = ROWS - 1 - INT(MY)        ! its row, from the top
 IF PK < 2 THEN LET PK = 2
 IF PK > ROWS - 3 THEN LET PK = ROWS - 3
 LET PL = TOPL + PK - 2
-LET PCOL = INT(MX - GUT + LEFTC + 0.5)
+LET PCOL = INT(MX - GUT + LEFTC + 0.5)       ! (the nearer edge of the character...
+IF HASMOUSE = 0 THEN LET PCOL = INT(MX - GUT + LEFTC)   ! ... a terminal says only which: before it)
 IF PCOL < 0 THEN LET PCOL = 0
 IF PL > NL THEN                    ! under the last line: its end
   LET PL = NL
@@ -1735,8 +1684,8 @@ RETURN
 
 ! ----------------------------------------------------------------------
 ! 8800  A COMMAND, ACT: the menu's 1 New, 2 Open, 3 Save, 4 Save as, 5 Close,
-!        6 Cut, 7 Copy, 8 Paste, 9 Help, 10 Quit; and 11 next tab, 12 previous
-!        tab, 13 select (from the keyboard), 14 select all.
+!        6 Cut, 7 Copy, 8 Paste, 9 Quit; and 10 next tab, 11 previous tab,
+!        12 select (from the keyboard), 13 select all.
 ! ----------------------------------------------------------------------
 8800 REM ---- a menu button ----
 IF ACT = 1 THEN
@@ -1759,16 +1708,14 @@ ELSEIF ACT = 7 THEN
 ELSEIF ACT = 8 THEN
   GOSUB 7080
 ELSEIF ACT = 9 THEN
-  LET HELP = 1
-ELSEIF ACT = 10 THEN
   GOSUB 7900
-ELSEIF ACT = 11 OR ACT = 12 THEN
+ELSEIF ACT = 10 OR ACT = 11 THEN
   LET NEWT = CT + 1
-  IF ACT = 12 THEN LET NEWT = CT - 1
+  IF ACT = 11 THEN LET NEWT = CT - 1
   IF NEWT > NTABS THEN LET NEWT = 1
   IF NEWT < 1 THEN LET NEWT = NTABS
   GOSUB 7150
-ELSEIF ACT = 13 THEN
+ELSEIF ACT = 12 THEN
   GOSUB 7095
 ELSE
   GOSUB 7097
@@ -1811,7 +1758,6 @@ NEXT RI
 GOSUB 9300                         ! the scroll bar
 GOSUB 9460                         ! the keys bar
 IF MODE = 2 THEN GOSUB 9500
-IF HELP = 1 THEN GOSUB 9600
 RETURN
 
 9100 REM ---- scroll so the cursor shows ----
@@ -1830,23 +1776,22 @@ RETURN
 
 ! ----------------------------------------------------------------------
 ! 9150  THE MENU BAR — the file's buttons, then Cut Copy Paste, at the left;
-!        Help and Quit at the right. (The bottom row says what the one under the
-!        pointer does, and its key.)
+!        Quit at the right. (The bottom row says what the one under the pointer
+!        does, and its key.)
 ! ----------------------------------------------------------------------
 9150 REM ---- the menu bar ----
 SET AREA COLOR CBAR
 GRAPH AREA: 0, ROWS - 1; COLS, ROWS - 1; COLS, ROWS; 0, ROWS
 LET BXX = 1
-FOR BI = 1 TO 10
+FOR BI = 1 TO 9
   LET BW = LEN(BLAB$(BI)) + 2
   IF BI <= 8 THEN
     IF BI = 6 THEN LET BXX = BXX + 2   ! (a gap before Cut Copy Paste)
     LET BX0(BI) = BXX
     LET BX1(BI) = BXX + BW
     LET BXX = BX1(BI) + 1
-  ELSE                             ! Help and Quit from the right
+  ELSE                             ! Quit at the right
     LET BX1(BI) = COLS - 1
-    IF BI = 9 THEN LET BX1(BI) = COLS - 2 - (LEN(BLAB$(10)) + 2)
     LET BX0(BI) = BX1(BI) - BW
   END IF
   SET AREA COLOR CBTN
@@ -1865,20 +1810,11 @@ RETURN
 9200 REM ---- the tabs ----
 SET AREA COLOR CBAR
 GRAPH AREA: 0, ROWS - 2; COLS, ROWS - 2; COLS, ROWS - 1; 0, ROWS - 1
-! at the right: where the cursor is, and the Indent button — what the Tab key puts in
-LET TB$ = "Indent: tabs"
-IF TABSP = 1 THEN LET TB$ = "Indent: " & STR$(TABW) & " spaces"
-LET SBX1 = COLS - 1
-LET SBX0 = SBX1 - LEN(TB$) - 2
+! at the right: where the cursor is
 LET R$ = "Ln " & STR$(CY) & ", Col " & STR$(DCOL(TX$(CT, CY), CX) + 1)
-SET AREA COLOR CBTN
-IF HOVK = 7 THEN SET AREA COLOR CHOV
-GRAPH AREA: SBX0, ROWS - 1.92; SBX1, ROWS - 1.92; SBX1, ROWS - 1.08; SBX0, ROWS - 1.08
-SET TEXT COLOR CTEXT
-GRAPH TEXT, AT SBX0 + 1, ROWS - 1.75: TB$
 SET TEXT COLOR CDIM
-GRAPH TEXT, AT SBX0 - 2 - LEN(R$), ROWS - 1.75: R$
-LET TNW = INT((SBX0 - LEN(R$) - 8) / NTABS) - 4   ! the room for each name
+GRAPH TEXT, AT COLS - 1 - LEN(R$), ROWS - 1.75: R$
+LET TNW = INT((COLS - LEN(R$) - 8) / NTABS) - 4   ! the room for each name
 IF TNW > 24 THEN LET TNW = 24
 IF TNW < 3 THEN LET TNW = 3
 LET BXX = 0
@@ -1969,12 +1905,6 @@ ELSEIF HOVK = 1 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! the pointer's on a menu 
   SET TEXT COLOR CDIM
   GRAPH TEXT, AT 1, 0.25: FIT$(BTIP$(HOVN), AV)
   LET SAYS = 1
-ELSEIF HOVK = 7 AND CONFIRM = 0 AND TIPOFF = 0 THEN   ! ... or on Indent
-  LET M$ = "The Tab key puts in a tab character (a stop every " & STR$(TABW) & " columns) · click: spaces"
-  IF TABSP = 1 THEN LET M$ = "The Tab key puts in " & STR$(TABW) & " spaces · click: tab characters"
-  SET TEXT COLOR CDIM
-  GRAPH TEXT, AT 1, 0.25: FIT$(M$, AV)
-  LET SAYS = 1
 ELSEIF MSG$ <> "" THEN
   SET TEXT COLOR CTEXT
   IF CONFIRM > 0 OR MSGW = 1 THEN SET TEXT COLOR CWARN
@@ -2050,7 +1980,7 @@ IF POS(L$, KTAB$) > 0 THEN
     END IF
   NEXT TCI
 END IF
-IF LI = CY AND MODE = 0 AND HELP = 0 THEN
+IF LI = CY AND MODE = 0 THEN
   LET CC = DCOL(L$, CX) - LEFTC
   IF CC >= 0 AND CC < TW THEN
     IF HASMOUSE = 1 THEN
@@ -2109,7 +2039,7 @@ FOR FI = 1 TO NFOOT
     IF CMDKEY = 1 THEN SET TEXT COLOR CCUR
     GRAPH TEXT, AT FXX, FYB + 0.25: FKEY$(FI)
     SET TEXT COLOR CDIM
-    IF FACT(FI) = 13 AND MARK = 1 THEN SET TEXT COLOR CTEXT
+    IF FACT(FI) = 12 AND MARK = 1 THEN SET TEXT COLOR CTEXT
     GRAPH TEXT, AT FXX + LEN(FKEY$(FI)) + 1, FYB + 0.25: FLAB$(FI)
     LET FXX = FXX + FW + 2
   END IF
@@ -2180,35 +2110,13 @@ SET TEXT COLOR CDIM
 GRAPH TEXT, AT ODX0 + 2, OYB + 0.25: FIT$("Enter opens · Esc cancels", OBX0(1) - ODX0 - 3)
 RETURN
 
-! ----------------------------------------------------------------------
-! 9600  THE HELP BOX.
-! ----------------------------------------------------------------------
-9600 REM ---- help ----
-LET HW = 0
-FOR HI = 1 TO NHLP
-  LET HW = MAX(HW, LEN(HLP$(HI)))
-NEXT HI
-LET HW = MIN(HW + 4, COLS - 2)
-LET HN = MIN(NHLP, ROWS - 2)
-LET HX0 = INT((COLS - HW) / 2)
-LET HTOP = INT((ROWS - HN - 2) / 2)      ! its top row, from the top
-SET AREA COLOR CBOX
-GRAPH AREA: HX0, ROWS - HTOP - HN - 2; HX0 + HW, ROWS - HTOP - HN - 2; HX0 + HW, ROWS - HTOP; HX0, ROWS - HTOP
-FOR HI = 1 TO HN
-  SET TEXT COLOR CTEXT
-  IF HI = 1 THEN SET TEXT COLOR CACC
-  IF HI = HN THEN SET TEXT COLOR CDIM
-  GRAPH TEXT, AT HX0 + 2, ROWS - 1 - (HTOP + HI) + 0.25: FIT$(HLP$(HI), HW - 4)
-NEXT HI
-RETURN
-
 ! ======================================================================
 ! 9700  WHAT'S UNDER THE POINTER (MX, MY): HITK, HITN — see HITK's LET above.
 ! ======================================================================
 9700 REM ---- what's under the pointer ----
 LET HITK = 0
 LET HITN = 0
-IF MX < 0 OR MX >= COLS OR MY < 0 OR MY >= ROWS OR HELP = 1 THEN RETURN
+IF MX < 0 OR MX >= COLS OR MY < 0 OR MY >= ROWS THEN RETURN
 LET HK = ROWS - 1 - INT(MY)        ! its row, from the top
 IF MODE = 2 THEN
   IF MX >= ODX0 AND MX < ODX1 AND HK >= OTOP AND HK < OTOP + OH THEN
@@ -2228,7 +2136,7 @@ IF MODE = 2 THEN
   RETURN
 END IF
 IF HK = 0 THEN
-  FOR BI = 1 TO 10
+  FOR BI = 1 TO 9
     IF MX >= BX0(BI) AND MX < BX1(BI) THEN
       LET HITK = 1
       LET HITN = BI
@@ -2243,7 +2151,6 @@ ELSEIF HK = 1 THEN
     END IF
   NEXT TI
   IF MX >= PLX0 AND MX < PLX1 THEN LET HITK = 4
-  IF MX >= SBX0 AND MX < SBX1 THEN LET HITK = 7
 ELSEIF HK >= ROWS - 2 THEN
   FOR FI = 1 TO NFOOT
     IF FKEY$(FI) <> "/" AND FROW(FI) = HK AND MX >= FX0(FI) AND MX < FX1(FI) THEN

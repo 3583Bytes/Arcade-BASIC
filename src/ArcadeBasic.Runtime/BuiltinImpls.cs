@@ -183,18 +183,8 @@ public static class BuiltinImpls
         t["TIME"] = (_, _) => Str(DateTime.Now.ToString("HH:mm:ss"));
 
         // Bound queries
-        t["LBOUND"] = (args, native) =>
-        {
-            var arr = BoundsOf(args[0]);
-            var dim = args.Length > 1 ? I(args[1]) : 1;
-            return NumericValue.From(arr.Lower[dim - 1], native);
-        };
-        t["UBOUND"] = (args, native) =>
-        {
-            var arr = BoundsOf(args[0]);
-            var dim = args.Length > 1 ? I(args[1]) : 1;
-            return NumericValue.From(arr.Upper[dim - 1], native);
-        };
+        t["LBOUND"] = (args, native) => NumericValue.From(BoundsOf(args[0]).Lower[Dimension("LBOUND", args)], native);
+        t["UBOUND"] = (args, native) => NumericValue.From(BoundsOf(args[0]).Upper[Dimension("UBOUND", args)], native);
 
         // Exception accessors — the engines intercept these to read their
         // active handler frame; the stubs return safe defaults.
@@ -306,6 +296,16 @@ public static class BuiltinImpls
             if (cp >= end) break;
         }
         return sb.ToString();
+    }
+
+    /// <summary>LBOUND or UBOUND's dimension (its second argument, else 1), from 0.</summary>
+    private static int Dimension(string function, Value[] args)
+    {
+        var dimension = args.Length > 1 ? I(args[1]) : 1;
+        var rank = BoundsOf(args[0]).Rank;
+        if (dimension < 1 || dimension > rank)
+            throw new BasicRuntimeException(1002, $"{function}: the array has {rank} dimension{(rank == 1 ? "" : "s")}, so no dimension {dimension}");
+        return dimension - 1;
     }
 
     private static Bounds BoundsOf(Value v) => v switch

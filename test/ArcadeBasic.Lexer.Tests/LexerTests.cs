@@ -338,6 +338,25 @@ public class LexerTests
     }
 
     [Fact]
+    public void ADataItemThatIsntQuotedOrANumberIsOneUnquotedString()
+    {
+        // From DATA, or a comma after it, to the next comma, ':', '!' comment or end of line,
+        // less the spaces after it; numbers and quoted strings lex as they do anywhere.
+        var (tokens, diags) = Lex("DATA red, big apple  , -1.5e2, \"q\", 3 apples ! comment\nPRINT red, X");
+        diags.HasErrors.Should().BeFalse();
+        tokens.Select(t => (t.Kind, t.Text)).Should().Equal(
+            (TokenKind.KwData, "DATA"), (TokenKind.UnquotedString, "red"), (TokenKind.Comma, ","),
+            (TokenKind.UnquotedString, "big apple"), (TokenKind.Comma, ","),
+            (TokenKind.Minus, "-"), (TokenKind.NumericLiteral, "1.5e2"), (TokenKind.Comma, ","),
+            (TokenKind.StringLiteral, "\"q\""), (TokenKind.Comma, ","), (TokenKind.UnquotedString, "3 apples"),
+            (TokenKind.Newline, "\n"),
+            (TokenKind.KwPrint, "PRINT"), (TokenKind.Identifier, "red"), (TokenKind.Comma, ","), (TokenKind.Identifier, "X"),
+            (TokenKind.EndOfFile, ""));
+        Kinds("DATA a, b: PRINT c").Should().Equal(TokenKind.KwData, TokenKind.UnquotedString, TokenKind.Comma,
+            TokenKind.UnquotedString, TokenKind.Colon, TokenKind.KwPrint, TokenKind.Identifier, TokenKind.EndOfFile);
+    }
+
+    [Fact]
     public void ReservedWordsAreTheWordsThatLexAsKeywords()
     {
         // Editors colour and complete from this list.

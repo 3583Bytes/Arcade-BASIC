@@ -45,7 +45,9 @@ internal static class ConsoleGraphics
         catch { /* best effort */ }
 
         EnableVirtualTerminal();
-        var device = new AnsiGraphicsDevice(Console.Out, CurrentSize);
+        // The mouse comes as escape sequences among the keys on a Unix terminal; the
+        // Windows console reads it some other way, so there a program has no pointer.
+        var device = new AnsiGraphicsDevice(Console.Out, CurrentSize) { MouseReporting = !OperatingSystem.IsWindows() };
         _current = device;
         return device;
     }

@@ -97,6 +97,41 @@ public class AnsiGraphicsDeviceTests
     }
 
     [Fact]
+    public void TheMouseIsAskedForWhenAProgramLooksForItAndCountsOnceItReports()
+    {
+        var w = new StringWriter();
+        var d = Device(w, cols: 80, rows: 25);           // 24 rows to draw on
+        var pointer = new PointerState(d);
+        Assert.Equal(PointerState.NoPointer, pointer.Sample(out _));   // (not allowed to ask)
+        Assert.Equal(string.Empty, w.ToString());
+
+        d.MouseReporting = true;
+        Assert.Equal(PointerState.NoPointer, pointer.Sample(out _));   // asked; nothing reported yet
+        Assert.Equal(PointerState.NoPointer, pointer.Sample(out _));
+        Assert.Equal(1, w.ToString().Split("\x1b[?1000h").Length - 1);  // asked once
+        Assert.Contains("\x1b[?1006h", w.ToString());                   // with SGR coordinates
+
+        d.MouseReport(35, 41, 13, released: false);      // moved (no button) to column 41, row 13
+        Assert.Equal(PointerState.Up, pointer.Sample(out var at));
+        Assert.Equal(40.5 / 80, at.X, 9);                 // the middle of that cell
+        Assert.Equal(1 - 12.5 / 24, at.Y, 9);
+
+        d.MouseReport(0, 1, 1, released: false);         // pressed in the top-left cell,
+        d.MouseReport(32, 2, 1, released: false);        // dragged a cell right,
+        d.MouseReport(0, 2, 1, released: true);          // let go
+        Assert.Equal(PointerState.Pressed, pointer.Sample(out at));
+        Assert.Equal(0.5 / 80, at.X, 9);
+        Assert.Equal(PointerState.Released, pointer.Sample(out at));
+        Assert.Equal(1.5 / 80, at.X, 9);
+        d.MouseReport(64, 2, 1, released: false);        // the wheel, and the right button: no clicks
+        d.MouseReport(2, 2, 1, released: false);
+        Assert.Equal(PointerState.Up, pointer.Sample(out _));
+
+        d.EndSession();
+        Assert.Contains("\x1b[?1000l", w.ToString());   // stopped
+    }
+
+    [Fact]
     public void NotDirtyAfterClearAloneStaysInert()
     {
         var w = new StringWriter();

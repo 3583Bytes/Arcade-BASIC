@@ -156,6 +156,8 @@ public class LanguageTests
     [InlineData("PRINT 10 - 3", "7")]
     [InlineData("PRINT -5 + 3", "-2")]
     [InlineData("PRINT 10 MOD 3", "1")]
+    [InlineData("PRINT MOD(-7, 3); REMAINDER(-7, 3); mod(10.5, 4)", "2 -1  2.5")]   // the standard's functions
+    [InlineData("PRINT 2 * MOD(5, 3) + 1", "5")]
     public void Arithmetic(string program, string expected)
     {
         var (output, _, _) = Run(program);
@@ -669,7 +671,36 @@ public class LanguageTests
         output.Trim().Should().Be("hello 42");
     }
 
+    [Fact]
+    public void DataItemsNeedntBeQuoted()
+    {
+        // The standard's unquoted strings: DATA RED, GREEN. A number read as a string is its text.
+        const string src = """
+            DATA red, big apple , 3 apples: PRINT "on"
+            DATA 12, -1.5E1, "a, b"
+            READ A$, B$, C$, D$, N, E$
+            PRINT A$; "|"; B$; "|"; C$; "|"; D$; "|"; N; "|"; E$
+            """;
+        Run(src).Output.Should().Be("on\nred|big apple|3 apples|12|-15 |a, b\n");
+        Run("DATA apple\nREAD N\n").ExitCode.Should().Be(1, "apple isn't a number");
+    }
+
     // -- DIM / arrays ---------------------------------------------------
+
+    [Fact]
+    public void LboundAndUboundTakeAnArray()
+    {
+        const string src = """
+            DIM A(3 TO 7), M$(2, -1 TO 4)
+            PRINT LBOUND(A); UBOUND(A); LBOUND(M$); UBOUND(M$, 1); LBOUND(M$, 2); UBOUND(M$, 2)
+            FOR I = LBOUND(A) TO UBOUND(A)
+              LET A(I) = I * I
+            NEXT I
+            PRINT A(UBOUND(A))
+            """;
+        Run(src).Output.Should().Be(" 3  7  1  2 -1  4 \n 49 \n");
+        Run("DIM A(3)\nPRINT UBOUND(A, 2)\n").ExitCode.Should().Be(1, "A has one dimension");
+    }
 
     [Fact]
     public void ArrayReadWrite()

@@ -15,6 +15,7 @@ public enum TokenKind
     // -- Literals --
     NumericLiteral,
     StringLiteral,
+    UnquotedString,    // a DATA item that's neither quoted nor a number: DATA RED, GREEN
 
     // -- Identifiers --
     Identifier,        // FOO, X1, etc.

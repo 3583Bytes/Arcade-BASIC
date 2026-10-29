@@ -258,6 +258,17 @@ public sealed partial class BasicParser
                 return new NameRefExpr(tok.Span, name, isString);
             }
 
+            // MOD(x, y) and REMAINDER(x, y), the standard's functions — keywords, as the
+            // operators (x MOD y) are; where an operand starts, they're the functions.
+            case TokenKind.KwMod or TokenKind.KwRemainder when Peek(1).Kind == TokenKind.LParen:
+            {
+                Advance();
+                Advance();
+                var args = ParseExpressionList(TokenKind.RParen);
+                if (!ExpectKind(TokenKind.RParen, "')'")) return null;
+                return new CallOrIndexExpr(SpanBetween(tok.Span, Previous().Span), tok.Text.ToUpperInvariant(), false, args);
+            }
+
             // FN-prefixed user-defined function reference: FN xxx(args) or FNxxx(args).
             case TokenKind.KwFn:
             {

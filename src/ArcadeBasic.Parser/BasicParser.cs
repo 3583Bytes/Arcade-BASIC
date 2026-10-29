@@ -453,13 +453,18 @@ public sealed partial class BasicParser
 
         do
         {
-            // DATA items are either string literals, signed numeric literals,
-            // or unquoted strings (the parser/sema disambiguates by content).
+            // DATA items are string literals, signed numeric literals, or unquoted
+            // strings (DATA RED, GREEN: the lexer makes each one token).
             var tok = Peek();
             if (tok.Kind == TokenKind.StringLiteral)
             {
                 Advance();
                 items.Add(new DataItem(tok.Span, IsString: true, UnescapeString(tok.Text)));
+            }
+            else if (tok.Kind == TokenKind.UnquotedString)
+            {
+                Advance();
+                items.Add(new DataItem(tok.Span, IsString: true, tok.Text));
             }
             else if (tok.Kind == TokenKind.NumericLiteral || tok.Kind == TokenKind.Plus || tok.Kind == TokenKind.Minus)
             {

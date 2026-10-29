@@ -17,8 +17,15 @@ namespace ArcadeBasic.Runtime;
 /// The device is inert until the first draw call, so a non-graphics program
 /// leaves the terminal completely alone. The first <see cref="Present"/> switches
 /// to the alternate screen; <see cref="EndSession"/> restores it.
+///
+/// The mouse: with <see cref="MouseReporting"/> on, the first time a program looks for
+/// the pointer the device asks the terminal to report the mouse (xterm's reporting, with
+/// SGR coordinates). The reports arrive among the keys; the keyboard picks them out and
+/// hands them to <see cref="MouseReport"/>. Until the first one there's no pointer
+/// (<see cref="IPointerPresence"/>), so a program on a terminal that can't report the
+/// mouse carries on without one.
 /// </summary>
-public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
+public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice, IPointer, IPointerPresence
 {
     private const string Esc = "\x1b[";
 
@@ -34,6 +41,11 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
 
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
     private int _lineStyle = 1;
+
+    private readonly Queue<PointerEvent> _clicks = new();
+    private GfxPoint _mouseAt;
+    private bool _mouseOn;             // the terminal has been asked to report the mouse
+    private bool _mouseSeen;           // and it has
 
     /// <param name="output">Where ANSI output goes (the console, or a writer in tests).</param>
     /// <param name="size">Current terminal size in character cells; re-read each frame.</param>
@@ -102,6 +114,59 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
 
     public void Flush() => Present();
 
+    // -- the mouse ----------------------------------------------------------
+
+    /// <summary>May the device ask the terminal to report the mouse? (An xterm-compatible
+    /// terminal reports it among the keys; the Windows console doesn't.)</summary>
+    public bool MouseReporting { get; set; }
+
+    public bool PointerSeen
+    {
+        get
+        {
+            if (MouseReporting && !_mouseOn)
+            {
+                // presses and releases, moves with a button held, any move; SGR coordinates
+                _out.Write(Esc + "?1000h" + Esc + "?1002h" + Esc + "?1003h" + Esc + "?1006h");
+                _out.Flush();
+                _mouseOn = true;
+            }
+            return _mouseSeen;
+        }
+    }
+
+    public bool TryGetPosition(out GfxPoint position)
+    {
+        position = _mouseAt;
+        return _mouseSeen;
+    }
+
+    public bool TryReadEvent(out PointerEvent e)
+    {
+        if (_clicks.Count > 0)
+        {
+            e = _clicks.Dequeue();
+            return true;
+        }
+        e = default;
+        return false;
+    }
+
+    /// <summary>A mouse report from the terminal: <c>ESC [ &lt; button ; column ; row M</c>
+    /// (<c>m</c> for a release), column and row counted from 1. The pointer is in the middle
+    /// of that cell; only the primary button's presses and releases are events — a move
+    /// (button + 32), the wheel (64 on) and the other buttons just move it.</summary>
+    public void MouseReport(int button, int column, int row, bool released)
+    {
+        EnsureSized();
+        var x = Math.Min(Math.Max((column - 0.5) / _cols, 0), 1);
+        var y = Math.Min(Math.Max(1 - (row - 0.5) / CanvasRows, 0), 1);
+        _mouseAt = new GfxPoint(x, y);
+        _mouseSeen = true;
+        if ((button & (32 | 64)) != 0 || (button & 3) != 0) return;
+        _clicks.Enqueue(new PointerEvent(!released, _mouseAt));
+    }
+
     // -- presentation -----------------------------------------------------
 
     /// <summary>Paint the current frame to the terminal and leave the cursor on
@@ -138,10 +203,16 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
         _out.Flush();
     }
 
-    /// <summary>Restore the terminal (leave the alternate screen, show the
+    /// <summary>Restore the terminal (stop its mouse reports, leave the alternate screen, show the
     /// cursor, reset colours). Safe to call when never begun.</summary>
     public void EndSession()
     {
+        if (_mouseOn)
+        {
+            _out.Write(Esc + "?1006l" + Esc + "?1003l" + Esc + "?1002l" + Esc + "?1000l");
+            _out.Flush();
+            _mouseOn = false;
+        }
         if (!_begun) return;
         _out.Write(Esc + "0m" + Esc + "?25h" + Esc + "?1049l");
         _out.Flush();

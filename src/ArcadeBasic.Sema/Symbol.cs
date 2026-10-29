@@ -49,6 +49,8 @@ public abstract record class ResolvedRef;
 public sealed record class ResolvedVariable(VariableSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedParam(ParamSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedArrayAccess(ArraySymbol Symbol) : ResolvedRef;
+/// <summary>An array itself, by its name with no subscripts: LBOUND(A)'s A.</summary>
+public sealed record class ResolvedWholeArray(ArraySymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedBuiltinCall(BuiltinSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedSubCall(SubSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedFunctionCall(FunctionSymbol Symbol) : ResolvedRef;

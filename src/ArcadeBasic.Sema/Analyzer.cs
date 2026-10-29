@@ -604,8 +604,7 @@ public sealed class Analyzer
                 break;
 
             case ForStmt f:
-                IntroduceVariableIfNeeded(f.Variable, scope);
-                _resolutions[f.Variable] = ResolveNameRef(f.Variable, scope) ?? new ResolvedError("for-var");
+                AnalyzeAssignedName(f.Variable, scope);
                 _types[f.Variable] = BasicType.Numeric;
                 ExpectType(f.From, AnalyzeExpr(f.From, scope), BasicType.Numeric, "FOR from-value");
                 ExpectType(f.To, AnalyzeExpr(f.To, scope), BasicType.Numeric, "FOR to-value");
@@ -937,9 +936,7 @@ public sealed class Analyzer
         switch (target)
         {
             case NameRefExpr n:
-                IntroduceVariableIfNeeded(n, scope);
-                _resolutions[n] = ResolveNameRef(n, scope) ?? new ResolvedError("name");
-                _types[n] = n.IsString ? BasicType.String : BasicType.Numeric;
+                AnalyzeAssignedName(n, scope);
                 break;
 
             case CallOrIndexExpr c:
@@ -980,6 +977,30 @@ public sealed class Analyzer
                     "assignment target must be a variable name or array element");
                 break;
         }
+    }
+
+    /// <summary>A name being given a value — by LET, INPUT, READ, a FOR … — with no subscripts:
+    /// a variable (a new one if it's new) or a parameter; not an array, a constant or a
+    /// function.</summary>
+    private void AnalyzeAssignedName(NameRefExpr n, Scope scope)
+    {
+        IntroduceVariableIfNeeded(n, scope);
+        var sym = Find(scope, Scope.Key(n.Name, n.IsString));
+        _types[n] = n.IsString ? BasicType.String : BasicType.Numeric;
+        if (sym is VariableSymbol v) { _resolutions[n] = new ResolvedVariable(v); return; }
+        if (sym is ParamSymbol { IsArray: false } p) { _resolutions[n] = new ResolvedParam(p); return; }
+
+        var name = n.Name + (n.IsString ? "$" : "");
+        var (code, message) = sym switch
+        {
+            ArraySymbol or ParamSymbol => (ErrCannotCall, $"'{name}' is an array; index it with parentheses"),
+            ConstantSymbol => (ErrInvalidAssignmentTarget, $"'{name}' is a constant; it can't be given a value"),
+            BuiltinSymbol => (ErrInvalidAssignmentTarget, $"'{name}' is a built-in function; it can't be given a value"),
+            FunctionSymbol => (ErrInvalidAssignmentTarget, $"'{name}' is a FUNCTION; it's given its value inside it"),
+            _ => (ErrInvalidAssignmentTarget, $"'{name}' can't be given a value"),
+        };
+        _diags.Error(code, n.Span, message);
+        _resolutions[n] = new ResolvedError("not-assignable");
     }
 
     private void IntroduceVariableIfNeeded(NameRefExpr n, Scope scope)
@@ -1100,11 +1121,14 @@ public sealed class Analyzer
             sym = fnInParent;
         }
 
-        // Resolve args first so partial errors still record argument types.
+        // Resolve args first so partial errors still record argument types. LBOUND(A) and
+        // UBOUND(A) take an array itself.
         var argTypes = new BasicType[c.Args.Count];
         for (var i = 0; i < c.Args.Count; i++)
         {
-            argTypes[i] = AnalyzeExpr(c.Args[i], scope);
+            argTypes[i] = i == 0 && sym is BuiltinSymbol { Name: "LBOUND" or "UBOUND" } bound
+                ? AnalyzeArrayArgument(c.Args[0], bound.Name, scope)
+                : AnalyzeExpr(c.Args[i], scope);
         }
 
         if (sym is null)
@@ -1151,6 +1175,26 @@ public sealed class Analyzer
                 _diags.Error(ErrCannotCall, c.Span, $"'{c.Name}' cannot be called or indexed");
                 _resolutions[c] = new ResolvedError("non-callable");
                 return BasicType.Numeric;
+        }
+    }
+
+    /// <summary>An argument that's an array itself (LBOUND(A)'s A): an array's name, with no
+    /// subscripts, or a SUB's array parameter.</summary>
+    private BasicType AnalyzeArrayArgument(Expr arg, string function, Scope scope)
+    {
+        switch (arg is NameRefExpr n ? Find(scope, Scope.Key(n.Name, n.IsString)) : null)
+        {
+            case ArraySymbol array:
+                _resolutions[arg] = new ResolvedWholeArray(array);
+                return _types[arg] = array.IsString ? BasicType.String : BasicType.Numeric;
+            case ParamSymbol { IsArray: true } param:
+                _resolutions[arg] = new ResolvedParam(param);
+                return _types[arg] = param.IsString ? BasicType.String : BasicType.Numeric;
+            default:
+                var type = AnalyzeExpr(arg, scope);
+                _diags.Error(ErrTypeMismatch, arg.Span,
+                    $"{function} takes an array: its name, with no subscripts ({function}(A))");
+                return type;
         }
     }
 
@@ -1224,19 +1268,6 @@ public sealed class Analyzer
                     $"right operand of {b.Op} must be numeric");
                 return BasicType.Numeric;
         }
-    }
-
-    private ResolvedRef? ResolveNameRef(NameRefExpr n, Scope scope)
-    {
-        var sym = Find(scope, Scope.Key(n.Name, n.IsString));
-        return sym switch
-        {
-            VariableSymbol v => new ResolvedVariable(v),
-            ParamSymbol p => new ResolvedParam(p),
-            ConstantSymbol c => new ResolvedConstant(c),
-            BuiltinSymbol bsym when bsym.Signature.MinArgs == 0 => new ResolvedBuiltinCall(bsym),
-            _ => null,
-        };
     }
 
     private void ExpectType(Expr e, BasicType actual, BasicType expected, string what)

@@ -1484,6 +1484,7 @@ public sealed class BasicCompiler
             case ResolvedBuiltinCall rb:
                 EmitBuiltinCall(rb.Symbol.Name, 0);
                 break;
+            case ResolvedWholeArray wa: EmitLoadSymbolSlot(wa.Symbol.OwnerScope!, wa.Symbol.Slot); break;   // (LBOUND(A))
             default:
                 throw new UnsupportedFeatureException($"name ref {resolved.GetType().Name} not supported by VM");
         }
