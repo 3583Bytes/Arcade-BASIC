@@ -79,7 +79,8 @@ async function signSlice(slice, identifier, special) {
     if (cmd === LC_CODE_SIGNATURE) signature = { at, offset: v.getUint32(at + 8, true), size: v.getUint32(at + 12, true) };
     at += v.getUint32(at + 4, true);
   }
-  if (!text || !linkedit || !signature) throw new Error('the Mac player has no signature to replace (its linker should sign it)');
+  if (!text || !linkedit || !signature)
+    throw new Error(`this site's Mac player (its ${arm ? 'Apple Silicon' : 'Intel'} half) isn't signed, so it can't sign apps — its build needs fixing (desktop/player/build.sh)`);
 
   // Pages as codesign has them: 16 KB on Apple Silicon, 4 KB on Intel.
   const pageShift = arm ? 14 : 12, page = 1 << pageShift;

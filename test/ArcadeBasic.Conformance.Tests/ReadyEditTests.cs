@@ -83,7 +83,8 @@ public sealed class ReadyEditTests : IDisposable
         /// after its line number.</summary>
         public string Line(int line) => Row(line + 2, from: 5, to: 79);
 
-        public string Status => Row(23).Trim();
+        /// <summary>The message: on the menu bar, right of the menus' titles.</summary>
+        public string Status => Row(0, from: 22).Trim();
 
         /// <summary>The middle of the cell at column <paramref name="col"/>, row <paramref name="row"/>.</summary>
         public static GfxPoint Cell(double col, int row) => new(col / 80, (24 - 1 - row + 0.5) / 24);
@@ -112,15 +113,18 @@ public sealed class ReadyEditTests : IDisposable
     private const string Up = "\0H", Insert = "\0R", Delete = "\0S", CtrlX = "\x18", CtrlV = "\x16";
     private const string Right = "\0M", Down = "\0P", End = "\0O", CtrlB = "\x02", CtrlK = "\x0b";
 
-    /// <summary>Esc, then <paramref name="letter"/>: a command.</summary>
+    /// <summary>Esc, then <paramref name="letter"/>: the File menu, and the letter's command.</summary>
     private static string[] Esc(char letter) => [Escape, letter.ToString()];
 
-    /// <summary>Click the menu bar's button <paramref name="label"/>.</summary>
-    private static void ClickButton(Screen screen, BasicVm vm, string label)
+    /// <summary>Click the menu <paramref name="menu"/>, then its item <paramref name="item"/>.</summary>
+    private static void ClickMenu(Screen screen, BasicVm vm, string menu, string item)
     {
-        var at = screen.Frame.First(t => t.Text == label).At;
-        screen.Click(at with { X = at.X + 0.005, Y = at.Y + 0.01 });
-        NextFrame(vm, 2);
+        foreach (var label in new[] { menu, item })
+        {
+            var at = screen.Frame.First(t => t.Text == label).At;
+            screen.Click(at with { X = at.X + 0.005, Y = at.Y + 0.01 });
+            NextFrame(vm, 2);
+        }
     }
 
     /// <summary>Press <paramref name="key"/> with Shift held.</summary>
@@ -170,18 +174,27 @@ public sealed class ReadyEditTests : IDisposable
     public void TheFirstRunShowsANewFileThatSaysHowItWorks()
     {
         var screen = new Screen();
-        Start(screen);
+        var vm = Start(screen);
 
-        Assert.Equal("New   Open   Save   Save as   Close     Cut   Copy   Paste" + new string(' ', 14) + "Quit", screen.Row(0).Trim());
+        Assert.Equal("File   Edit   Tabs    Esc: the menus", screen.Row(0).Trim());
         Assert.True(screen.Shows("untitled-1"));
         Assert.Equal("Welcome to Ready Edit, a text editor written in Arcade BASIC.", screen.Line(0));
         // a tab character runs on to the next stop of 4, a faint → where it starts
         Assert.Equal("→   This line starts with a tab,", screen.Line(6));
         Assert.StartsWith("→   →   and this one with two.", screen.Line(7));
         Assert.EndsWith("Ln 1, Col 1", screen.Row(1));               // top right
-        // the keys bar, the bottom two rows: Esc, then a letter
-        Assert.Equal("Esc, then  S Save  E Save as  O Open  N New  W Close  T Next tab  P Prev tab", screen.Row(22).Trim());
-        Assert.Equal("B Select  A Select all  X Cut  C Copy  V Paste  Q Quit", screen.Row(23).Trim());
+        Assert.Equal("come back next time. Esc opens the menus, which show the keys.", screen.Line(10));
+
+        // the File menu, under its title: each item with its key (Esc, then the letter)
+        var file = screen.Frame.First(t => t.Text == "File").At;
+        screen.Click(file with { X = file.X + 0.005, Y = file.Y + 0.01 });
+        NextFrame(vm, 2);
+        foreach (var shown in new[] { "New", "Esc N", "Open…", "Esc O", "Save as…", "Esc E", "Close tab", "Esc W", "Quit", "Esc Q" })
+            Assert.True(screen.Shows(shown), shown);
+        Assert.False(screen.Shows("Cut"));                           // (that's the Edit menu's)
+        screen.Type(Escape);                                          // Esc closes it
+        NextFrame(vm);
+        Assert.False(screen.Shows("Esc O"));
     }
 
     [Fact]
@@ -327,7 +340,7 @@ public sealed class ReadyEditTests : IDisposable
         screen.Click(Screen.Text(7, 0));
         screen.Click(Screen.Text(7, 0));
         NextFrame(vm, 4);
-        ClickButton(screen, vm, "Copy");
+        ClickMenu(screen, vm, "Edit", "Copy");
         Assert.StartsWith("Copied 4 characters", screen.Status);
         screen.Click(Screen.Text(20, 2));
         NextFrame(vm, 2);
@@ -343,7 +356,7 @@ public sealed class ReadyEditTests : IDisposable
         Assert.Equal("deltabeta", screen.Line(1));
         screen.Type(Up);
         NextFrame(vm);
-        ClickButton(screen, vm, "Paste");
+        ClickMenu(screen, vm, "Edit", "Paste");
         Assert.Equal(["gamma", "alpha beta", "deltabeta"], [screen.Line(0), screen.Line(1), screen.Line(2)]);
 
         // a selection over two lines: Ctrl+X (as a terminal sends it) cuts it ...
@@ -374,11 +387,11 @@ public sealed class ReadyEditTests : IDisposable
         var screen = new Screen();
         var vm = Start(screen);
 
-        // Esc: the last message makes way for the keys, to pick a letter from
+        // Esc opens the File menu, with its keys; a letter then does its command
         Assert.StartsWith("Opened 1 file(s) from last time", screen.Status);
         screen.Type(Escape);
         NextFrame(vm);
-        Assert.StartsWith("B Select", screen.Status);
+        Assert.True(screen.Shows("Esc S"));
 
         // B starts selecting, and moving selects; C copies, V pastes
         screen.Type("b", Right, Right, Right, Right, Right);
@@ -408,14 +421,14 @@ public sealed class ReadyEditTests : IDisposable
         Assert.StartsWith("Copied 1 line", screen.Status);
         Assert.Equal(["alpha betaalpha", "gamma"], [screen.Line(0), screen.Line(1)]);
 
-        // the keys bar can be clicked: Select all (back once the next key clears the message)
-        Assert.DoesNotContain(screen.Frame, t => t.Text == "Select all");
-        screen.Type(End);
-        NextFrame(vm);
-        var all = screen.Frame.First(t => t.Text == "Select all").At;
-        screen.Click(all with { X = all.X + 0.005, Y = all.Y + 0.01 });
-        NextFrame(vm, 2);
+        // the menus with the mouse: Edit → Select all
+        ClickMenu(screen, vm, "Edit", "Select all");
         Assert.StartsWith("Selected all 2 lines", screen.Status);
+
+        // and with the keys: Esc, → to Edit, ↓ ↓ to Paste, Enter — the line copied, over it all
+        screen.Type(Escape, Right, Down, Down, "\r");
+        NextFrame(vm);
+        Assert.Equal(["alpha betaalpha", ""], [screen.Line(0), screen.Line(1)]);
 
         // Esc W closes the tab (twice, with unsaved changes)
         screen.Type([.. Esc('w')]);
@@ -476,7 +489,11 @@ public sealed class ReadyEditTests : IDisposable
         OpenLastTime("notes.txt");
         var screen = new Screen { Seen = false };
         var vm = Start(screen);
-        Assert.StartsWith("^S Save  ^E Save as", screen.Row(22).Trim());   // drawn for a terminal
+        screen.Type(Escape);                                          // drawn for a terminal:
+        NextFrame(vm);                                                // its menus show Ctrl keys
+        Assert.True(screen.Shows("Ctrl+S"));
+        screen.Type(Escape);
+        NextFrame(vm);
 
         // the mouse reports: a click on the "w" (a terminal says only which cell) goes before it
         screen.Seen = true;
@@ -502,12 +519,14 @@ public sealed class ReadyEditTests : IDisposable
         NextFrame(vm);
         Assert.StartsWith("Not saved", screen.Status);
 
-        // Quit (the menu's last button) with unsaved changes: only the second time
-        var quit = screen.Frame.First(t => t.Text == "Quit").At;
-        screen.Click(quit with { Y = quit.Y + 0.01 });
-        NextFrame(vm, 2);
+        // File → Quit with unsaved changes: only the second time
+        ClickMenu(screen, vm, "File", "Quit");
         Assert.StartsWith("1 file(s) with changes that aren't saved", screen.Status);
-        screen.Click(quit with { Y = quit.Y + 0.01 });
+        var file = screen.Frame.First(t => t.Text == "File").At;
+        screen.Click(file with { X = file.X + 0.005, Y = file.Y + 0.01 });
+        NextFrame(vm, 2);
+        var quit = screen.Frame.First(t => t.Text == "Quit").At;
+        screen.Click(quit with { X = quit.X + 0.005, Y = quit.Y + 0.01 });
         Assert.Equal(StepStatus.Halted, NextFrame(vm, 3));
     }
 

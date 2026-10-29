@@ -176,8 +176,10 @@ player also needs WebKitGTK (`libwebkit2gtk-4.1`), as every Tauri app does; Wind
 instead of publishing one; `--universal` (on a Mac, after
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin`) builds for Apple Silicon
 and Intel both, into `desktop/player/target/universal/arcade-player`. The Intel half
-is linked with an ad hoc signature (`desktop/player/.cargo/config.toml`), as Apple
-Silicon builds are by default, so the web IDE can re-sign it.
+is linked with an ad hoc signature (`desktop/player/.cargo/config.toml`, which Cargo
+reads because `build.sh` runs it from `desktop/player`), as Apple Silicon builds are by
+default, so the web IDE can re-sign it; `build.sh` fails if any half of a Mac player
+isn't signed.
 
 For the web IDE's *File → Export…* to offer desktop apps, its site carries the players:
 

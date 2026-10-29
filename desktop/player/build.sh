@@ -33,16 +33,28 @@ mkdir -p "$here/dist"
   mkdir -p "$here/dist/$(dirname "$f")"; cp "$f" "$here/dist/$f"; done)
 rm -rf "$here/obj-publish"
 
+# Cargo from here: it reads .cargo/config.toml from the folder it runs in, not the manifest's.
+cd "$here"
 if [[ -n "$universal" ]]; then
   for target in aarch64-apple-darwin x86_64-apple-darwin; do
-    cargo build --release --manifest-path "$here/Cargo.toml" --target "$target"
+    cargo build --release --target "$target"
   done
-  mkdir -p "$here/target/universal"
-  lipo -create -output "$here/target/universal/arcade-player" \
-    "$here/target/aarch64-apple-darwin/release/arcade-player" "$here/target/x86_64-apple-darwin/release/arcade-player"
-  echo "built $here/target/universal/arcade-player"
+  mkdir -p target/universal
+  lipo -create -output target/universal/arcade-player \
+    target/aarch64-apple-darwin/release/arcade-player target/x86_64-apple-darwin/release/arcade-player
+  exe="$here/target/universal/arcade-player"
 else
-  cargo build --release --manifest-path "$here/Cargo.toml"
+  cargo build --release
   exe="$here/target/release/arcade-player"; [[ -f "$exe.exe" ]] && exe="$exe.exe"
-  echo "built $exe"
 fi
+# A Mac player's every half must be signed (by the linker), for File → Export to sign the
+# apps it makes from it (src/ArcadeBasic.Web/wwwroot/macsign.js).
+if [[ "$(uname)" == Darwin ]]; then
+  for arch in $(lipo -archs "$exe"); do
+    if ! otool -arch "$arch" -l "$exe" | grep -q LC_CODE_SIGNATURE; then
+      echo "build.sh: the $arch player isn't signed, so Export can't sign apps made from it" >&2
+      exit 1
+    fi
+  done
+fi
+echo "built $exe"
