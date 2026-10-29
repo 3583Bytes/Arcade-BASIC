@@ -135,14 +135,16 @@ public sealed partial class BasicInterpreter
             ?? throw new BasicRuntimeException(6004, $"MAT READ requires {stmt.TargetName} to be DIM-ed first");
 
         var n = MatOps.BoundsOf(current)!.Length;
+        var unit = DataUnit(stmt);
+        var data = _info.DataPools[unit];
         if (stmt.TargetIsString)
         {
             var sarr = (StringArrayValue)current;
             for (var i = 0; i < n; i++)
             {
-                if (_dataCursor >= _info.DataPool.Count)
+                if (_dataCursors[unit] >= data.Count)
                     throw new BasicRuntimeException(5001, "MAT READ: DATA pool exhausted");
-                sarr.Data[i] = _info.DataPool[_dataCursor++].Text;
+                sarr.Data[i] = data[_dataCursors[unit]++].Text;
             }
         }
         else
@@ -150,9 +152,9 @@ public sealed partial class BasicInterpreter
             var narr = (NumericArrayValue)current;
             for (var i = 0; i < n; i++)
             {
-                if (_dataCursor >= _info.DataPool.Count)
+                if (_dataCursors[unit] >= data.Count)
                     throw new BasicRuntimeException(5001, "MAT READ: DATA pool exhausted");
-                var item = _info.DataPool[_dataCursor++];
+                var item = data[_dataCursors[unit]++];
                 if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                 {
                     throw new BasicRuntimeException(5002, $"MAT READ: '{item.Text}' is not numeric");

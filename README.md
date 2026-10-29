@@ -10,7 +10,7 @@ A fun and modern re-implementation of **Full BASIC** including an interpreter, c
 
 Run classic BASIC programs, write new ones, embed BASIC in your .NET or Unity game, or ship a `.bas` file as a self-contained native binary.  Learn to code, or not.
 
-**[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, a debugger (breakpoints, stepping, the variables as they change), a pixel editor for the sprites and textures kept in `DATA`, colour swatches and a palette, a tune editor for `PLAY`, open and save your own `.bas` files, six themes (QBasic blue and Commodore 64 among them), sound, and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
+**[▶ Write and run BASIC in your browser](https://3583bytes.github.io/Arcade-BASIC/)** — nothing to install: an editor that checks your program as you type, programs in several files (`LIBRARY`), an outline and folding for long ones, a debugger (breakpoints, stepping, the variables as they change), a pixel editor for the sprites and textures kept in `DATA`, colour swatches and a palette, a tune editor for `PLAY`, open and save your own `.bas` files, six themes (QBasic blue and Commodore 64 among them), sound, and the example programs to play and change: a textured 3D maze, Breakout, Invaders, Tetris, a kanban board…
 
 [![A first-person 3D maze written in Arcade BASIC, running in the browser](src/ArcadeBasic.Web/wwwroot/preview.png)](https://3583bytes.github.io/Arcade-BASIC/)
 
@@ -80,7 +80,7 @@ Console.WriteLine(output);   //  42
 | **Bytecode VM** | `arcade-basic vm foo.bas` | Stack-based VM over compact bytecode. Output is byte-identical to the interpreter. |
 | **Native binary** | `arcade-basic build foo.bas -o foo` | Bundles the VM and your compiled program into a single self-contained executable — no .NET needed on the target. |
 
-All three execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules with `PUBLIC` re-export, exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers. Every example program runs the same on all three.
+All three execute the same surface of the language: arrays, MAT operations (transpose, inverse, multiply, …), file I/O, `INPUT`/`LINE INPUT`, `READ`/`DATA`/`RESTORE`, `PRINT USING` with picture strings, modules (`PUBLIC` and `SHARE` variables, `DECLARE PUBLIC`, start-up code, their own `DATA`) and programs in several files (`LIBRARY "file.bas"`), exception handling (`WHEN`/`USE`/`CAUSE`/`RETRY`/`CONTINUE`), and named handlers. Every example program runs the same on all three.
 
 ## Try the IDE
 
@@ -139,7 +139,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 
 ## Example programs
 
-23 sample programs in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, real-time Space Invaders, Snake, Breakout, and Tetris, a first-person 3D maze, and a `PLAY`/`SOUND` music demo. Highlights:
+23 sample programs (and two libraries they use) in [`examples/`](examples/) — from `hello.bas` and `pi.bas` (Leibniz series) up to a complete Super Star Trek port, a Lunar Lander physics sim, a graphics Kanban board, an escape-time Mandelbrot, real-time Space Invaders, Snake, Breakout, and Tetris, a first-person 3D maze, and a `PLAY`/`SOUND` music demo. Highlights:
 
 | Program | What it shows |
 |---|---|
@@ -156,7 +156,7 @@ Each accepted line is appended to a growing session source. Multi-line blocks (`
 | [`snake.bas`](examples/snake.bas) | real-time Snake — `INKEY$` + `SLEEP` + §13 graphics; growing body, `RND` food, high score |
 | [`breakout.bas`](examples/breakout.bas) | real-time Breakout — `KEYDOWN` + `INKEY$` + `SLEEP` + §13 graphics; ball physics, paddle-angle steering, lives, high score |
 | [`tetris.bas`](examples/tetris.bas) | real-time Tetris — `INKEY$` + `SLEEP` + §13 graphics; `READ`/`DATA` piece table, `(r,c)->(c,-r)` rotation, line clears, levels, high score |
-| [`maze3d.bas`](examples/maze3d.bas) | first-person 3D maze, Wolfenstein-style — ray casting with textured walls, floor and ceiling and sprites — a key to find and gems to collect (`MAT GRAPH CELLS` stretches a texture column over each screen column, draws the floor and ceiling a dot at a time, and its see-through cells make sprites; `SET COLOR MIX` colours), `KEYDOWN` walking and turning |
+| [`maze3d.bas`](examples/maze3d.bas) | (three files: the game, and its level and textures as modules in [`maze3d-level.bas`](examples/maze3d-level.bas) and [`maze3d-textures.bas`](examples/maze3d-textures.bas), brought in with `LIBRARY`) first-person 3D maze, Wolfenstein-style — ray casting with textured walls, floor and ceiling and sprites — a key to find and gems to collect (`MAT GRAPH CELLS` stretches a texture column over each screen column, draws the floor and ceiling a dot at a time, and its see-through cells make sprites; `SET COLOR MIX` colours), `KEYDOWN` walking and turning |
 | [`music.bas`](examples/music.bas) | audio — `SOUND`, `BEEP`, and `PLAY` (MML); render to WAV with `--wav` |
 | [`startrek.bas`](examples/startrek.bas) | Super Star Trek (Dave Ahl, 1978) |
 | [`lunar.bas`](examples/lunar.bas) | Lunar Lander (Jim Storer, 1969) |

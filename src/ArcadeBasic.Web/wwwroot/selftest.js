@@ -273,7 +273,7 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
   });
 
   await step('pictureEditor', async () => {
-    documents.openExample('maze3d.bas');
+    documents.openExample('maze3d-textures.bas');
     const result = { pictures: findPictures(view.state.doc).map(p => `${p.name || '(unnamed)'} ${p.width}x${p.height} @${p.firstLine}`) };
     const stone = findPictures(view.state.doc).find(p => p.name === 'stone');
     const colourLine = view.state.doc.lineAt(view.state.doc.toString().indexOf('DATA 0.10, 0.10, 0.16')).number;
@@ -364,11 +364,11 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     $('paletteGrid').children[200].click();
     $('paletteInsert').click();
     result.inserted = view.state.doc.toString().split('\n').find(l => l.includes('(200)'));
-    // maze3d's colour DATA: a swatch per colour.
-    documents.openExample('maze3d.bas');
-    editor.goToLine(92);
+    // maze3d's colour DATA (in its textures library): a swatch per colour.
+    documents.openExample('maze3d-textures.bas');
+    editor.goToLine(view.state.doc.lineAt(view.state.doc.toString().indexOf('DATA 0.10, 0.10, 0.16')).number);
     await pause(150);
-    const line92 = [...view.contentDOM.querySelectorAll('.cm-line')].find(l => l.textContent.startsWith('DATA 0.10, 0.10, 0.16'));
+    const line92 = [...view.contentDOM.querySelectorAll('.cm-line')].find(l => l.textContent.trim().startsWith('DATA 0.10, 0.10, 0.16'));
     result.dataSwatches = line92 ? line92.querySelectorAll('.cm-swatch').length : 'no line';
     return result;
   });
@@ -415,6 +415,100 @@ export async function ideSelftest({ editor, documents, pack, openAddress, $, aud
     result.newTune = $('tuneDialog').open && $('tuneText').value;
     $('tuneApply').click();
     result.line3 = view.state.doc.line(3).text;
+    return result;
+  });
+
+  await step('outline', async () => {
+    documents.openExample('maze3d.bas');
+    if ($('outline').hidden) $('outlineToggle').click();
+    await pause(100);
+    const items = [...document.querySelectorAll('#outline .item')];
+    const result = {
+      count: items.length,
+      first: items.slice(0, 8).map(b => `${b.querySelector('i').textContent} ${b.textContent.slice(1)}`),
+      kinds: [...new Set(items.map(b => b.className.split(' ')[1]))],
+    };
+    items.find(b => b.textContent.includes('RENDER'))?.click();
+    await pause(50);
+    result.clicked = view.state.doc.lineAt(view.state.selection.main.head).text;
+    result.current = document.querySelector('#outline .item.current')?.textContent;
+    editor.foldAll();
+    await pause(50);
+    result.foldedPlaceholders = view.dom.querySelectorAll('.cm-foldPlaceholder').length;
+    result.visibleLinesFolded = view.dom.querySelectorAll('.cm-line').length;
+    editor.unfoldAll();
+    await pause(50);
+    result.unfolded = view.dom.querySelectorAll('.cm-foldPlaceholder').length;
+    // Go to (Mod+Shift+O): by name, then by line.
+    const mac = /Mac/.test(navigator.platform);
+    const goTo = text => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'O', code: 'KeyO', shiftKey: true, metaKey: mac, ctrlKey: !mac, bubbles: true, cancelable: true }));
+      const input = $('goToDialog').querySelector('input');
+      input.value = text;
+      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      return view.state.doc.lineAt(view.state.selection.main.head);
+    };
+    result.goToName = goTo('door').text;
+    result.goToLine = goTo('400').number;
+    // A classic program: its GOSUB targets are its outline.
+    documents.newProgram();
+    setText('10 GOSUB 100\n20 GOSUB 200\n30 END\n100 REM draw the board\n110 RETURN\n200 PRINT "score"\n210 RETURN\n');
+    await pause(400);
+    result.classic = [...document.querySelectorAll('#outline .item')].map(b => b.textContent.slice(1));
+    return result;
+  });
+
+  await step('projects', async () => {
+    const result = {};
+    const press = (key, shiftKey = false) =>
+      window.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, shiftKey, bubbles: true, cancelable: true }));
+    const waitFor = async test => { for (let i = 0; i < 200 && !test(); i++) await pause(10); return test(); };
+    // A breakpoint in maze3d's textures library, hit as the module starts up — F5 from its tab runs the game.
+    const textures = documents.openExample('maze3d-textures.bas');
+    const mixLine = view.state.doc.lineAt(view.state.doc.toString().search(/^\s*SET COLOR MIX/m)).number;
+    view.dispatch({ selection: { anchor: view.state.doc.line(mixLine).from } });
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9', code: 'F9', bubbles: true, cancelable: true }));
+    press('F5');
+    await waitFor(() => document.querySelector('.cm-pausedLine'));
+    result.ranProgram = documents.all.find(d => d.name === 'maze3d.bas') && document.querySelector('.tab .mark')?.textContent;
+    result.pausedIn = documents.active.name;
+    result.pausedLine = document.querySelector('.cm-pausedLine')?.textContent.trim();
+    result.frame = document.querySelector('#variables .frame summary')?.textContent;
+    result.status = $('stats').textContent.split(' · ')[0];
+    press('F5', true);                                   // stop
+    view.dispatch({ selection: { anchor: view.state.doc.line(mixLine).from } });
+    view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9', code: 'F9', bubbles: true, cancelable: true }));
+    // A program and a library of its own, in two tabs.
+    documents.openShared('SUB HI\n  PRINT "hi from the helper"\nEND SUB\nSUB OOPS\n  PRINT 1 / 0\nEND SUB\n', 'helper.bas', false);
+    documents.openShared('LIBRARY "helper.bas"\nCALL HI\n', 'proj.bas');
+    $('run').click();
+    await waitFor(() => $('stop').disabled && $('output').textContent);
+    result.output = $('output').textContent.trim();
+    // A mistake in the library shows on the LIBRARY line.
+    const helper = documents.all.find(d => d.name === 'helper.bas');
+    helper.state = helper.state.update({ changes: { from: 0, insert: 'PRINT (\n' } }).state;
+    setText('LIBRARY "helper.bas"\nCALL HI\n ');
+    await pause(700);
+    result.libraryProblem = document.querySelector('.cm-lintRange-error')?.textContent;
+    $('problems').click();
+    await pause(50);
+    result.libraryProblemText = [...document.querySelectorAll('.cm-panel-lint li')].map(li => li.textContent)[0];
+    helper.state = helper.state.update({ changes: { from: 0, to: 8 } }).state;
+    // A runtime error in the library: its tab, its line.
+    setText('LIBRARY "helper.bas"\nCALL OOPS\n');
+    $('run').click();
+    await waitFor(() => $('stop').disabled && document.querySelector('.cm-runtimeError'));
+    result.errorTab = documents.active.name;
+    result.errorLine = document.querySelector('.cm-runtimeError')?.textContent.trim();
+    result.errorText = $('output').textContent.trim().split('\n').at(-1);
+    // A shared link carries a program's own libraries.
+    const code = await pack(JSON.stringify({ main: ['linked.bas', 'LIBRARY "lib2.bas"\nCALL TWO\n'], libraries: [['lib2.bas', 'SUB TWO\n  PRINT "two"\nEND SUB\n']] }));
+    await openAddress('#code=' + code);
+    result.linkTabs = documents.all.filter(d => ['linked.bas', 'lib2.bas'].includes(d.name)).map(d => d.name);
+    $('run').click();
+    await waitFor(() => $('stop').disabled && $('output').textContent);
+    result.linkOutput = $('output').textContent.trim();
     return result;
   });
 

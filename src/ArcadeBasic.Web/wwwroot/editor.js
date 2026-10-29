@@ -11,12 +11,14 @@ import {
   highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, drawSelection, dropCursor,
   rectangularSelection, crosshairCursor, defaultKeymap, history, historyKeymap, indentWithTab,
   StreamLanguage, HighlightStyle, syntaxHighlighting, syntaxTree, indentOnInput, bracketMatching, indentUnit,
+  foldService, foldGutter, codeFolding, foldKeymap, foldAll, unfoldAll,
   tags, search, searchKeymap, highlightSelectionMatches, autocompletion, completionKeymap,
   closeBrackets, closeBracketsKeymap, linter, lintGutter, lintKeymap, openLintPanel, nextDiagnostic, forceLinting,
 } from './lib/codemirror.js';
 import { pictureLens } from './pictures.js';
 import { colourSwatches } from './colours.js';
 import { tuneButtons } from './tunes.js';
+import { foldAt } from './outline.js';
 
 // The engine's reserved words and supplied functions, upper-case (setWords).
 const reserved = new Set(), builtins = new Set();
@@ -45,6 +47,7 @@ function basic() {
       if (stream.match(/^[a-z][a-z0-9_]*\$?/i)) {
         const word = stream.current().toUpperCase();
         if (word === 'REM') { stream.skipToEnd(); return 'comment'; }
+        if (word === 'LIBRARY' && stream.match(/^\s*"/, false)) return 'keyword';   // (a statement here, not a reserved word)
         const go = state.go;
         state.go = word === 'GO';
         if (reserved.has(word)) {
@@ -104,6 +107,12 @@ const theme = EditorView.theme({
   '.cm-panel.cm-panel-lint ul [aria-selected]': { backgroundColor: 'var(--ed-sel)', color: 'var(--ed-text)' },
   '.cm-panel.cm-panel-lint ul:focus [aria-selected]': { backgroundColor: 'var(--ed-sel)', color: 'var(--ed-text)' },
   '.cm-runtimeError': { backgroundColor: 'var(--ed-error-line)', boxShadow: 'inset 3px 0 var(--danger)' },
+  '.cm-foldGutter .cm-gutterElement': { color: 'var(--ed-gutter-text)', cursor: 'pointer', padding: '0 3px' },
+  '.cm-foldMarker': { display: 'inline-block', width: '10px', textAlign: 'center', opacity: '.55' },
+  '.cm-foldMarker:hover': { opacity: '1', color: 'var(--ed-text)' },
+  '.cm-foldPlaceholder': {
+    background: 'var(--ed-line)', border: '1px solid var(--border)', color: 'var(--muted)', borderRadius: '4px', padding: '0 5px', margin: '0 3px',
+  },
   '.cm-pausedLine': { backgroundColor: 'var(--ed-paused-line)', boxShadow: 'inset 3px 0 var(--paused)' },
   '.cm-breakpoints .cm-gutterElement': {
     cursor: 'pointer', minWidth: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1px',
@@ -209,6 +218,14 @@ function breakpointLines(state) {
   const lines = new Set();
   for (let it = state.field(breakpoints).iter(); it.value; it.next()) lines.add(state.doc.lineAt(it.from).number);
   return [...lines].sort((a, b) => a - b);
+}
+
+function fold(open) {
+  const marker = document.createElement('span');
+  marker.className = 'cm-foldMarker';
+  marker.textContent = open ? '▾' : '▸';
+  marker.title = open ? 'Fold' : 'Unfold';
+  return marker;
 }
 
 function goToDefinition(view, pos) {
@@ -336,7 +353,8 @@ export function createEditor(parent, hooks) {
   const tunes = tuneButtons((view, where) => hooks.onEditTune?.(view, where));
   const extensions = () => [
     breakpoints, paused, breakpointGutter, values, lenses, swatches, tunes,
-    lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
+    lineNumbers(), foldGutter({ markerDOM: open => fold(open) }), foldService.of(foldAt), codeFolding({ placeholderText: '…' }),
+    highlightActiveLineGutter(), highlightSpecialChars(), history(), drawSelection(), dropCursor(),
     EditorState.allowMultipleSelections.of(true), indentOnInput(), bracketMatching(), closeBrackets(),
     autocompletion({ override: [complete], icons: false }), rectangularSelection(), crosshairCursor(),
     highlightActiveLine(), highlightSelectionMatches(), search({ top: true }),
@@ -346,7 +364,7 @@ export function createEditor(parent, hooks) {
       { key: 'F12', run: view => goToDefinition(view, view.state.selection.main.head) },
       { key: 'F9', run: view => toggleAt(view, view.state.selection.main.head) },
       ...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap,
-      ...lintKeymap, indentWithTab,
+      ...lintKeymap, ...foldKeymap, indentWithTab,
     ]),
     EditorView.domEventHandlers({
       mousedown(event, view) {                             // Ctrl/Cmd+click: go to the definition
@@ -381,6 +399,8 @@ export function createEditor(parent, hooks) {
       const at = view.state.doc.line(line).from;
       view.dispatch({ effects: [setPaused.of(at), EditorView.scrollIntoView(at, { y: 'nearest', yMargin: 60 })] });
     },
+    /** Another program's state without its paused-line mark (a library, when the pause ends). */
+    withoutPause(state) { return state.field(paused) == null ? state : state.update({ effects: setPaused.of(null) }).state; },
     /** Pointing at a name shows lookup(name)'s answer (null: nothing); null turns it off. */
     setValueLookup(lookup) { valueOf = lookup; },
     goToLine(line) {
@@ -389,8 +409,8 @@ export function createEditor(parent, hooks) {
       view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) });
       view.focus();
     },
-    /** Show a program's state (switching tabs). */
-    show(state) { view.setState(state); },
+    /** Show a program's state (switching tabs). Its statement lines come with its next check. */
+    show(state) { statementLines = null; view.setState(state); },
     get state() { return view.state; },
     focus() { view.focus(); },
     /** The engine's words; returns a function bringing another program's state up to date. */
@@ -423,5 +443,7 @@ export function createEditor(parent, hooks) {
       }, 0);
     },
     openProblems() { openLintPanel(view); },
+    foldAll() { foldAll(view); },
+    unfoldAll() { unfoldAll(view); },
   };
 }

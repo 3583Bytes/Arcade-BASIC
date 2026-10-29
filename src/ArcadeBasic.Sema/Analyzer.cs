@@ -30,6 +30,7 @@ public sealed class Analyzer
     public const string ErrInvalidStringOp = "FB0309";
     public const string ErrGraphics = "FB0310";
     public const string ErrArithmeticConflict = "FB0311";
+    public const string ErrModule = "FB0312";
 
     /// <summary>The supplied functions and constants (SIN, CHR$, PI, …), upper-case — for
     /// editors to highlight and complete.</summary>
@@ -40,7 +41,12 @@ public sealed class Analyzer
     private readonly Dictionary<Expr, ResolvedRef> _resolutions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Expr, BasicType> _types = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<int, Stmt> _labels = new();
-    private readonly List<DataItem> _dataPool = new();
+    private readonly List<List<DataItem>> _dataPools = [[]];
+    private readonly Dictionary<Scope, int> _moduleUnits = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Stmt, int> _dataUnits = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<DimSpec, ArraySymbol> _arrays = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, Symbol> _publicVariables = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<(DeclarePublicStmt Stmt, Scope Scope)> _declarePublics = [];
     private readonly Dictionary<ModuleStmt, Scope> _moduleScopes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CallStmt, SubSymbol> _callTargets = new(ReferenceEqualityComparer.Instance);
     private OptionArithmeticStmt? _arithmetic;
@@ -56,6 +62,7 @@ public sealed class Analyzer
         var scope = new Scope(ScopeKind.Program);
         a.PreloadBuiltins(scope);
         a.Pass1(program.Statements, scope);
+        a.ResolveDeclarePublics();
         a.Pass2(program.Statements, scope);
 
         return new SemanticInfo
@@ -63,7 +70,9 @@ public sealed class Analyzer
             ProgramScope = scope,
             Resolutions = a._resolutions,
             ExpressionTypes = a._types,
-            DataPool = a._dataPool,
+            DataPools = a._dataPools,
+            DataUnits = a._dataUnits,
+            Arrays = a._arrays,
             LineLabels = a._labels,
             CallTargets = a._callTargets,
             ModuleScopes = a._moduleScopes,
@@ -112,7 +121,15 @@ public sealed class Analyzer
                 break;
 
             case DataStmt data:
-                _dataPool.AddRange(data.Items);
+                _dataPools[UnitOf(scope)].AddRange(data.Items);
+                break;
+
+            case ModuleVarsStmt vars:
+                DeclareModuleVariables(vars, scope);
+                break;
+
+            case DeclarePublicStmt declare:
+                _declarePublics.Add((declare, scope));     // once every module's PUBLIC is known
                 break;
 
             case SubStmt sub:
@@ -231,6 +248,8 @@ public sealed class Analyzer
     {
         var modScope = new Scope(ScopeKind.Module, parent);
         _moduleScopes[mod] = modScope;
+        _moduleUnits[modScope] = _dataPools.Count;        // a program-unit: its own DATA
+        _dataPools.Add([]);
         Pass1(mod.Body, modScope);
 
         // Re-export PUBLIC SUB/FUNCTION/DEF symbols into the parent scope so
@@ -252,6 +271,87 @@ public sealed class Analyzer
         }
     }
 
+    /// <summary>SHARE / PUBLIC at a module's top level: the module's variables (slots in the
+    /// program's frame, visible to the module's code), the PUBLIC ones also offered to
+    /// DECLARE PUBLIC.</summary>
+    private void DeclareModuleVariables(ModuleVarsStmt vars, Scope scope)
+    {
+        var what = vars.IsPublic ? "PUBLIC" : "SHARE";
+        if (scope.Kind != ScopeKind.Module)
+        {
+            _diags.Error(ErrModule, vars.Span, $"{what} variables belong at the top level of a MODULE");
+            return;
+        }
+        foreach (var item in vars.Items)
+        {
+            var key = Scope.Key(item.Name, item.IsString);
+            if (item.Bounds.Count > 0) DeclareArray(scope, item);
+            else if (!scope.Declare(key, new VariableSymbol(item.Name, item.IsString, scope.AllocateSlot())))
+                _diags.Error(ErrDuplicateDeclaration, item.Span, $"'{item.Name}{(item.IsString ? "$" : "")}' is declared more than once");
+            if (!vars.IsPublic || scope.LocalLookup(key) is not { } symbol) continue;
+            if (!_publicVariables.TryAdd(key, symbol))
+                _diags.Error(ErrDuplicateDeclaration, item.Span,
+                    $"'{item.Name}{(item.IsString ? "$" : "")}' is PUBLIC in two modules: DECLARE PUBLIC couldn't tell which");
+        }
+    }
+
+    /// <summary>DECLARE PUBLIC: make another module's PUBLIC variables visible where it is.</summary>
+    private void ResolveDeclarePublics()
+    {
+        foreach (var (stmt, scope) in _declarePublics)
+        {
+            foreach (var name in stmt.Names)
+            {
+                var key = Scope.Key(name.Name, name.IsString);
+                var shown = $"{name.Name}{(name.IsString ? "$" : "")}";
+                if (!_publicVariables.TryGetValue(key, out var symbol))
+                {
+                    _diags.Error(ErrUndefinedName, name.Span, $"no MODULE makes '{shown}' PUBLIC");
+                    continue;
+                }
+                if (name.IsArray != symbol is ArraySymbol)
+                {
+                    _diags.Error(ErrTypeMismatch, name.Span, name.IsArray
+                        ? $"'{shown}' isn't an array in its module (DECLARE PUBLIC it without parentheses)"
+                        : $"'{shown}' is an array in its module: DECLARE PUBLIC {shown}()");
+                    continue;
+                }
+                var here = scope.LocalLookup(key);
+                if (ReferenceEquals(here, symbol)) continue;
+                if (here is not null || !scope.DeclareAlias(key, symbol))
+                    _diags.Error(ErrDuplicateDeclaration, name.Span, $"'{shown}' is already declared here");
+            }
+        }
+    }
+
+    /// <summary>Which program-unit (and so which DATA) code in this scope belongs to: 0 the
+    /// main program, else its MODULE's.</summary>
+    private int UnitOf(Scope scope)
+    {
+        for (var s = scope; s is not null; s = s.Parent)
+            if (s.Kind == ScopeKind.Module && _moduleUnits.TryGetValue(s, out var unit)) return unit;
+        return 0;
+    }
+
+    /// <summary>
+    /// A name as code in this scope sees it. Code in a MODULE — its start-up statements and
+    /// its procedures — doesn't see the main program's variables (ISO 10279: they belong to
+    /// another program-unit), only its own, its module's SHARE and PUBLIC ones, and the
+    /// PUBLIC ones it DECLAREs; it still sees procedures, supplied functions and constants.
+    /// </summary>
+    private static Symbol? Find(Scope scope, string key)
+    {
+        var inModule = false;
+        for (var s = scope; s is not null; s = s.Parent)
+        {
+            if (s.LocalLookup(key) is { } symbol &&
+                !(inModule && s.Kind == ScopeKind.Program && symbol is VariableSymbol or ArraySymbol or ParamSymbol))
+                return symbol;
+            if (s.Kind == ScopeKind.Module) inModule = true;
+        }
+        return null;
+    }
+
     private void DeclareArray(Scope scope, DimSpec spec)
     {
         var key = Scope.Key(spec.Name, spec.IsString);
@@ -263,6 +363,7 @@ public sealed class Analyzer
         }
         var slot = scope.AllocateSlot();
         scope.Declare(key, new ArraySymbol(spec.Name, spec.IsString, slot, spec));
+        _arrays[spec] = (ArraySymbol)scope.LocalLookup(key)!;
     }
 
     private void DeclareParams(Scope scope, IReadOnlyList<Param> ps)
@@ -292,6 +393,7 @@ public sealed class Analyzer
 
     private void AnalyzeStmt(Stmt stmt, Scope scope)
     {
+        if (stmt is ReadStmt or RestoreStmt or MatReadStmt) _dataUnits[stmt] = UnitOf(scope);
         switch (stmt)
         {
             case AssignStmt a:
@@ -417,7 +519,7 @@ public sealed class Analyzer
                 ExpectType(mg.X2, AnalyzeExpr(mg.X2, scope), BasicType.Numeric, "graphics X coordinate");
                 ExpectType(mg.Y2, AnalyzeExpr(mg.Y2, scope), BasicType.Numeric, "graphics Y coordinate");
                 CheckMatTarget(mg.ArrayName, false, mg.Span, scope);
-                if (scope.Lookup(Scope.Key(mg.ArrayName, false)) is ArraySymbol cellArray && cellArray.Spec.Bounds.Count != 2)
+                if (Find(scope, Scope.Key(mg.ArrayName, false)) is ArraySymbol cellArray && cellArray.Spec.Bounds.Count != 2)
                     _diags.Error(ErrGraphics, mg.Span, "MAT GRAPH CELLS needs a two-dimensional array",
                         "the first subscript runs across, the second up or down");
                 break;
@@ -465,6 +567,10 @@ public sealed class Analyzer
                 break;
             case PlayStmt ply:
                 ExpectType(ply.Notes, AnalyzeExpr(ply.Notes, scope), BasicType.String, "PLAY notes");
+                break;
+
+            case ModuleVarsStmt vars:
+                AnalyzeStmt(new DimStmt(vars.Span, [.. vars.Items.Where(i => i.Bounds.Count > 0)]), scope);
                 break;
 
             case DimStmt dim:
@@ -569,7 +675,7 @@ public sealed class Analyzer
             }
             case CallStmt call:
             {
-                var sym = scope.Lookup(Scope.Key(call.Name, isString: false));
+                var sym = Find(scope, Scope.Key(call.Name, isString: false));
                 if (sym is not SubSymbol ss)
                 {
                     _diags.Error(ErrUndefinedName, call.Span, $"SUB '{call.Name}' is not defined");
@@ -612,7 +718,7 @@ public sealed class Analyzer
                 }
                 else if (w.UseHandlerName is not null)
                 {
-                    var hsym = scope.Lookup(Scope.Key(w.UseHandlerName, isString: false));
+                    var hsym = Find(scope, Scope.Key(w.UseHandlerName, isString: false));
                     if (hsym is not HandlerSymbol)
                     {
                         _diags.Error(ErrUndefinedName, w.Span,
@@ -685,7 +791,7 @@ public sealed class Analyzer
 
     private void CheckMatTarget(string name, bool isString, SourceSpan span, Scope scope)
     {
-        var sym = scope.Lookup(Scope.Key(name, isString));
+        var sym = Find(scope, Scope.Key(name, isString));
         if (sym is null)
         {
             _diags.Error(ErrUndefinedName, span,
@@ -709,7 +815,7 @@ public sealed class Analyzer
                     _diags.Error(ErrTypeMismatch, n.Span,
                         $"MAT operand '{n.Name}' type does not match target");
                 }
-                if (scope.Lookup(Scope.Key(n.Name, n.IsString)) is not ArraySymbol)
+                if (Find(scope, Scope.Key(n.Name, n.IsString)) is not ArraySymbol)
                 {
                     _diags.Error(ErrUndefinedName, n.Span,
                         $"MAT operand '{n.Name}' is not a declared array");
@@ -839,7 +945,7 @@ public sealed class Analyzer
             case CallOrIndexExpr c:
                 {
                     // Subscripted assignment: target must be an array.
-                    var sym = scope.Lookup(Scope.Key(c.Name, c.IsString));
+                    var sym = Find(scope, Scope.Key(c.Name, c.IsString));
                     if (sym is null)
                     {
                         // Implicit array introduction is a spec feature; emit a
@@ -879,7 +985,7 @@ public sealed class Analyzer
     private void IntroduceVariableIfNeeded(NameRefExpr n, Scope scope)
     {
         var key = Scope.Key(n.Name, n.IsString);
-        if (scope.Lookup(key) is not null) return;
+        if (Find(scope, key) is not null) return;
         var slot = scope.AllocateSlot();
         scope.Declare(key, new VariableSymbol(n.Name, n.IsString, slot));
     }
@@ -938,7 +1044,7 @@ public sealed class Analyzer
     private BasicType AnalyzeNameRef(NameRefExpr n, Scope scope)
     {
         var key = Scope.Key(n.Name, n.IsString);
-        var sym = scope.Lookup(key);
+        var sym = Find(scope, key);
         if (sym is null)
         {
             // Read-before-write: introduce as a default-initialized variable
@@ -947,7 +1053,7 @@ public sealed class Analyzer
             // names referenced inside DEF/SUB/FUNCTION bodies close over the
             // surrounding program-level variables rather than allocating a
             // shadowed local.
-            var declScope = ProgramScope(scope);
+            var declScope = ImplicitScope(scope);
             var slot = declScope.AllocateSlot();
             var v = new VariableSymbol(n.Name, n.IsString, slot) { OwnerScope = declScope };
             declScope.Declare(key, v);
@@ -982,7 +1088,7 @@ public sealed class Analyzer
     private BasicType AnalyzeCallOrIndex(CallOrIndexExpr c, Scope scope)
     {
         var key = Scope.Key(c.Name, c.IsString);
-        var sym = scope.Lookup(key);
+        var sym = Find(scope, key);
 
         // Inside a FUNCTION body, the function name itself is also a slot
         // (for setting the return value), but a *call* using that name should
@@ -1122,7 +1228,7 @@ public sealed class Analyzer
 
     private ResolvedRef? ResolveNameRef(NameRefExpr n, Scope scope)
     {
-        var sym = scope.Lookup(Scope.Key(n.Name, n.IsString));
+        var sym = Find(scope, Scope.Key(n.Name, n.IsString));
         return sym switch
         {
             VariableSymbol v => new ResolvedVariable(v),
@@ -1149,30 +1255,20 @@ public sealed class Analyzer
         _ => BasicType.Numeric,
     };
 
-    private static Scope NearestVariableScope(Scope scope)
+    /// <summary>
+    /// Where a name read before it's set is declared. In the main program and its internal
+    /// procedures: at program level, so those procedures share the program's variables. In a
+    /// module's start-up code: in the module. In a module's own SUB, FUNCTION or DEF — an
+    /// external procedure — in that procedure.
+    /// </summary>
+    private static Scope ImplicitScope(Scope scope)
     {
-        // Locals belong to the nearest non-Module scope; the program scope is
-        // always available as a fallback. (Modules — Phase 7 — would shift
-        // this logic; not yet relevant.)
         for (var s = scope; s is not null; s = s.Parent)
         {
-            if (s.Kind != ScopeKind.Module) return s;
+            if (s.Kind is ScopeKind.Module or ScopeKind.Program) return s;
+            if (s.Parent?.Kind == ScopeKind.Module) return s;
         }
         return scope;
     }
 
-    /// <summary>
-    /// Walk up to the Program scope. Used for implicit declarations of names
-    /// read inside nested DEF/SUB/FUNCTION bodies, so that those bodies close
-    /// over program-level variables instead of allocating a fresh local slot
-    /// that shadows the caller's value.
-    /// </summary>
-    private static Scope ProgramScope(Scope scope)
-    {
-        for (var s = scope; s is not null; s = s.Parent)
-        {
-            if (s.Kind == ScopeKind.Program) return s;
-        }
-        return scope;
-    }
 }

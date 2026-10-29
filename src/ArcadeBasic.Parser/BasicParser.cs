@@ -164,6 +164,9 @@ public sealed partial class BasicParser
             TokenKind.KwModule => ParseModule(),
             TokenKind.KwPublic => ParsePublicDecl(),
             TokenKind.KwPrivate => ParsePrivateDecl(),
+            TokenKind.KwShare => ParseModuleVars(isPublic: false),
+            TokenKind.KwDeclare => ParseDeclare(),
+            TokenKind.Identifier when IsWord(Peek().Text, "LIBRARY") && Peek(1).Kind == TokenKind.StringLiteral => ParseLibrary(),
             TokenKind.Identifier when StartsGraphicInput() => ParseGraphicInput(),
             TokenKind.Identifier or TokenKind.StringIdentifier => ParseAssignmentOrFunctionCall(),
             _ => UnsupportedStatement(),
@@ -667,16 +670,32 @@ public sealed partial class BasicParser
         var specs = new List<DimSpec>();
         do
         {
+            var spec = ParseDimSpec(boundsRequired: true, "DIM");
+            if (spec is null) return null;
+            specs.Add(spec);
+        }
+        while (Match(TokenKind.Comma));
+
+        return new DimStmt(SpanFrom(start, Previous().Span), specs);
+    }
+
+    /// <summary>A name with bounds, as DIM writes it (<c>A(10)</c>, <c>B$(1 TO 5, 3)</c>) —
+    /// or, where bounds aren't required (SHARE, PUBLIC), a plain name: a scalar.</summary>
+    private DimSpec? ParseDimSpec(bool boundsRequired, string what)
+    {
+        {
             var nameTok = Peek();
             if (nameTok.Kind != TokenKind.Identifier && nameTok.Kind != TokenKind.StringIdentifier)
             {
-                ErrorAt(nameTok, ErrExpectedToken, "expected variable name in DIM");
+                ErrorAt(nameTok, ErrExpectedToken, $"expected variable name in {what}");
                 return null;
             }
             Advance();
             var isString = nameTok.Kind == TokenKind.StringIdentifier;
             var name = NameWithoutDollar(nameTok.Text);
 
+            if (!boundsRequired && !Check(TokenKind.LParen))
+                return new DimSpec(nameTok.Span, name, isString, []);
             if (!ExpectKind(TokenKind.LParen, "'(' (DIM requires bounds)"))
             {
                 return null;
@@ -705,11 +724,8 @@ public sealed partial class BasicParser
             {
                 return null;
             }
-            specs.Add(new DimSpec(SpanBetween(nameTok.Span, Previous().Span), name, isString, bounds));
+            return new DimSpec(SpanBetween(nameTok.Span, Previous().Span), name, isString, bounds);
         }
-        while (Match(TokenKind.Comma));
-
-        return new DimStmt(SpanFrom(start, Previous().Span), specs);
     }
 
     private Stmt? ParseOption()

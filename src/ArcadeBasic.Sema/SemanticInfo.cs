@@ -14,8 +14,18 @@ public sealed class SemanticInfo
     /// <summary>Static type tag (numeric or string) per expression. Reference-keyed.</summary>
     public required IReadOnlyDictionary<Expr, BasicType> ExpressionTypes { get; init; }
 
-    /// <summary>DATA pool — items in source order across the whole program.</summary>
-    public required IReadOnlyList<DataItem> DataPool { get; init; }
+    /// <summary>The main program's DATA, in source order (its internal procedures' included).</summary>
+    public IReadOnlyList<DataItem> DataPool => DataPools[0];
+
+    /// <summary>Each program-unit's DATA (ISO 10279: a READ reads its own unit's): the main
+    /// program's first, then each MODULE's, in the order they appear.</summary>
+    public required IReadOnlyList<IReadOnlyList<DataItem>> DataPools { get; init; }
+
+    /// <summary>The array each DIM (or a module's SHARE / PUBLIC) item declares. Reference-keyed.</summary>
+    public required IReadOnlyDictionary<DimSpec, ArraySymbol> Arrays { get; init; }
+
+    /// <summary>Which of <see cref="DataPools"/> each READ, RESTORE and MAT READ uses. Reference-keyed.</summary>
+    public required IReadOnlyDictionary<Stmt, int> DataUnits { get; init; }
 
     /// <summary>Line-label → statement map for GOTO/GOSUB/RESTORE resolution.</summary>
     public required IReadOnlyDictionary<int, Stmt> LineLabels { get; init; }

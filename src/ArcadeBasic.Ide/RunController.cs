@@ -55,7 +55,8 @@ internal sealed class RunController
 
     public bool IsRunning => _task is not null;
 
-    public void Run(string source)
+    /// <param name="folder">Where LIBRARY files are (the open file's folder), if anywhere.</param>
+    public void Run(string source, string? folder = null)
     {
         if (_task is not null) return;
         if (string.IsNullOrWhiteSpace(source))
@@ -96,7 +97,13 @@ internal sealed class RunController
         {
             try
             {
-                return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token, graphics: device, keyboard: keyboard);
+                return BasicEngine.Run(source, writer, stdin: stdin, filename: "<editor>", cancel: token, graphics: device, keyboard: keyboard,
+                    libraries: name =>
+                    {
+                        // Next to the open file — or, for a bundled example, the bundled libraries.
+                        var path = Path.Combine(folder ?? Directory.GetCurrentDirectory(), name);
+                        return File.Exists(path) ? File.ReadAllText(path) : ExamplesProvider.Source(name);
+                    });
             }
             catch (Exception ex)
             {

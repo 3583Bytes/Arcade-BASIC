@@ -47,8 +47,9 @@ public static class BasicEngine
     /// <param name="stdin">Optional source for INPUT / LINE INPUT. Defaults to <see cref="TextReader.Null"/>.</param>
     /// <param name="filename">Filename to attribute in diagnostics. Defaults to "&lt;embedded&gt;".</param>
     /// <param name="cancel">Cancellation token observed between BASIC statements. When triggered the program halts and the result reports <see cref="Result.ExitCode"/> = 2.</param>
+    /// <param name="libraries">For LIBRARY "name": the named file's source, or null if there's no such file.</param>
     /// <returns>Exit code + collected diagnostic messages. ExitCode is 0 on success, 1 on parse/sema/runtime failure, 2 if the program was cancelled mid-flight.</returns>
-    public static Result Run(string source, TextWriter stdout, TextReader? stdin = null, string filename = "<embedded>", CancellationToken cancel = default, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null, ArcadeBasic.Runtime.IKeyboard? keyboard = null, ArcadeBasic.Runtime.IAudioDevice? audio = null)
+    public static Result Run(string source, TextWriter stdout, TextReader? stdin = null, string filename = "<embedded>", CancellationToken cancel = default, ArcadeBasic.Runtime.IGraphicsDevice? graphics = null, ArcadeBasic.Runtime.IKeyboard? keyboard = null, ArcadeBasic.Runtime.IAudioDevice? audio = null, Func<string, string?>? libraries = null)
     {
         if (source is null) throw new ArgumentNullException(nameof(source));
         if (stdout is null) throw new ArgumentNullException(nameof(stdout));
@@ -56,8 +57,8 @@ public static class BasicEngine
         var file = new SourceFile(filename, source);
         var diags = new DiagnosticBag();
 
-        var tokens = new BasicLexer(file, diags).Lex();
-        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var program = ProgramLoader.Load(file,
+            libraries is null ? null : (name, _) => libraries(name) is { } text ? new SourceFile(name, text) : null, diags);
 
         if (diags.HasErrors)
         {

@@ -465,8 +465,20 @@ public class ExampleParityTests
         Assert.Equal((expected, 0), RunVm(program, info, ""));
     }
 
-    private static (AstProgram Program, SemanticInfo Info) FrontEnd(string name) =>
-        FrontEndSource(name, File.ReadAllText(Path.Combine(ExamplesDir(), name)));
+    /// <summary>An example, with the libraries it names (LIBRARY) from the examples folder.</summary>
+    private static (AstProgram Program, SemanticInfo Info) FrontEnd(string name)
+    {
+        var diags = new DiagnosticBag();
+        var program = ProgramLoader.Load(new SourceFile(name, File.ReadAllText(Path.Combine(ExamplesDir(), name))), (library, _) =>
+        {
+            var path = Path.Combine(ExamplesDir(), library);
+            return File.Exists(path) ? new SourceFile(library, File.ReadAllText(path)) : null;
+        }, diags);
+        var info = Analyzer.Analyze(program, diags);
+        Assert.False(diags.HasErrors,
+            $"{name} produced analysis diagnostics:\n{string.Join("\n", diags.All.Select(d => d.Render(false)))}");
+        return (program, info);
+    }
 
     private static (AstProgram Program, SemanticInfo Info) FrontEndSource(string name, string source)
     {

@@ -15,9 +15,9 @@ public sealed class Chunk
 
     public int FrameSize { get; set; }
 
-    /// <summary>The source line of each statement, in code order — for a debugger to know
-    /// where a breakpoint can stop. The compiler records them; a deserialized chunk has none.</summary>
-    public List<int> StatementLines { get; } = [];
+    /// <summary>Where each statement is, in code order — for a debugger to know where a
+    /// breakpoint can stop. The compiler records them; a deserialized chunk has none.</summary>
+    public List<SourceLine> StatementLines { get; } = [];
 
     public int CodeLength => _code.Count;
     public IReadOnlyList<byte> Code => _code;
@@ -129,8 +129,12 @@ public sealed class Program
     public required IReadOnlyList<CompiledFunction> Functions { get; init; }
     public required IReadOnlyList<CompiledDef> Defs { get; init; }
     public required IReadOnlyList<string> BuiltinNames { get; init; }
-    /// <summary>Items collected from all DATA statements, in source order. Read via READ / MAT READ; rewound via RESTORE.</summary>
-    public required IReadOnlyList<BcDataItem> DataPool { get; init; }
+    /// <summary>Each program-unit's DATA, in source order — the main program's first, then each
+    /// MODULE's. READ / MAT READ / RESTORE name the one they use.</summary>
+    public required IReadOnlyList<IReadOnlyList<BcDataItem>> DataPools { get; init; }
+
+    /// <summary>The source files, the main program's first; a LineNote's file number indexes it.</summary>
+    public IReadOnlyList<string> SourceFiles { get; init; } = [];
     /// <summary>OPTION ARITHMETIC NATIVE: the VM computes in IEEE double instead of decimal.</summary>
     public bool NativeArithmetic { get; init; }
 }
@@ -139,3 +143,16 @@ public sealed record class CompiledSub(string Name, int ParamCount, Chunk Body);
 public sealed record class CompiledFunction(string Name, bool IsString, int ParamCount, int ReturnSlot, Chunk Body);
 public sealed record class CompiledDef(string Name, bool IsString, int ParamCount, int ReturnSlot, Chunk Body);
 public sealed record class BcDataItem(bool IsString, string Text);
+
+/// <summary>A line of source: which file (0 the main program's, an index into
+/// <see cref="Program.SourceFiles"/>) and its line there, from 1. A plain line number
+/// means the main program's.</summary>
+public readonly record struct SourceLine(int File, int Line)
+{
+    public static implicit operator SourceLine(int line) => new(0, line);
+
+    /// <summary>A LineNote's operand: the file in the top 8 bits, the line below.</summary>
+    public uint Packed => (uint)File << 24 | (uint)Line;
+
+    public static SourceLine Unpack(uint packed) => new((int)(packed >> 24), (int)(packed & 0xFFFFFF));
+}

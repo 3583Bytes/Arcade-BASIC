@@ -29,7 +29,14 @@ export function createDocuments({ editor, tabs, ask, exampleSource, onShow, noti
     return { id, name, kind, state: editor.create(text, cursor, breakpoints), saved, crlf, handle, dirty: text !== saved };
   }
 
-  function add(doc) {
+  /** A new tab, shown — or, with showIt false, opened behind the one showing (a library). */
+  function add(doc, showIt = true) {
+    if (!showIt) {
+      docs.push(doc);
+      render();
+      persist();
+      return doc;
+    }
     // An untouched new program makes way for the first thing opened after it.
     const replace = active && active.kind === 'new' && !active.dirty && active.saved === STARTER ? active : null;
     docs.push(doc);
@@ -133,17 +140,51 @@ export function createDocuments({ editor, tabs, ask, exampleSource, onShow, noti
   }
 
   /** An example: its tab if it's open, else a new one. */
-  function openExample(name) {
+  function openExample(name, showIt = true) {
     const open = docs.find(d => d.kind === 'example' && d.name === name);
-    if (open) { if (open !== active) show(open); return open; }
-    return add(make({ name, kind: 'example', text: exampleSource(name) }));
+    if (open) { if (showIt && open !== active) show(open); return open; }
+    return add(make({ name, kind: 'example', text: exampleSource(name) }), showIt);
   }
 
-  /** A program from a shared link. */
-  function openShared(text) {
+  /** A program from a shared link (named, if it came with its libraries). */
+  function openShared(text, name = 'shared.bas', showIt = true) {
     const open = docs.find(d => d.kind === 'shared' && d.state.doc.toString() === text);
-    if (open) { if (open !== active) show(open); return open; }
-    return add(make({ name: uniqueName('shared.bas'), kind: 'shared', text }));
+    if (open) { if (showIt && open !== active) show(open); return open; }
+    return add(make({ name: docs.some(d => d.name === name) ? uniqueName(name) : name, kind: 'shared', text }), showIt);
+  }
+
+  /** Every .bas file in a folder, each in a tab — a program and its libraries. In Chrome and
+   *  Edge they stay linked to their files; elsewhere the browser asks for the folder's files. */
+  async function openFolder() {
+    if (!('showDirectoryPicker' in window)) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.webkitdirectory = true;
+      input.addEventListener('change', async () => {
+        await openSeveral([...input.files].filter(f => /\.bas$/i.test(f.name)).map(file => ({ file, handle: null })));
+      });
+      input.click();
+      return;
+    }
+    let folder;
+    try { folder = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (e) {
+      if (e.name !== 'AbortError') notify(`Couldn't open the folder: ${e.message}`);
+      return;
+    }
+    const files = [];
+    for await (const handle of folder.values())
+      if (handle.kind === 'file' && /\.bas$/i.test(handle.name)) files.push({ file: await handle.getFile(), handle });
+    if (!files.length) { notify(`No .bas files in ${folder.name}`); return; }
+    await openSeveral(files);
+  }
+
+  /** Several files at once: all in tabs, showing the program (one that isn't a library). */
+  async function openSeveral(files) {
+    files.sort((a, b) => a.file.name.localeCompare(b.file.name));
+    const opened = [];
+    for (const { file, handle } of files) opened.push(await openFile(file, handle, false));
+    const program = opened.find(d => d && !/@library/i.test(d.state.doc.line(1).text)) ?? opened.find(Boolean);
+    if (program) show(program);
   }
 
   async function openFiles() {
@@ -176,16 +217,16 @@ export function createDocuments({ editor, tabs, ask, exampleSource, onShow, noti
 
   /** A file (and its handle, where the browser gives one) in a tab. A file that's
    *  already open just gets shown. Line endings are kept as the file has them. */
-  async function openFile(file, handle = null) {
+  async function openFile(file, handle = null, showIt = true) {
     if (handle) {
       for (const d of docs) {
-        if (d.handle && await d.handle.isSameEntry(handle).catch(() => false)) { show(d); return d; }
+        if (d.handle && await d.handle.isSameEntry(handle).catch(() => false)) { if (showIt) show(d); return d; }
       }
     }
     const raw = await file.text();
     if (raw.includes('\0')) { notify(`${file.name} isn't a text file`); return null; }
     const text = raw.replace(/\r\n?/g, '\n');
-    const doc = add(make({ name: file.name, kind: 'file', text, crlf: raw.includes('\r\n'), handle }));
+    const doc = add(make({ name: file.name, kind: 'file', text, crlf: raw.includes('\r\n'), handle }), showIt);
     keepHandle(doc);
     return doc;
   }
@@ -367,7 +408,7 @@ export function createDocuments({ editor, tabs, ask, exampleSource, onShow, noti
     get all() { return docs; },
     get canPick() { return canPick; },
     describe, update, refresh, restore, persist, show,
-    newProgram, openExample, openShared, openFiles, openFile, openDropped, save, close: closeDoc,
+    newProgram, openExample, openShared, openFiles, openFolder, openFile, openDropped, save, close: closeDoc,
     setRunning(doc) { running = doc; render(); },
   };
 }

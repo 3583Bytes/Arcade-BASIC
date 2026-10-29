@@ -237,7 +237,19 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 ## Modules
 
-`MODULE name ... END MODULE` is supported with static linkage. The CLI's `run` subcommand accepts the main file followed by any number of module files; sema runs across all of them, and module-level declarations become visible globally via `PUBLIC` / scoped via `PRIVATE`.
+`MODULE name ... END MODULE` is a program-unit (ISO 10279), with static linkage:
+
+- **Procedures:** a module's `SUB`/`FUNCTION`/`DEF`s are private to it unless marked `PUBLIC`.
+- **Variables:** `SHARE` declares the module's own variables (scalars, and arrays with bounds as in `DIM`), visible to its start-up code and its procedures; `PUBLIC` declares ones other units can use after `DECLARE PUBLIC name, array()`.
+- **Start-up:** a module's statements outside its procedures run before the main program, modules in the order they appear (a library's before the program that names it).
+- **Visibility:** code in a module doesn't see the main program's variables. A name a module procedure reads before setting is local to that procedure, as for an external procedure; one in the start-up code is the module's.
+- **`DATA`:** each program-unit has its own: a `READ`, `MAT READ` or `RESTORE` in a module (start-up code or procedure) uses the module's, in the main program (or its internal procedures) the main program's.
+
+**IMPLEMENTATION-DEFINED (finding program-units):** ISO 10279 leaves how a program's units are assembled to the implementation. Here a main program names other files with **`LIBRARY "file" [, …]`** — True BASIC's statement (Kemeny and Kurtz's own Full BASIC). Each file is loaded once; a file's libraries load before it. A library holds `MODULE`s and procedures of its own, which are **external procedures**: callable from the whole program, seeing only their own variables (they're treated as a module named after the file, every procedure public). Any other top-level statement in a library is an error (`FB0211`); a missing file is `FB0210`. The CLI (`run`, `vm`, `build`, `analyze`) and the terminal IDE look for a library next to the file that names it; the browser IDE among its open tabs, then the bundled examples. `run` still also accepts module files after the main file.
+
+Errors and the debugger say which file a line is in: a runtime error in a library reads `… at line 8 in greet.bas: …`.
+
+**Not implemented:** `EXTERNAL SUB`/`EXTERNAL FUNCTION` written after a main program's `END` (and `DECLARE EXTERNAL`) — put external procedures in a library file; `DECLARE` forms other than `DECLARE PUBLIC`; `PRIVATE` as a statement listing routines (the `PRIVATE` prefix is accepted and is the default); `RESTORE` to a line number (it rewinds the unit's `DATA`, as in both engines before).
 
 **DEVIATION:** No on-disk compiled module format. Modules are recompiled from source on each invocation.
 

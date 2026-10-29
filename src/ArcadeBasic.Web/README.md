@@ -26,6 +26,18 @@ The editor is [CodeMirror 6](https://codemirror.net) set up for BASIC:
   File System Access API) a program stays linked to its file and Save writes
   straight back to it, even after a reload; Firefox and Safari open with a file
   picker and save by downloading. A file's line endings are kept as they were.
+- **Programs in several files**: `LIBRARY "file.bas"` names another file whose
+  modules and procedures join the program; the IDE finds it among the open tabs
+  (then the bundled examples — maze3d opens with its two). *File → Open a folder*
+  opens every `.bas` file in a folder. F5 in a library's tab runs the program that
+  names it; problems in a library show on its `LIBRARY` line; breakpoints, pauses
+  and runtime errors work in any of the files, bringing its tab forward; a link to
+  a program carries its own libraries along.
+- **Finding your way round a long program**: *☰ Outline* lists its sections
+  (comments ruled with `====` or `----`), `SUB`s, `FUNCTION`s, the lines `GOSUB`
+  calls, and pictures, marking where the cursor is; folding (the ▾ in the margin,
+  or by keyboard) works on the same blocks and on indented bodies; *Go to*
+  (⌘/Ctrl+Shift+O) jumps to any of them, or to a line number.
 - **Kept in this browser**: every open tab and its text is saved in
   `localStorage` as you type, so a reload brings it all back. Nothing is sent
   anywhere.
@@ -148,5 +160,6 @@ npm ci && npm run build
 | `wwwroot/colours.js` | colour swatches in the code, and the palette dialog |
 | `wwwroot/tunes.js` | ▶ and ♫ beside `PLAY` strings, and the tune editor |
 | `Playground.Tools.cs` | the tools' exports: a `PLAY` string's tones, the starting palette |
+| `wwwroot/outline.js` | a program's sections, blocks and subroutines: the outline, folding, Go to |
 | `wwwroot/style.css` | the layout and the themes |
 | `codemirror/` | builds `wwwroot/lib/codemirror.js` (npm; see above) |

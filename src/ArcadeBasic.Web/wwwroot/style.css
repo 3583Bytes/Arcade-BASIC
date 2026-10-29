@@ -200,7 +200,38 @@ main {
 [data-theme="qbasic"] #newTab { color: #000; }
 #newTab:hover { background: var(--hover); color: var(--text); }
 
-#editor { flex: 1; min-height: 0; position: relative; }
+.tabRow { display: flex; align-items: stretch; background: var(--bar); border-bottom: 1px solid var(--border); flex: none; }
+.tabRow #tabs { flex: 1; min-width: 0; border-bottom: 0; }
+#outlineToggle { border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; padding: 0 12px; white-space: nowrap; font-size: 13px; }
+#outlineToggle:hover, #outlineToggle[aria-pressed="true"] { color: var(--text); background: var(--hover); }
+[data-theme="qbasic"] #outlineToggle { color: #000; }
+#editorBody { flex: 1; min-height: 0; display: flex; }
+#editor { flex: 1; min-width: 0; min-height: 0; position: relative; }
+
+/* The outline beside the editor, and Go to */
+#outline { width: 220px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--bar); color: var(--bar-text); }
+#outline[hidden] { display: none; }
+.outlineHead { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--border); }
+.outlineHead input { flex: 1; min-width: 0; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; font: 12px var(--ui-font); }
+.outlineHead button { background: transparent; border: 1px solid var(--border); color: inherit; border-radius: 5px; cursor: pointer; padding: 0 6px; }
+#outline .items { overflow: auto; flex: 1; padding: 4px 0; }
+#outline .items p { color: var(--muted); font-size: 12px; margin: 6px 10px; }
+.items .item {
+  display: flex; gap: 6px; align-items: baseline; width: 100%; border: 0; background: transparent; color: inherit; text-align: left;
+  padding: 2px 8px; cursor: pointer; font: 12px/1.5 var(--ui-font); white-space: nowrap;
+}
+.items .item span { overflow: hidden; text-overflow: ellipsis; }
+.items .item i { font-style: normal; width: 12px; flex: none; text-align: center; color: var(--muted); font-family: var(--code-font); }
+.items .item.level2 { padding-left: 20px; }
+.items .item.section.level1 span { font-weight: 600; }
+.items .item.sub i, .items .item.function i, .items .item.def i { color: var(--syn-fn); }
+.items .item.picture i { color: var(--syn-str); }
+.items .item:hover { background: var(--hover); }
+.items .item.current, .items .item.chosen { background: var(--ed-sel); color: var(--ed-text); }
+dialog.goTo { width: min(520px, calc(100vw - 32px)); padding: 10px; position: fixed; top: 12vh; margin: 0 auto; }
+dialog.goTo input { width: 100%; margin-bottom: 6px; }
+dialog.goTo .items { max-height: 50vh; overflow: auto; }
+@media (max-width: 900px) { #outline { width: 160px; } }
 #editor .cm-editor { position: absolute; inset: 0; }
 #editor .cm-editor.cm-focused { outline: none; }
 

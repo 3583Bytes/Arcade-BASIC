@@ -9,6 +9,7 @@ export {
 export { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment } from '@codemirror/commands';
 export {
   StreamLanguage, HighlightStyle, syntaxHighlighting, syntaxTree, indentOnInput, bracketMatching, indentUnit,
+  foldService, foldGutter, codeFolding, foldKeymap, foldAll, unfoldAll,
 } from '@codemirror/language';
 export { tags } from '@lezer/highlight';
 export { search, searchKeymap, highlightSelectionMatches, openSearchPanel } from '@codemirror/search';

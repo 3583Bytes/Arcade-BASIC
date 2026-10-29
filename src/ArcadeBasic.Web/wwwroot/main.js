@@ -12,6 +12,7 @@ import { createAudio, QUEUE } from './audio.js';
 import { openPictureEditor, insertPicture } from './pictures.js';
 import { setDefaultPalette, openPalette } from './colours.js';
 import { setTuneEngine, openTuneEditor, insertTune } from './tunes.js';
+import { createOutline, openGoTo } from './outline.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
@@ -62,6 +63,7 @@ const editor = createEditor($('editor'), {
   onUpdate(update) {
     documents.update(update);
     if (update.selectionSet || update.docChanged) showCursor();
+    if (update.docChanged) outlineSoon();
   },
   onProblems: showProblems,
   onEditPicture(view, line) {
@@ -74,7 +76,7 @@ const editor = createEditor($('editor'), {
     openTuneEditor(view, where, { ask });
   },
   onBreakpoints(lines) {
-    if (run && run.doc === documents.active) P.SetBreakpoints(lines);   // takes effect at once
+    if (run?.docs?.includes(documents.active)) syncBreakpoints();       // takes effect at once
     documents.persist();
   },
 });
@@ -87,6 +89,7 @@ const documents = createDocuments({
 function shown(doc) {
   document.title = `${doc.dirty ? '● ' : ''}${doc.name} — Arcade BASIC`;
   showFileInfo();
+  showOutline();
   showCursor();
   // The address names an example (…/#breakout), so a link can open it.
   const hash = doc.kind === 'example' ? '#' + doc.name.replace(/\.bas$/, '') : '';
@@ -96,7 +99,28 @@ function shown(doc) {
 function showCursor() {
   const state = editor.state, head = state.selection.main.head, line = state.doc.lineAt(head);
   $('cursorPos').textContent = `Ln ${line.number}, Col ${head - line.from + 1}`;
+  outline.follow(line.number);
 }
+
+// The outline beside the editor (outline.js): the program's sections, SUBs, FUNCTIONs …
+const outline = createOutline($('outline'), { onGo: line => editor.goToLine(line) });
+let outlineTimer = 0;
+const outlineSoon = () => { clearTimeout(outlineTimer); outlineTimer = setTimeout(showOutline, 250); };
+function showOutline() {
+  if ($('outline').hidden) return;
+  outline.show(editor.state.doc);
+  outline.follow(editor.state.doc.lineAt(editor.state.selection.main.head).number);
+}
+function toggleOutline(show = $('outline').hidden) {
+  $('outline').hidden = !show;
+  $('outlineToggle').setAttribute('aria-pressed', String(show));
+  store.set('arcade-basic.outline', show ? '1' : '0');
+  showOutline();
+}
+$('outlineToggle').addEventListener('click', () => toggleOutline());
+$('foldAll').addEventListener('click', () => editor.foldAll());
+$('unfoldAll').addEventListener('click', () => editor.unfoldAll());
+const goTo = () => openGoTo($('goToDialog'), editor.state.doc, line => editor.goToLine(line));
 
 function showFileInfo() {
   $('fileInfo').textContent = documents.active ? documents.describe(documents.active) : '';
@@ -160,33 +184,74 @@ function ask({ title, message = '', input = null, buttons }) {
   });
 }
 
+// -- Programs in several files ---------------------------------------------------------------
+// LIBRARY "file.bas" brings in another file's MODULEs and procedures: the other open
+// tabs are the files it can name (and the bundled examples, for theirs).
+
+const textOf = doc => (doc === documents.active ? editor.state : doc.state).doc.toString();
+
+/** The files a program's LIBRARY statements name. */
+const libraryNames = text => [...text.matchAll(/^\s*(?:\d+\s+)?LIBRARY\s+(.+)$/gim)]
+  .flatMap(m => [...m[1].matchAll(/"([^"]+)"/g)].map(q => q[1]));
+
+/** The other open programs, as LIBRARY can name them: [names, texts]. */
+function openPrograms(except) {
+  const docs = documents.all.filter(d => d !== except);
+  return [docs.map(d => d.name), docs.map(textOf)];
+}
+
+/** What F5 runs from a tab: the tab — unless another open program names it in LIBRARY. */
+const programFor = doc =>
+  documents.all.find(d => d !== doc && libraryNames(textOf(d)).some(n => n.toLowerCase() === doc.name.toLowerCase())) ?? doc;
+
+/** The tab with one of the running program's files (by its number), opening a bundled example's. */
+function docOfFile(file) {
+  if (!run?.files) return run?.doc ?? null;
+  let doc = run.docs[file];
+  if (!doc && P.Examples().includes(run.files[file])) doc = run.docs[file] = documents.openExample(run.files[file], false);
+  return doc ?? null;
+}
+
+/** Every breakpoint in the running program's files. */
+function syncBreakpoints() {
+  if (!run?.docs) return;
+  const files = [], lines = [];
+  run.docs.forEach((doc, file) => {
+    if (doc && documents.all.includes(doc)) for (const line of editor.breakpointLines(doc === documents.active ? editor.state : doc.state)) { files.push(file); lines.push(line); }
+  });
+  P.SetBreakpoints(files, lines);
+}
+
 // -- Running a program -------------------------------------------------------------------
 
-/** Run the program showing; with stopAtFirst, paused before its first statement. */
+/** Run the program showing (or the one it's a library of); with stopAtFirst, paused before
+ *  its first statement. */
 function runActive(stopAtFirst = false) {
-  const doc = documents.active;
-  if (!P || !doc) return;
+  if (!P || !documents.active) return;
+  const doc = programFor(documents.active);
   audio.unlock();                        // (a click or key press: the browser now allows sound)
-  start(editor.state.doc.toString(), null, doc, stopAtFirst);
+  start(textOf(doc), null, doc, stopAtFirst);
 }
 
 function start(text, onHalt, doc = null, stopAtFirst = false) {
   stop();
   output.replaceChildren();
   editor.clearRuntimeError();
-  const diagnostics = P.Load(text);
+  const diagnostics = P.Load(doc?.name ?? 'program.bas', text, ...(doc ? openPrograms(doc) : [[], []]));
   if (diagnostics) {
     appendOutput(diagnostics, 'error');
-    if (doc) editor.goToFirstProblem();
+    if (doc) { if (documents.active !== doc) documents.show(doc); editor.goToFirstProblem(); }
     return false;
   }
   audio.reset();
   paletteSeen = false;
-  if (doc) P.SetBreakpoints(editor.breakpointLines(doc === documents.active ? editor.state : doc.state));
+  const files = P.SourceFiles();
+  const docs = files.map((name, i) => i === 0 ? doc : documents.all.find(d => d.name.toLowerCase() === name.toLowerCase()) ?? null);
   if (stopAtFirst) P.PauseAt(PAUSE);
   lastVariables = new Map();
   run = { sleepingUntil: 0, audioUntil: 0, waiting: false, waitingPoint: false, paused: false, began: performance.now(),
-          ticks: 0, frames: 0, vmMs: 0, onHalt, doc };
+          ticks: 0, frames: 0, vmMs: 0, onHalt, doc, files, docs };
+  syncBreakpoints();
   documents.setRunning(doc);
   $('stop').disabled = false;
   showDebugControls();
@@ -254,11 +319,12 @@ function tick() {
   if (halted) {
     const error = P.Error();
     const line = error ? P.CurrentLine() : 0;
+    const failed = error ? docOfFile(P.CurrentFile()) : null;
     if (error) appendOutput('\n' + error + '\n', 'error');
     r.instructions = P.Instructions();
     stop(false);
-    if (error && r.doc && documents.all.includes(r.doc)) {   // point at the line that failed
-      if (documents.active !== r.doc) documents.show(r.doc);
+    if (failed && documents.all.includes(failed)) {           // point at the line that failed
+      if (documents.active !== failed) documents.show(failed);
       editor.showRuntimeError(line);
     }
     r.onHalt?.(r);
@@ -275,18 +341,20 @@ function tick() {
 
 function enterPause(r) {
   r.paused = true;
-  if (r.doc && documents.all.includes(r.doc) && documents.active !== r.doc) documents.show(r.doc);
-  const line = P.CurrentLine();
-  if (documents.active === r.doc) editor.showPaused(line);
+  const line = P.CurrentLine(), file = P.CurrentFile(), doc = docOfFile(file);
+  if (doc && documents.all.includes(doc) && documents.active !== doc) documents.show(doc);
+  if (doc && documents.active === doc) editor.showPaused(line);
   showVariables(true);
   showPanel('variables');
   editor.setValueLookup(valueOf);
-  stats.textContent = `Paused at line ${line} · F5 continue · F10 step over · F11 step into · Shift+F11 step out`;
+  const where = file > 0 ? ` in ${r.files[file]}` : '';
+  stats.textContent = `Paused at line ${line}${where} · F5 continue · F10 step over · F11 step into · Shift+F11 step out`;
   showDebugControls();
 }
 
 function leavePause() {
   editor.showPaused(0);
+  for (const doc of documents.all) if (doc !== documents.active) doc.state = editor.withoutPause(doc.state);
   editor.setValueLookup(null);
 }
 
@@ -362,14 +430,21 @@ function showVariables(markChanges) {
   const frames = snapshot.frames.map(frame => {
     const section = document.createElement('details');
     section.className = 'frame';
-    const title = frame.name || 'Main program';
+    const title = frame.name || (frame.file > 0 ? 'Module start-up' : 'Main program');
     section.open = !closedFrames.has(title);
     section.addEventListener('toggle', () => section.open ? closedFrames.delete(title) : closedFrames.add(title));
     const summary = document.createElement('summary');
     const at = document.createElement('a');
     at.href = '#';
     at.textContent = `line ${frame.line}`;
-    at.addEventListener('click', e => { e.preventDefault(); if (run?.doc === documents.active) editor.goToLine(frame.line); });
+    if (frame.file > 0) at.textContent += ` in ${run.files[frame.file]}`;
+    at.addEventListener('click', e => {
+      e.preventDefault();
+      const doc = docOfFile(frame.file);
+      if (!doc) return;
+      if (documents.active !== doc) documents.show(doc);
+      editor.goToLine(frame.line);
+    });
     summary.append(title, ' · ', at);
     const table = document.createElement('table');
     for (const v of frame.vars) {
@@ -455,7 +530,7 @@ function elements(v) {
 
 /** Pointing at a name while paused: its value (innermost call first). */
 function valueOf(name) {
-  if (!run?.paused || run.doc !== documents.active) return null;
+  if (!run?.paused || !run.docs?.includes(documents.active)) return null;
   const key = name.toUpperCase();
   for (const frame of lastSnapshot.frames) {
     const v = frame.vars.find(x => x.name.toUpperCase() === key);
@@ -747,6 +822,7 @@ themes.addEventListener('change', () => {
 const actions = {
   new: () => documents.newProgram(),
   open: () => documents.openFiles(),
+  openFolder: () => documents.openFolder(),
   save: () => documents.save(),
   saveAs: () => documents.save(documents.active, true),
   share: shareLink,
@@ -810,6 +886,7 @@ window.addEventListener('keydown', e => {
   else if (key === 'F11' && !mod) action = () => debugStep(e.shiftKey ? OUT : INTO);
   else if (mod && !e.altKey && key === 's') action = e.shiftKey ? actions.saveAs : actions.save;
   else if (mod && !e.altKey && !e.shiftKey && key === 'o') action = actions.open;
+  else if (mod && e.shiftKey && !e.altKey && key === 'o') action = goTo;
   else if (e.altKey && !mod && e.code === 'KeyN') action = actions.new;
   else if (e.altKey && !mod && e.code === 'KeyW') action = actions.close;
   if (!action || document.querySelector('dialog[open]')) return;
@@ -874,7 +951,12 @@ divider.addEventListener('keydown', e => {
 
 async function shareLink() {
   if (!documents.active) return;
-  const link = `${location.origin}${location.pathname}#code=${await pack(editor.state.doc.toString())}`;
+  // A program with libraries (open, not bundled) goes with them: {"main": [name, text], "libraries": [[name, text] …]}.
+  const doc = programFor(documents.active), text = textOf(doc);
+  const libraries = libraryNames(text).map(n => documents.all.find(d => d.name.toLowerCase() === n.toLowerCase()))
+    .filter(d => d && !P.Examples().includes(d.name)).map(d => [d.name, textOf(d)]);
+  const payload = libraries.length ? JSON.stringify({ main: [doc.name, text], libraries }) : text;
+  const link = `${location.origin}${location.pathname}#code=${await pack(payload)}`;
   try {
     await navigator.clipboard.writeText(link);
     notify('Link copied: whoever opens it gets this program');
@@ -901,7 +983,11 @@ async function unpack(code) {
 async function openAddress(hash) {
   if (hash.startsWith('#code=')) {
     try {
-      documents.openShared(await unpack(hash.slice(6)));
+      const shared = await unpack(hash.slice(6));
+      const project = shared.startsWith('{"main"') ? JSON.parse(shared) : null;
+      if (!project) { documents.openShared(shared); return true; }
+      for (const [name, text] of project.libraries) documents.openShared(text, name, false);
+      documents.openShared(project.main[1], project.main[0]);
       return true;
     } catch {
       notify('The program in that link couldn\'t be read');
@@ -911,13 +997,22 @@ async function openAddress(hash) {
   const name = decodeURIComponent(hash.slice(1)).toLowerCase();
   const example = name && P.Examples().find(n => n.toLowerCase() === name || n.toLowerCase() === name + '.bas');
   if (!example) return false;
-  documents.openExample(example);
+  openExampleProgram(example);
   return true;
+}
+
+/** An example, and the bundled libraries it names in tabs beside it. */
+function openExampleProgram(name) {
+  for (const library of libraryNames(P.ExampleSource(name)))
+    if (P.Examples().includes(library)) documents.openExample(library, false);
+  return documents.openExample(name);
 }
 
 // -- Starting up -------------------------------------------------------------------------------
 
 window.arcadeBasic = { editor, documents, audio, run: runActive };   // (window.arcadeBasic.run(true): start paused)   // for the browser console (and screenshots)
+
+if (store.get('arcade-basic.outline') === '1') toggleOutline(true);
 
 const startHash = location.hash;
 const restored = documents.restore();    // what was open last time, before .NET is even here
@@ -928,7 +1023,8 @@ readyMs = performance.now();
 const words = P.Words(), gap = words.indexOf('');
 documents.refresh(editor.setWords(words.slice(0, gap), words.slice(gap + 1)));
 editor.setChecker(text => {
-  const spans = P.Check(text), messages = P.CheckMessages();
+  const doc = documents.active;
+  const spans = P.Check(doc?.name ?? 'program.bas', text, ...openPrograms(doc)), messages = P.CheckMessages();
   editor.setStatementLines(P.StatementLines());
   return messages.map((message, i) => ({
     from: spans[3 * i], to: spans[3 * i + 1], severity: ['info', 'warning', 'error'][spans[3 * i + 2]], message,
@@ -948,7 +1044,9 @@ const examples = $('examples');
 examples.add(new Option('Examples…', ''));
 const groups = new Map([['Games', []], ['Graphics', []], ['Basics', []]]);
 for (const name of P.Examples()) {
-  const group = /@category\s+(\w+)/.exec(P.ExampleSource(name).split('\n', 1)[0])?.[1] ?? 'Basics';
+  const first = P.ExampleSource(name).split('\n', 1)[0];
+  if (/@library/i.test(first)) continue;                  // (opened with the program that uses it)
+  const group = /@category\s+(\w+)/.exec(first)?.[1] ?? 'Basics';
   if (!groups.has(group)) groups.set(group, []);
   groups.get(group).push(name);
 }
@@ -960,12 +1058,12 @@ for (const [group, names] of groups) {
   examples.append(optgroup);
 }
 examples.addEventListener('change', () => {
-  if (examples.value) documents.openExample(examples.value);
+  if (examples.value) openExampleProgram(examples.value);
   examples.value = '';
   editor.focus();
 });
 
-if (!(await openAddress(startHash)) && !restored) documents.openExample('maze3d.bas');
+if (!(await openAddress(startHash)) && !restored) openExampleProgram('maze3d.bas');
 window.addEventListener('hashchange', () => openAddress(location.hash));
 $('run').disabled = false;
 $('loading').textContent = '';
@@ -1038,7 +1136,7 @@ async function bench() {
     'empty loop 1M (native)': 'OPTION ARITHMETIC NATIVE\nFOR I = 1 TO 1000000\nNEXT I\nEND\n',
   };
   for (const [name, text] of Object.entries(compute)) {
-    P.Load(text);
+    P.Load('bench.bas', text, [], []);
     const t0 = performance.now();
     while (P.Step(1_000_000) !== HALTED) { /* flat out */ }
     results[name] = { ms: performance.now() - t0, instructions: P.Instructions(), outputChars: P.TakeOutput().length, error: P.Error() };

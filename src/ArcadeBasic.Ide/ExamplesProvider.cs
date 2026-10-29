@@ -13,7 +13,18 @@ internal static class ExamplesProvider
 
     public static IReadOnlyList<Example> All { get; } = Load();
 
-    public sealed record Example(string Name, string Source, string Category);
+    /// <summary>The examples to offer: not the libraries (an <c>@library</c> tag in the first
+    /// line), which other examples load with LIBRARY.</summary>
+    public static IReadOnlyList<Example> Programs { get; } = [.. All.Where(e => !e.IsLibrary)];
+
+    /// <summary>A bundled example's source by file name (<c>maze3d-level.bas</c>), for LIBRARY.</summary>
+    public static string? Source(string fileName) =>
+        All.FirstOrDefault(e => string.Equals(e.Name + ".bas", fileName, StringComparison.OrdinalIgnoreCase))?.Source;
+
+    public sealed record Example(string Name, string Source, string Category)
+    {
+        public bool IsLibrary => Source.Split('\n', 2)[0].Contains("@library", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static IReadOnlyList<Example> Load()
     {

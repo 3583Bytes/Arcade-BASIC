@@ -24,7 +24,8 @@ namespace ArcadeBasic.Bytecode;
 public static class BytecodeSerializer
 {
     private const uint Magic = 0x46424358u; // 'FBCX'
-    private const uint Version = 7;   // 5: Opcode.Randomize; 6: graphic input opcodes; 7: cell arrays, colour mixes
+    private const uint Version = 8;   // 5: Opcode.Randomize; 6: graphic input opcodes; 7: cell arrays, colour mixes;
+                                      // 8: DATA per program-unit, source files (LineNote's file number)
 
     public static byte[] Serialize(Program program)
     {
@@ -64,12 +65,17 @@ public static class BytecodeSerializer
             WriteChunk(w, d.Body);
         }
 
-        w.Write((uint)program.DataPool.Count);
-        foreach (var d in program.DataPool)
+        w.Write((uint)program.DataPools.Count);
+        foreach (var pool in program.DataPools)
         {
-            w.Write(d.IsString);
-            WriteString(w, d.Text);
+            w.Write((uint)pool.Count);
+            foreach (var d in pool)
+            {
+                w.Write(d.IsString);
+                WriteString(w, d.Text);
+            }
         }
+        WriteStringList(w, program.SourceFiles);
 
         WriteChunk(w, program.Main);
         w.Flush();
@@ -122,14 +128,21 @@ public static class BytecodeSerializer
             defs.Add(new CompiledDef(name, isString, paramCount, returnSlot, body));
         }
 
-        var dataCount = r.ReadUInt32();
-        var dataPool = new List<BcDataItem>((int)dataCount);
-        for (var i = 0; i < dataCount; i++)
+        var poolCount = r.ReadUInt32();
+        var dataPools = new List<IReadOnlyList<BcDataItem>>((int)poolCount);
+        for (var p = 0; p < poolCount; p++)
         {
-            var isString = r.ReadBoolean();
-            var text = ReadString(r);
-            dataPool.Add(new BcDataItem(isString, text));
+            var dataCount = r.ReadUInt32();
+            var dataPool = new List<BcDataItem>((int)dataCount);
+            for (var i = 0; i < dataCount; i++)
+            {
+                var isString = r.ReadBoolean();
+                var text = ReadString(r);
+                dataPool.Add(new BcDataItem(isString, text));
+            }
+            dataPools.Add(dataPool);
         }
+        var sourceFiles = ReadStringList(r);
 
         var main = ReadChunk(r);
 
@@ -140,7 +153,8 @@ public static class BytecodeSerializer
             Functions = functions,
             Defs = defs,
             BuiltinNames = builtinNames,
-            DataPool = dataPool,
+            DataPools = dataPools,
+            SourceFiles = sourceFiles,
             NativeArithmetic = nativeArithmetic,
         };
     }

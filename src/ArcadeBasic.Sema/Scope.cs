@@ -26,14 +26,25 @@ public sealed class Scope
     /// <summary>All symbols declared directly in this scope.</summary>
     public IReadOnlyDictionary<string, Symbol> Symbols => _symbols;
 
-    /// <summary>Allocate the next slot index in this frame.</summary>
-    public int AllocateSlot() => FrameSize++;
+    /// <summary>Allocate the next slot index in this frame. A MODULE has no frame of its
+    /// own: its variables are slots in the program's (where its start-up code runs), so
+    /// it hands out the program's.</summary>
+    public int AllocateSlot() => Kind == ScopeKind.Module && Parent is not null ? Parent.AllocateSlot() : FrameSize++;
 
     /// <summary>Declare a symbol in this scope. Returns false on collision.</summary>
     public bool Declare(string keyName, Symbol symbol)
     {
         if (_symbols.ContainsKey(keyName)) return false;
         _symbols.Add(keyName, symbol with { OwnerScope = this });
+        return true;
+    }
+
+    /// <summary>Make a symbol declared elsewhere visible here too (DECLARE PUBLIC), keeping
+    /// its owner — the scope that says where it's stored. Returns false on collision.</summary>
+    public bool DeclareAlias(string keyName, Symbol symbol)
+    {
+        if (_symbols.ContainsKey(keyName)) return false;
+        _symbols.Add(keyName, symbol);
         return true;
     }
 

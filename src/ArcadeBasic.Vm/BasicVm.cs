@@ -20,8 +20,9 @@ public sealed class BasicVm
 
     private const int DefaultZoneWidth = 16;
 
-    /// <summary>Cursor into <see cref="BcProgram.DataPool"/>. Reset on each Run(); advanced by READ / MatRead; rewound by RESTORE.</summary>
-    private int _dataCursor;
+    /// <summary>A cursor into each of <see cref="BcProgram.DataPools"/> (a program-unit's DATA):
+    /// advanced by READ / MatRead, rewound by RESTORE.</summary>
+    private int[] _dataCursors = [];
 
     /// <summary>Per-run file channel table for OPEN / PRINT # / INPUT # / CLOSE.</summary>
     private readonly ChannelTable _channels = new();
@@ -34,6 +35,7 @@ public sealed class BasicVm
 
     /// <summary>Source line of the statement currently executing. Updated by LineNote; used as EXLINE when an exception fires.</summary>
     private int _currentLine;
+    private int _currentFile;                 // which of the program's SourceFiles _currentLine is in
 
     /// <summary>PC at which CONTINUE should resume — the start of the statement immediately after the one that raised. Set by <see cref="Dispatch"/> from the catching frame's StmtEndPc.</summary>
     private int _currentContinuePc;
@@ -134,6 +136,7 @@ public sealed class BasicVm
         /// <summary>The line of the statement this frame is on, and that statement's
         /// LineNote — so a debugger can tell a new line from the next statement on the same one.</summary>
         public int Line;
+        public int File;
         public int NotePc = -1;
     }
 
@@ -150,6 +153,7 @@ public sealed class BasicVm
         _pointer = new PointerState(_graphics);
         _pickable = p => _gfx.InWindow(_gfx.ToProblem(p));
         _audio = audio ?? NullAudioDevice.Instance;
+        _dataCursors = new int[Math.Max(1, program.DataPools.Count)];
         _audioPort = new DeferredDrainAudio(_audio);
         _audioQueue = _audio as IAudioQueue;
         _random = new BasicRandom(randomizeSeed);
@@ -300,7 +304,7 @@ public sealed class BasicVm
                     // (Same "unhandled exception" text as the tree-walker.)
                     if (!Dispatch(ex))
                         return Finish(StepResult.Failed(1,
-                            $"unhandled exception type {ex.TypeCode} at line {_currentLine}: {ex.Message}"));
+                            $"unhandled exception type {ex.TypeCode} at line {_currentLine}{InFile()}: {ex.Message}"));
                 }
             }
         }
@@ -326,14 +330,24 @@ public sealed class BasicVm
     /// <see cref="StepResult.Error"/> names). For an editor to point at.</summary>
     public int CurrentLine => _currentLine;
 
+    /// <summary>Which of <see cref="SourceFiles"/> <see cref="CurrentLine"/> is in (0, the main program's).</summary>
+    public int CurrentFile => _currentFile;
+
+    /// <summary>The program's source files, the main program's first (a LIBRARY's after).</summary>
+    public IReadOnlyList<string> SourceFiles => _program.SourceFiles;
+
+    /// <summary>" in name.bas" for a line outside the main program's file — for error messages.</summary>
+    private string InFile() =>
+        _currentFile > 0 && _currentFile < _program.SourceFiles.Count ? $" in {Path.GetFileName(_program.SourceFiles[_currentFile])}" : "";
+
     // -- Debugging --------------------------------------------------------------------
 
-    /// <summary>Source lines to stop at. Before running the first statement of a line in
-    /// the set, <see cref="Step"/> returns <see cref="StepStatus.Paused"/>. Change it
-    /// between steps.</summary>
-    public ISet<int> Breakpoints => _breakpoints;
+    /// <summary>Source lines to stop at (a plain number is the main program's file). Before
+    /// running the first statement of a line in the set, <see cref="Step"/> returns
+    /// <see cref="StepStatus.Paused"/>. Change it between steps.</summary>
+    public ISet<SourceLine> Breakpoints => _breakpoints;
 
-    private readonly HashSet<int> _breakpoints = [];
+    private readonly HashSet<SourceLine> _breakpoints = [];
     private bool _debugging;                  // any breakpoint, step or resume pending (set by Step)
     private DebugStep? _stepKind;
     private CallFrame? _stepFrame;
@@ -366,8 +380,8 @@ public sealed class BasicVm
         foreach (var f in _frames)
         {
             // (The innermost frame may be paused before its statement: that's the current line.)
-            var line = frames.Count == 0 ? _currentLine : f.Line;
-            frames.Add(new DebugFrame(f.Chunk, _chunkNames.TryGetValue(f.Chunk, out var name) ? name : "", line, f.Locals));
+            var (file, line) = frames.Count == 0 ? (_currentFile, _currentLine) : (f.File, f.Line);
+            frames.Add(new DebugFrame(f.Chunk, _chunkNames.TryGetValue(f.Chunk, out var name) ? name : "", file, line, f.Locals));
         }
         return frames;
     }
@@ -381,7 +395,7 @@ public sealed class BasicVm
     }
 
     /// <summary>At a statement's LineNote: should the program stop before it?</summary>
-    private bool ShouldPause(CallFrame cf, int notePc, int line)
+    private bool ShouldPause(CallFrame cf, int notePc, SourceLine at)
     {
         if (ReferenceEquals(cf, _resumeFrame) && notePc == _resumePc)
         {
@@ -390,8 +404,8 @@ public sealed class BasicVm
         }
         // A new line, rather than the next statement on the same one — or the same line
         // again, by a jump back (a loop).
-        var newLine = line != cf.Line || notePc <= cf.NotePc;
-        var pause = newLine && _breakpoints.Contains(line);
+        var newLine = at.Line != cf.Line || at.File != cf.File || notePc <= cf.NotePc;
+        var pause = newLine && _breakpoints.Contains(at);
         if (!pause && _stepKind is { } kind)
         {
             pause = kind switch
@@ -1073,15 +1087,17 @@ public sealed class BasicVm
                 case Opcode.LineNote:
                     {
                         var notePc = pc - 1;
-                        var line = (int)ReadU32(code, ref pc);
+                        var at = SourceLine.Unpack(ReadU32(code, ref pc));
                         var endOffset = ReadI32(code, ref pc);
-                        _currentLine = line;
-                        if (_debugging && ShouldPause(cf, notePc, line))
+                        _currentLine = at.Line;
+                        _currentFile = at.File;
+                        if (_debugging && ShouldPause(cf, notePc, at))
                         {
                             cf.Pc = notePc;           // run the statement on the next Step
                             return StepResult.Paused;
                         }
-                        cf.Line = line;
+                        cf.Line = at.Line;
+                        cf.File = at.File;
                         cf.NotePc = notePc;
                         cf.StmtEndPc = pc + endOffset;
                         break;
@@ -1242,6 +1258,7 @@ public sealed class BasicVm
 
                 case Opcode.Read:
                     {
+                        var pool = (int)ReadU32(code, ref pc);
                         var targetCount = (int)ReadU32(code, ref pc);
                         var descs = new InputTargetDesc[targetCount];
                         for (var i = 0; i < targetCount; i++)
@@ -1259,16 +1276,18 @@ public sealed class BasicVm
                         }
                         for (var i = 0; i < targetCount; i++)
                         {
-                            var value = ReadNextDataValue(descs[i].IsString);
+                            var value = ReadNextDataValue(pool, descs[i].IsString);
                             AssignInputTarget(ResolveOuter(frame, programFrame, descs[i].Depth), descs[i], indices[i], value);
                         }
                         break;
                     }
                 case Opcode.Restore:
-                    _dataCursor = 0;
+                    _dataCursors[(int)ReadU32(code, ref pc)] = 0;
                     break;
                 case Opcode.MatRead:
                     {
+                        var pool = (int)ReadU32(code, ref pc);
+                        var data = _program.DataPools[pool];
                         var depth = (int)ReadU32(code, ref pc);
                         var slot = (int)ReadU32(code, ref pc);
                         var isString = ReadU32(code, ref pc) != 0;
@@ -1281,9 +1300,9 @@ public sealed class BasicVm
                             var sarr = (StringArrayValue)arr;
                             for (var i = 0; i < n; i++)
                             {
-                                if (_dataCursor >= _program.DataPool.Count)
+                                if (_dataCursors[pool] >= data.Count)
                                     throw new BasicRuntimeException(5001, "MAT READ: DATA pool exhausted");
-                                sarr.Data[i] = _program.DataPool[_dataCursor++].Text;
+                                sarr.Data[i] = data[_dataCursors[pool]++].Text;
                             }
                         }
                         else
@@ -1291,9 +1310,9 @@ public sealed class BasicVm
                             var narr = (NumericArrayValue)arr;
                             for (var i = 0; i < n; i++)
                             {
-                                if (_dataCursor >= _program.DataPool.Count)
+                                if (_dataCursors[pool] >= data.Count)
                                     throw new BasicRuntimeException(5001, "MAT READ: DATA pool exhausted");
-                                var item = _program.DataPool[_dataCursor++];
+                                var item = data[_dataCursors[pool]++];
                                 if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
                                     throw new BasicRuntimeException(5002, $"MAT READ: '{item.Text}' is not numeric");
                                 narr[i] = new NumericValue(bd);
@@ -1840,11 +1859,12 @@ public sealed class BasicVm
         _ => throw new BasicRuntimeException(7031, "WRITE #: unsupported value type"),
     };
 
-    private Value ReadNextDataValue(bool isString)
+    private Value ReadNextDataValue(int pool, bool isString)
     {
-        if (_dataCursor >= _program.DataPool.Count)
+        var data = _program.DataPools[pool];
+        if (_dataCursors[pool] >= data.Count)
             throw new BasicRuntimeException(5001, "READ: DATA pool exhausted");
-        var item = _program.DataPool[_dataCursor++];
+        var item = data[_dataCursors[pool]++];
         if (isString) return new StringValue(item.Text);
         if (!BigDecimal.TryParse(item.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var bd))
             throw new BasicRuntimeException(5002, $"READ: data item '{item.Text}' is not numeric");

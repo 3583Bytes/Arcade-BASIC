@@ -71,6 +71,6 @@ public sealed partial class BasicInterpreter
     {
         var type = EvalInt(cause.Type, frame);
         var line = cause.Span.StartPosition.LineCol.Line;
-        return new FlowControl.Cause(new BasicException(type, line, $"user-raised exception {type}"));
+        return new FlowControl.Cause(new BasicException(type, line, $"user-raised exception {type}", FileOf(cause)));
     }
 }

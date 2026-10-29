@@ -44,16 +44,26 @@ internal static partial class Playground
         return reader.ReadToEnd();
     }
 
-    /// <summary>Compile <paramref name="source"/> and get it ready to step: "" on
-    /// success, otherwise the diagnostics to show.</summary>
+    /// <summary>The program in <paramref name="source"/> (the file <paramref name="name"/>) with
+    /// the libraries its LIBRARY statements name: the other open programs
+    /// (<paramref name="names"/>, <paramref name="texts"/>), else the bundled examples.</summary>
+    private static ArcadeBasic.Parser.Ast.Program LoadProgram(string name, string source, string[] names, string[] texts, DiagnosticBag diags) =>
+        ProgramLoader.Load(new SourceFile(name, source), (library, _) =>
+        {
+            var i = Array.FindIndex(names, n => string.Equals(n, library, StringComparison.OrdinalIgnoreCase));
+            var text = i >= 0 ? texts[i] : ExampleSource(library);
+            return string.IsNullOrEmpty(text) && i < 0 ? null : new SourceFile(library, text);
+        }, diags);
+
+    /// <summary>Compile the program (with its libraries; see <see cref="LoadProgram"/>) and get
+    /// it ready to step: "" on success, otherwise the diagnostics to show.</summary>
     [JSExport]
-    internal static string Load(string source)
+    internal static string Load(string name, string source,
+        [JSMarshalAs<JSType.Array<JSType.String>>] string[] names, [JSMarshalAs<JSType.Array<JSType.String>>] string[] texts)
     {
         s_vm = null;
-        var file = new SourceFile("program.bas", source);
         var diags = new DiagnosticBag();
-        var tokens = new BasicLexer(file, diags).Lex();
-        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var program = LoadProgram(name, source, names, texts, diags);
         var info = diags.HasErrors ? null : Analyzer.Analyze(program, diags);
         if (info is null || diags.HasErrors)
             return string.Join("\n", diags.All.Select(d => d.Render(useColor: false)));
@@ -81,26 +91,37 @@ internal static partial class Playground
 
     private static string[] s_checkMessages = [];
 
-    /// <summary>Check <paramref name="source"/> without running it, for the editor's error
-    /// marks: (from, to, severity) per problem, as character offsets, severity 0 a note,
-    /// 1 a warning, 2 an error. <see cref="CheckMessages"/> has their texts.</summary>
+    /// <summary>Check the program (with its libraries) without running it, for the editor's
+    /// error marks: (from, to, severity) per problem, as character offsets, severity 0 a
+    /// note, 1 a warning, 2 an error. <see cref="CheckMessages"/> has their texts. An error
+    /// in a library is marked on the LIBRARY statement that names it.</summary>
     [JSExport]
     [return: JSMarshalAs<JSType.Array<JSType.Number>>]
-    internal static double[] Check(string source)
+    internal static double[] Check(string name, string source,
+        [JSMarshalAs<JSType.Array<JSType.String>>] string[] names, [JSMarshalAs<JSType.Array<JSType.String>>] string[] texts)
     {
-        var file = new SourceFile("program.bas", source);
         var diags = new DiagnosticBag();
-        var tokens = new BasicLexer(file, diags).Lex();
-        var program = new BasicParser(tokens, file, diags).ParseProgram();
+        var program = LoadProgram(name, source, names, texts, diags);
         var info = diags.HasErrors ? null : Analyzer.Analyze(program, diags);
         var problems = new List<double>();
         var messages = new List<string>();
+        var main = program.Span.File;
         foreach (var d in diags.All)
         {
-            problems.Add(d.Span.Start);
-            problems.Add(d.Span.End);
-            problems.Add((int)d.Severity);
-            messages.Add(d.Hint is null ? $"{d.Message} [{d.Code}]" : $"{d.Message} [{d.Code}]\n{d.Hint}");
+            var text = d.Hint is null ? $"{d.Message} [{d.Code}]" : $"{d.Message} [{d.Code}]\n{d.Hint}";
+            if (d.Span.File == main)
+            {
+                problems.AddRange([d.Span.Start, d.Span.End, (int)d.Severity]);
+                messages.Add(text);
+            }
+            else if (d.Severity == DiagnosticSeverity.Error)
+            {
+                // In a library: on the LIBRARY statement's name for it (its own tab shows the rest).
+                var library = $"\"{d.Span.File.Path}\"";
+                var at = source.IndexOf(library, StringComparison.OrdinalIgnoreCase);
+                problems.AddRange([Math.Max(0, at), at < 0 ? 0 : at + library.Length, (int)d.Severity]);
+                messages.Add($"In {d.Span.File.Path}, line {d.Span.StartPosition.LineCol.Line}: {text}");
+            }
         }
         if (info is not null && !diags.HasErrors)
         {

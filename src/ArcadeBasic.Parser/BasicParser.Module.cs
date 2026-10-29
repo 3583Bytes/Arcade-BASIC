@@ -29,9 +29,12 @@ public sealed partial class BasicParser
         return new ModuleStmt(SpanFrom(start, Previous().Span), nameTok.Text, body);
     }
 
-    /// <summary>Consume PUBLIC and apply the visibility flag to the next decl.</summary>
+    /// <summary>PUBLIC: a prefix making the next SUB/FUNCTION/DEF callable outside its
+    /// module, or (followed by names) the module's public variables.</summary>
     private Stmt? ParsePublicDecl()
     {
+        if (Peek(1).Kind is not (TokenKind.KwSub or TokenKind.KwFunction or TokenKind.KwDef))
+            return ParseModuleVars(isPublic: true);
         Advance(); // PUBLIC
         var stmt = ParseStatement();
         return stmt switch
@@ -41,6 +44,72 @@ public sealed partial class BasicParser
             DefStmt d => d with { IsPublic = true },
             _ => stmt,
         };
+    }
+
+    /// <summary>SHARE / PUBLIC name, A(10), B$ …: a module's variables.</summary>
+    private Stmt? ParseModuleVars(bool isPublic)
+    {
+        var start = Advance(); // SHARE or PUBLIC
+        var items = new List<DimSpec>();
+        do
+        {
+            var spec = ParseDimSpec(boundsRequired: false, isPublic ? "PUBLIC" : "SHARE");
+            if (spec is null) return null;
+            items.Add(spec);
+        }
+        while (Match(TokenKind.Comma));
+        return new ModuleVarsStmt(SpanFrom(start, Previous().Span), isPublic, items);
+    }
+
+    /// <summary>DECLARE PUBLIC name, A(), B$ … (the only DECLARE form so far).</summary>
+    private Stmt? ParseDeclare()
+    {
+        var start = Advance(); // DECLARE
+        if (!Match(TokenKind.KwPublic))
+        {
+            ErrorAt(Peek(), ErrExpectedToken, "expected PUBLIC after DECLARE (DECLARE PUBLIC is the form supported)");
+            return null;
+        }
+        var names = new List<PublicName>();
+        do
+        {
+            var nameTok = Peek();
+            if (nameTok.Kind != TokenKind.Identifier && nameTok.Kind != TokenKind.StringIdentifier)
+            {
+                ErrorAt(nameTok, ErrExpectedToken, "expected a variable name in DECLARE PUBLIC");
+                return null;
+            }
+            Advance();
+            var isArray = false;
+            if (Match(TokenKind.LParen))
+            {
+                while (Match(TokenKind.Comma)) { }             // A(), B(,) — the commas say the rank; not checked
+                if (!ExpectKind(TokenKind.RParen, "')'")) return null;
+                isArray = true;
+            }
+            names.Add(new PublicName(SpanBetween(nameTok.Span, Previous().Span), NameWithoutDollar(nameTok.Text),
+                nameTok.Kind == TokenKind.StringIdentifier, isArray));
+        }
+        while (Match(TokenKind.Comma));
+        return new DeclarePublicStmt(SpanFrom(start, Previous().Span), names);
+    }
+
+    /// <summary>LIBRARY "file" [, "file" …].</summary>
+    private Stmt? ParseLibrary()
+    {
+        var start = Advance(); // LIBRARY (a name, not a reserved word)
+        var files = new List<string>();
+        do
+        {
+            if (!Check(TokenKind.StringLiteral))
+            {
+                ErrorAt(Peek(), ErrExpectedToken, "expected a file name in quotes after LIBRARY");
+                return null;
+            }
+            files.Add(UnescapeString(Advance().Text));
+        }
+        while (Match(TokenKind.Comma));
+        return new LibraryStmt(SpanFrom(start, Previous().Span), files);
     }
 
     /// <summary>PRIVATE prefix — explicit form of the default visibility. Accepted, no-op.</summary>

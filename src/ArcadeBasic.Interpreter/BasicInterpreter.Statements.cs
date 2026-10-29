@@ -242,13 +242,15 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecRead(ReadStmt r, ActivationRecord frame)
     {
+        var unit = DataUnit(r);
+        var data = _info.DataPools[unit];
         foreach (var target in r.Targets)
         {
-            if (_dataCursor >= _info.DataPool.Count)
+            if (_dataCursors[unit] >= data.Count)
             {
                 throw new BasicRuntimeException(5001, "READ: DATA pool exhausted");
             }
-            var item = _info.DataPool[_dataCursor++];
+            var item = data[_dataCursors[unit]++];
             var isString = TargetIsString(target);
             Value value;
             if (isString)
@@ -271,17 +273,15 @@ public sealed partial class BasicInterpreter
 
     private FlowControl ExecRestore(RestoreStmt rs)
     {
-        if (rs.LabelTarget is null)
-        {
-            _dataCursor = 0;
-            return FlowControl.Continue;
-        }
-        // Phase-3 simplification: only support RESTORE 0 / RESTORE n where n
-        // is a source-line label whose statement carries the cursor. Without
-        // a per-DATA-line index, we just reset to 0 for any label.
-        _dataCursor = 0;
+        // Phase-3 simplification: RESTORE n (a source-line label) is parsed but, without
+        // a per-DATA-line index, rewinds to the start like plain RESTORE — of the
+        // statement's own program-unit's DATA.
+        _dataCursors[DataUnit(rs)] = 0;
         return FlowControl.Continue;
     }
+
+    /// <summary>Which program-unit's DATA a READ / RESTORE / MAT READ uses.</summary>
+    private int DataUnit(Stmt stmt) => _info.DataUnits.TryGetValue(stmt, out var unit) ? unit : 0;
 
     // -- RANDOMIZE -------------------------------------------------------
 
@@ -383,7 +383,7 @@ public sealed partial class BasicInterpreter
     {
         foreach (var spec in dim.Specs)
         {
-            var sym = (ArraySymbol?)_info.ProgramScope.Lookup(Scope.Key(spec.Name, spec.IsString))
+            var sym = (_info.Arrays.TryGetValue(spec, out var declared) ? declared : _info.ProgramScope.Lookup(Scope.Key(spec.Name, spec.IsString)) as ArraySymbol)
                 ?? throw new BasicRuntimeException(0, $"array '{spec.Name}' not registered by sema");
 
             var rank = spec.Bounds.Count;

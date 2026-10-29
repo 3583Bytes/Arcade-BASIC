@@ -169,7 +169,7 @@ internal sealed class TuiShell
         // submenu (File ▸ Examples ▸ Category ▸ item) so it opens *over* its parent,
         // making every category but the first unreachable.
         var exampleItems = new List<MenuItem>();
-        foreach (var group in ExamplesProvider.All
+        foreach (var group in ExamplesProvider.Programs
             .GroupBy(ex => ex.Category)
             .OrderBy(g => CategoryRank(g.Key))
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
@@ -222,7 +222,7 @@ internal sealed class TuiShell
         if (_tabs.SelectedTab != _graphicsTab) _graphics.FitTo(_tabs.SelectedTab.View.Frame);
         _output.ClearOutput();
         _tabs.SelectedTab = _outputTab;
-        _runner.Run(_source.GetText());
+        _runner.Run(_source.GetText(), _currentFilePath is null ? null : Path.GetDirectoryName(Path.GetFullPath(_currentFilePath)));
     }
 
     private void StopProgram()

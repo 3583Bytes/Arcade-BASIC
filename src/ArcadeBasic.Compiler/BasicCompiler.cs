@@ -1,4 +1,5 @@
 using ArcadeBasic.Bytecode;
+using ArcadeBasic.Core;
 using ArcadeBasic.Parser.Ast;
 using ArcadeBasic.Sema;
 using Singulink.Numerics;
@@ -114,12 +115,20 @@ public sealed class BasicCompiler
         CollectFrom(_info.ProgramScope);
         foreach (var modScope in _info.ModuleScopes.Values) CollectFrom(modScope);
 
-        // Compile main chunk.
+        // Compile main chunk. Each MODULE's start-up statements come first, in order
+        // (ISO 10279: modules are set up before the main program runs) — in the
+        // program's frame, where the module's variables live, but seen from the module.
+        _files.Add(program.Span.File);
         var main = new Chunk { FrameSize = _info.ProgramScope.FrameSize };
         _current = main;
-        _currentScope = _info.ProgramScope;
         _currentCallable = CallableKind.None;
         ResetChunkLabelTracking();
+        foreach (var mod in program.Statements.OfType<ModuleStmt>())
+        {
+            _currentScope = _info.ModuleScopes[mod];
+            CompileStatements(mod.Body);
+        }
+        _currentScope = _info.ProgramScope;
         CompileStatements(program.Statements);
         PatchPendingLabelJumps();
         main.Emit(Opcode.End);
@@ -197,11 +206,9 @@ public sealed class BasicCompiler
             compiledDefs.Add(new CompiledDef(ds.Name, ds.IsString, ds.Params.Count, returnSlot, chunk));
         }
 
-        var dataPool = new List<BcDataItem>(_info.DataPool.Count);
-        foreach (var item in _info.DataPool)
-        {
-            dataPool.Add(new BcDataItem(item.IsString, item.Text));
-        }
+        var dataPools = _info.DataPools
+            .Select(pool => (IReadOnlyList<BcDataItem>)[.. pool.Select(item => new BcDataItem(item.IsString, item.Text))])
+            .ToList();
 
         return new BcProgram
         {
@@ -210,7 +217,8 @@ public sealed class BasicCompiler
             Functions = compiledFuncs,
             Defs = compiledDefs,
             BuiltinNames = _builtinNames,
-            DataPool = dataPool,
+            DataPools = dataPools,
+            SourceFiles = [.. _files.Select(f => f.Path)],
             NativeArithmetic = _info.Arithmetic == ArithmeticMode.Native,
         };
     }
@@ -372,7 +380,13 @@ public sealed class BasicCompiler
             case MatInputStmt mi: CompileMatInput(mi); break;
             case MatReadStmt mrd: CompileMatRead(mrd); break;
             case ReadStmt rd: CompileRead(rd); break;
-            case RestoreStmt: _current.Emit(Opcode.Restore); break;
+            case RestoreStmt rs: _current.Emit(Opcode.Restore); _current.EmitU32(DataPoolOf(rs)); break;
+            case ModuleVarsStmt vars:
+                // The module's SHARE / PUBLIC arrays are dimensioned as it starts up.
+                CompileDim(new DimStmt(vars.Span, [.. vars.Items.Where(i => i.Bounds.Count > 0)]));
+                break;
+            case DeclarePublicStmt or LibraryStmt:
+                break;
             case PrintUsingStmt pu: CompilePrintUsing(pu); break;
             case WhenStmt w: CompileWhen(w); break;
             case CauseStmt cs: CompileCause(cs); break;
@@ -710,6 +724,7 @@ public sealed class BasicCompiler
     {
         var target = LookupMatTarget(mrd.TargetName, mrd.TargetIsString);
         _current.Emit(Opcode.MatRead);
+        _current.EmitU32(DataPoolOf(mrd));
         _current.EmitU32((uint)target.Depth);
         _current.EmitU32((uint)target.Slot);
         _current.EmitU32(mrd.TargetIsString ? 1u : 0u);
@@ -723,12 +738,26 @@ public sealed class BasicCompiler
     /// placeholder stmtEndOffset (patched once the next LineNote starts, or once
     /// the enclosing statement list finishes). Returns the LineNote's PC so
     /// <see cref="Chunk.PatchLineNoteEnd"/> can find it later.</summary>
+    /// <summary>The source files, the main program's first (a LineNote's file number).</summary>
+    private readonly List<SourceFile> _files = [];
+
+    private int FileIndex(SourceFile file)
+    {
+        var i = _files.IndexOf(file);
+        if (i >= 0) return i;
+        _files.Add(file);
+        return _files.Count - 1;
+    }
+
+    /// <summary>Which program-unit's DATA a READ / RESTORE / MAT READ uses.</summary>
+    private uint DataPoolOf(Stmt stmt) => _info.DataUnits.TryGetValue(stmt, out var unit) ? (uint)unit : 0;
+
     private int EmitLineNote(Stmt stmt)
     {
         var pc = _current.Emit(Opcode.LineNote);
-        var line = stmt.Span.StartPosition.LineCol.Line;
-        _current.StatementLines.Add(line);
-        _current.EmitU32((uint)line);
+        var where = new SourceLine(FileIndex(stmt.Span.File), stmt.Span.StartPosition.LineCol.Line);
+        _current.StatementLines.Add(where);
+        _current.EmitU32(where.Packed);
         _current.EmitI32(0); // stmtEndOffset placeholder
         return pc;
     }
@@ -950,6 +979,7 @@ public sealed class BasicCompiler
         }
 
         _current.Emit(Opcode.Read);
+        _current.EmitU32(DataPoolOf(rd));
         _current.EmitU32((uint)targets.Length);
         foreach (var t in targets)
         {
@@ -966,7 +996,7 @@ public sealed class BasicCompiler
     /// </summary>
     private (int Depth, int Slot) LookupMatTarget(string name, bool isString)
     {
-        if (_info.ProgramScope.Lookup(Scope.Key(name, isString)) is not ArraySymbol arr)
+        if ((_currentScope.Lookup(Scope.Key(name, isString)) ?? _info.ProgramScope.Lookup(Scope.Key(name, isString))) is not ArraySymbol arr)
             throw new UnsupportedFeatureException($"MAT target '{name}' is not a known array");
         return (ScopeDepth(arr.OwnerScope!), arr.Slot);
     }
@@ -1075,7 +1105,7 @@ public sealed class BasicCompiler
     {
         foreach (var spec in d.Specs)
         {
-            var sym = (ArraySymbol?)_info.ProgramScope.Lookup(Scope.Key(spec.Name, spec.IsString))
+            var sym = (_info.Arrays.TryGetValue(spec, out var declared) ? declared : _currentScope.Lookup(Scope.Key(spec.Name, spec.IsString)) as ArraySymbol)
                 ?? throw new UnsupportedFeatureException(
                     $"DIM '{spec.Name}': sema did not register an ArraySymbol");
 
@@ -1551,9 +1581,14 @@ public sealed class BasicCompiler
 
     private int ScopeDepth(Scope target)
     {
+        // Frames belong to the program and each SUB / FUNCTION / DEF; a MODULE's
+        // variables are slots in the program's frame. So count frame-owning scopes,
+        // and a module stands for the program.
+        while (target.Kind == ScopeKind.Module && target.Parent is not null) target = target.Parent;
         var depth = 0;
         for (var s = _currentScope; s is not null; s = s.Parent)
         {
+            if (s.Kind == ScopeKind.Module) continue;
             if (s == target) return depth;
             depth++;
         }

@@ -118,16 +118,19 @@ public class Maze3dTests
     /// applied to its source first.</summary>
     private static BasicVm Start(Screen screen, params (string Old, string New)[] edits)
     {
-        // (A Windows checkout gives the example CRLF line endings; the edits are LF.)
-        var source = File.ReadAllText(Path.Combine(ExamplesDir(), "maze3d.bas")).ReplaceLineEndings("\n");
+        // The game and its libraries (LIBRARY), each edit made in whichever file has it.
+        // (A Windows checkout gives the examples CRLF line endings; the edits are LF.)
+        var files = new[] { "maze3d.bas", "maze3d-level.bas", "maze3d-textures.bas" }
+            .ToDictionary(n => n, n => File.ReadAllText(Path.Combine(ExamplesDir(), n)).ReplaceLineEndings("\n"));
         foreach (var (old, @new) in edits)
         {
-            Assert.Contains(old, source);
-            source = source.Replace(old, @new);
+            var name = files.Keys.FirstOrDefault(n => files[n].Contains(old));
+            Assert.True(name is not null, $"no file has {old}");
+            files[name] = files[name].Replace(old, @new);
         }
-        var file = new SourceFile("maze3d.bas", source);
         var diags = new DiagnosticBag();
-        var program = new BasicParser(new BasicLexer(file, diags).Lex(), file, diags).ParseProgram();
+        var program = ProgramLoader.Load(new SourceFile("maze3d.bas", files["maze3d.bas"]),
+            (name, _) => files.TryGetValue(name, out var text) ? new SourceFile(name, text) : null, diags);
         var info = Analyzer.Analyze(program, diags);
         Assert.False(diags.HasErrors);
         Assert.Empty(diags.All);   // no warnings either

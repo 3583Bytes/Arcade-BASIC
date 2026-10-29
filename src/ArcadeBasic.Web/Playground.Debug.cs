@@ -39,19 +39,29 @@ internal static partial class Playground
     private static void RememberStatementLines(ArcadeBasic.Bytecode.Program compiled) =>
         s_statementLines = [.. new[] { compiled.Main }
             .Concat(compiled.Subs.Select(s => s.Body)).Concat(compiled.Functions.Select(f => f.Body)).Concat(compiled.Defs.Select(d => d.Body))
-            .SelectMany(c => c.StatementLines).Distinct().Order()];
+            .SelectMany(c => c.StatementLines).Where(l => l.File == 0).Select(l => l.Line).Distinct().Order()];
+
+    /// <summary>The running program's source files, the main program's first (file numbers).</summary>
+    [JSExport]
+    [return: JSMarshalAs<JSType.Array<JSType.String>>]
+    internal static string[] SourceFiles() => [.. s_vm?.SourceFiles ?? []];
+
+    /// <summary>Which of <see cref="SourceFiles"/> the program is in (with <see cref="CurrentLine"/>).</summary>
+    [JSExport]
+    internal static int CurrentFile() => s_vm?.CurrentFile ?? 0;
 
     /// <summary>The lines a breakpoint can stop at (the last checked program's statements).</summary>
     [JSExport]
     [return: JSMarshalAs<JSType.Array<JSType.Number>>]
     internal static int[] StatementLines() => s_statementLines;
 
+    /// <summary>The breakpoints: (file number, line) pairs.</summary>
     [JSExport]
-    internal static void SetBreakpoints([JSMarshalAs<JSType.Array<JSType.Number>>] int[] lines)
+    internal static void SetBreakpoints([JSMarshalAs<JSType.Array<JSType.Number>>] int[] files, [JSMarshalAs<JSType.Array<JSType.Number>>] int[] lines)
     {
         if (s_vm is null) return;
         s_vm.Breakpoints.Clear();
-        foreach (var line in lines) s_vm.Breakpoints.Add(line);
+        for (var i = 0; i < Math.Min(files.Length, lines.Length); i++) s_vm.Breakpoints.Add(new SourceLine(files[i], lines[i]));
     }
 
     /// <summary>Stop again soon: a <see cref="DebugStep"/> (0 pause, 1 into, 2 over, 3 out).</summary>
@@ -76,7 +86,7 @@ internal static partial class Playground
                 first = false;
                 json.Append("{\"name\":");
                 Quote(json, frame.Name);
-                json.Append(",\"line\":").Append(frame.Line).Append(",\"vars\":[");
+                json.Append(",\"file\":").Append(frame.File).Append(",\"line\":").Append(frame.Line).Append(",\"vars\":[");
                 if (s_scopes.TryGetValue(frame.Chunk, out var scope)) Variables(json, scope, frame.Variables);
                 json.Append("]}");
             }
@@ -102,7 +112,7 @@ internal static partial class Playground
             json.Append("{\"name\":");
             Quote(json, symbol.IsString ? symbol.Name + "$" : symbol.Name);
             var value = slots.IsSet(slot) ? slots.Get(slot) : null;
-            if (isArray) Array(json, value);
+            if (isArray) ArrayJson(json, value);
             else
             {
                 json.Append(",\"value\":");
@@ -113,7 +123,7 @@ internal static partial class Playground
         }
     }
 
-    private static void Array(StringBuilder json, Value? value)
+    private static void ArrayJson(StringBuilder json, Value? value)
     {
         var bounds = value switch { NumericArrayValue n => n.Bounds, StringArrayValue s => s.Bounds, _ => null };
         if (bounds is null)

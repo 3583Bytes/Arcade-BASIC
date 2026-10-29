@@ -28,6 +28,7 @@
       <div class="menu-list" id="fileMenu" role="menu">
         <button data-action="new" role="menuitem">New program <span class="key" data-key="Alt+N"></span></button>
         <button data-action="open" role="menuitem">Open… <span class="key" data-key="Mod+O"></span></button>
+        <button data-action="openFolder" role="menuitem">Open a folder…</button>
         <hr>
         <button data-action="save" role="menuitem">Save <span class="key" data-key="Mod+S"></span></button>
         <button data-action="saveAs" role="menuitem">Save as… <span class="key" data-key="Mod+Shift+S"></span></button>
@@ -76,8 +77,21 @@
 
   <main>
     <section id="editorPane" aria-label="Editor">
-      <div id="tabs"></div>
-      <div id="editor"></div>
+      <div class="tabRow">
+        <div id="tabs"></div>
+        <button id="outlineToggle" type="button" aria-pressed="false" title="The program's sections, SUBs and FUNCTIONs (⌘/Ctrl+Shift+O: Go to)">☰ Outline</button>
+      </div>
+      <div id="editorBody">
+        <nav id="outline" aria-label="Outline" hidden>
+          <div class="outlineHead">
+            <input type="search" placeholder="Filter…" aria-label="Filter the outline">
+            <button type="button" id="foldAll" title="Fold every block">⊟</button>
+            <button type="button" id="unfoldAll" title="Unfold everything">⊞</button>
+          </div>
+          <div class="items"></div>
+        </nav>
+        <div id="editor"></div>
+      </div>
     </section>
     <div id="divider" role="separator" aria-orientation="vertical" aria-label="Resize the editor" tabindex="0"></div>
     <section id="runPane" aria-label="Program">
@@ -127,6 +141,8 @@
         <tr><td><kbd>F8</kbd></td><td>Go to the next problem</td></tr>
         <tr><td><kbd>F12</kbd> or <kbd data-key="Mod"></kbd>+click</td><td>Go to a line number, SUB or FUNCTION</td></tr>
         <tr><td><kbd data-key="Mod+F"></kbd></td><td>Find and replace</td></tr>
+        <tr><td><kbd data-key="Mod+Shift+O"></kbd></td><td>Go to a section, SUB, FUNCTION or line</td></tr>
+        <tr><td><kbd data-key="Mod+Shift+["></kbd> / <kbd data-key="Mod+Shift+]"></kbd></td><td>Fold / unfold the block at the cursor</td></tr>
         <tr><td><kbd data-key="Mod+/"></kbd></td><td>Comment lines in or out</td></tr>
         <tr><td><kbd data-key="Mod+Space"></kbd></td><td>Suggest keywords and names</td></tr>
       </table>
@@ -142,6 +158,14 @@
         this browser and in the files you save. Nothing is sent anywhere.</p>
       <p>The editor is <a href="https://codemirror.net">CodeMirror</a>.</p>
       <div class="buttons"><button class="primary">Close</button></div>
+    </form>
+  </dialog>
+
+  <!-- Go to: a section, SUB, FUNCTION … or a line (outline.js). -->
+  <dialog id="goToDialog" class="goTo" aria-label="Go to">
+    <form method="dialog">
+      <input type="text" spellcheck="false" autocomplete="off" placeholder="A section, SUB, FUNCTION, picture… or a line number">
+      <div class="items"></div>
     </form>
   </dialog>
 

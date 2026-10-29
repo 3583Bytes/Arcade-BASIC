@@ -160,12 +160,13 @@ public enum Opcode : byte
     PrintUsing,
 
     // -- READ / DATA / RESTORE --
-    // DATA items are baked into BcProgram.DataPool at compile time; the VM
-    // tracks a single _dataCursor advanced by READ / MatRead and reset by
-    // Restore. Read mirrors Input's per-target descriptor layout (no prompt /
+    // DATA items are baked into BcProgram.DataPools at compile time, one pool per
+    // program-unit (the main program, each MODULE); the VM keeps a cursor per pool,
+    // advanced by READ / MatRead and reset by Restore. Each opcode's first operand
+    // is the pool. Read mirrors Input's per-target descriptor layout (no prompt /
     // retry — DATA parse errors are fatal per spec).
     //
-    //   Read operand: u32 targetCount
+    //   Read operand: u32 pool, u32 targetCount
     //                 for each target:
     //                   u32 depth
     //                   u32 slot
@@ -173,10 +174,10 @@ public enum Opcode : byte
     //                   u32 rank          (0 for scalar, else array)
     //   stack: for each array target in declaration order, `rank` subscripts.
     //
-    //   Restore operand: none. Mirrors the tree-walker — RESTORE label is
+    //   Restore operand: u32 pool. Mirrors the tree-walker — RESTORE label is
     //                    parsed but treated as plain RESTORE (cursor → 0).
     //
-    //   MatRead operand: u32 depth, u32 slot, u32 isString. Fills the array
+    //   MatRead operand: u32 pool, u32 depth, u32 slot, u32 isString. Fills the array
     //                    with consecutive DATA items.
     Read,
     Restore,

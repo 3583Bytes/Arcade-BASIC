@@ -19,7 +19,7 @@ token. Examples use uppercase by convention.
 
 **Declarations:** [DIM](#dim) · [REDIM](#redim) · [DEF](#def) ·
 [FUNCTION](#function) · [SUB](#sub) · [CALL](#call) · [MODULE](#module) ·
-[PUBLIC](#public) · [HANDLER](#handler) · [OPTION BASE](#option-base) ·
+[PUBLIC](#public) · [SHARE](#share) · [DECLARE PUBLIC](#declare-public) · [LIBRARY](#library) · [HANDLER](#handler) · [OPTION BASE](#option-base) ·
 [OPTION ARITHMETIC](#option-arithmetic)
 
 **Values & assignment:** [LET](#let) · [REM / `!`](#rem)
@@ -159,9 +159,12 @@ CALL DOUBLE(21)             !  21 *2 = 42
 
 ### `MODULE`
 
-Group `SUB`/`FUNCTION`/`DEF` declarations behind a namespace boundary.
-Declarations inside a module are private to it by default; prefix them with
-`PUBLIC` to make them visible from the main program.
+A program-unit of its own (ISO 10279): its procedures, its variables, its own
+`DATA`, and statements that run before the main program to set it up. Its
+procedures are private to it unless marked `PUBLIC`; its code doesn't see the
+main program's variables — only its own, its `SHARE`/`PUBLIC` ones, and the
+`PUBLIC` ones it [`DECLARE`s](#declare-public). A name a module procedure reads
+before setting is that procedure's own.
 
 ```basic
 MODULE MATHLIB
@@ -177,10 +180,59 @@ END MODULE
 PRINT POLY(3)                    ! 20
 ```
 
+A module that sets itself up, sharing a variable:
+
+```basic
+MODULE COUNTER
+  PUBLIC COUNT                   ! other units can DECLARE PUBLIC it
+  SHARE INC                      ! the module's own
+  LET COUNT = 10                 ! runs before the main program
+  LET INC = 5
+  PUBLIC SUB BUMP
+    LET COUNT = COUNT + INC
+  END SUB
+END MODULE
+
+DECLARE PUBLIC COUNT
+CALL BUMP
+PRINT COUNT                      ! 15
+```
+
 ### `PUBLIC`
 
-Marker that re-exports a `SUB`/`FUNCTION`/`DEF` from a `MODULE` into the
-enclosing program scope. See [`MODULE`](#module).
+In a `MODULE`: before a `SUB`/`FUNCTION`/`DEF`, makes it callable from the rest
+of the program; followed by names, declares the module's public variables —
+scalars, and arrays with bounds as in `DIM` (`PUBLIC SCORE, BOARD(10, 10), NAME$`),
+dimensioned as the module starts up. Other units use them with
+[`DECLARE PUBLIC`](#declare-public).
+
+### `SHARE`
+
+In a `MODULE`: the module's own variables (same form as `PUBLIC`), shared by its
+start-up code and its procedures but not visible outside it.
+
+### `DECLARE PUBLIC`
+
+Use variables a module made `PUBLIC`; an array is written with parentheses.
+Put it before the names are used, in whichever unit uses them (the main program,
+a procedure, another module).
+
+```basic
+LIBRARY "level.bas"
+DECLARE PUBLIC MAPW, MAP()
+PRINT MAP(1, MAPW)
+```
+
+### `LIBRARY`
+
+`LIBRARY "file.bas" [, "file.bas" …]` — other source files whose `MODULE`s and
+procedures join the program, loaded before it (and the ones *they* name, before
+them; each file once). A library holds modules, and `SUB`/`FUNCTION`/`DEF`s of its
+own — external procedures, callable from the whole program and seeing only their
+own variables; any other statement belongs in a module (where it runs first) or
+the main program. The file is looked for next to the file that names it — in the
+browser IDE, among the open tabs (and the bundled examples). True BASIC's
+statement; see [conformance](conformance.md#modules).
 
 ### `HANDLER`
 

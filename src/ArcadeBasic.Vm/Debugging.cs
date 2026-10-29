@@ -24,6 +24,7 @@ public enum DebugStep
 }
 
 /// <summary>One call in progress, for a debugger: its code, its name (<c>SUB DRAW</c>; empty
-/// for the main program), the line it's on, and its variables by slot — the analyzer's
-/// scopes (<c>SemanticInfo</c>) say which name each slot holds.</summary>
-public readonly record struct DebugFrame(Chunk Chunk, string Name, int Line, ActivationRecord Variables);
+/// for the main program), the file (of <see cref="BasicVm.SourceFiles"/>) and line it's on,
+/// and its variables by slot — the analyzer's scopes (<c>SemanticInfo</c>) say which name
+/// each slot holds.</summary>
+public readonly record struct DebugFrame(Chunk Chunk, string Name, int File, int Line, ActivationRecord Variables);

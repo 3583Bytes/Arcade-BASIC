@@ -27,7 +27,7 @@ public sealed partial class BasicInterpreter
     private readonly CancellationToken _cancel;
 
     private ActivationRecord _programFrame;
-    private int _dataCursor;
+    private readonly int[] _dataCursors;      // one per program-unit's DATA (SemanticInfo.DataPools)
     private int _optionBase = 1;   // "if no such declaration occurs, the lower bound shall be one" (ANSI X3.113 §7.1.1)
     private readonly ChannelTable _channels = new();
     private readonly IGraphicsDevice _graphics;
@@ -86,6 +86,7 @@ public sealed partial class BasicInterpreter
         _audio = audio ?? NullAudioDevice.Instance;
         _random = new BasicRandom(randomizeSeed);
         _programFrame = new ActivationRecord(info.ProgramScope.FrameSize, parent: null);
+        _dataCursors = new int[Math.Max(1, info.DataPools.Count)];
         _native = info.Arithmetic == ArithmeticMode.Native;
     }
 
@@ -103,12 +104,21 @@ public sealed partial class BasicInterpreter
             // not emitted because pass-1 hoists the array symbol — but at
             // runtime the slot is still null when we read it). Detect that
             // and report a clear error.
-            var fc = ExecuteStatementList(_program.Statements, _programFrame);
+            // Each MODULE is set up first, in order (ISO 10279): its SHARE / PUBLIC arrays
+            // dimensioned, its own statements run — in the program's frame, where its
+            // variables live.
+            FlowControl fc = FlowControl.Continue;
+            foreach (var mod in _program.Statements.OfType<ModuleStmt>())
+            {
+                fc = ExecuteStatementList(mod.Body, _programFrame);
+                if (fc is not FlowControl.Next) break;
+            }
+            if (fc is FlowControl.Next) fc = ExecuteStatementList(_program.Statements, _programFrame);
             if (fc is FlowControl.Cause c)
             {
                 _out.Flush();
                 Console.Error.WriteLine(
-                    $"unhandled exception type {c.Exception.Type} at line {c.Exception.Line}: {c.Exception.Text}");
+                    $"unhandled exception type {c.Exception.Type} at {c.Exception.Where}: {c.Exception.Text}");
                 return 1;
             }
             return fc switch
@@ -127,7 +137,7 @@ public sealed partial class BasicInterpreter
             // into FlowControl.Cause — so this is only a backstop.
             _out.Flush();
             Console.Error.WriteLine(
-                $"unhandled exception type {p.Exception.Type} at line {p.Exception.Line}: {p.Exception.Text}");
+                $"unhandled exception type {p.Exception.Type} at {p.Exception.Where}: {p.Exception.Text}");
             return 1;
         }
         catch (BasicRuntimeException ex)
@@ -272,7 +282,7 @@ public sealed partial class BasicInterpreter
             // evaluation become FlowControl.Cause so user WHEN/USE handlers
             // can catch them. Top-level Run prints unhandled Cause flow.
             var line = stmt.Span.StartPosition.LineCol.Line;
-            return new FlowControl.Cause(new BasicException(ex.TypeCode, line, ex.Message));
+            return new FlowControl.Cause(new BasicException(ex.TypeCode, line, ex.Message, FileOf(stmt)));
         }
     }
 
@@ -288,6 +298,10 @@ public sealed partial class BasicInterpreter
             case ReadStmt r: return ExecRead(r, frame);
             case DataStmt: return FlowControl.Continue; // collected at sema time
             case RestoreStmt rs: return ExecRestore(rs);
+            case ModuleVarsStmt vars:
+                // A module's SHARE / PUBLIC arrays, dimensioned as it starts up.
+                return ExecDim(new DimStmt(vars.Span, [.. vars.Items.Where(i => i.Bounds.Count > 0)]), frame);
+            case DeclarePublicStmt or LibraryStmt: return FlowControl.Continue;
             case GotoStmt g: return new FlowControl.Goto(EvalInt(g.LabelTarget, frame));
             case GosubStmt g: return new FlowControl.Gosub(EvalInt(g.LabelTarget, frame));
             case OnJumpStmt on:
@@ -547,8 +561,14 @@ public sealed partial class BasicInterpreter
     /// only have program scope + sub/function/def scopes, so the chain is
     /// shallow (current → program).
     /// </summary>
+    /// <summary>The file a statement is in, when it isn't the main program's (for error messages).</summary>
+    private string? FileOf(Stmt stmt) =>
+        stmt.Span.File == _program.Span.File ? null : Path.GetFileName(stmt.Span.File.Path);
+
     private ActivationRecord ResolveFrameForScope(ActivationRecord current, Scope ownerScope)
     {
+        // A MODULE's variables are slots in the program's frame.
+        if (ownerScope.Kind == ScopeKind.Module) return _programFrame;
         for (var f = current; f is not null; f = f.Parent)
         {
             if (f == _programFrame && ownerScope.Kind == ScopeKind.Program) return f;

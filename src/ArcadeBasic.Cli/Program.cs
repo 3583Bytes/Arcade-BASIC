@@ -190,12 +190,9 @@ static int RunBuild(ReadOnlySpan<string> args)
     output ??= Path.ChangeExtension(source, null) ?? "a.out";
     if (string.IsNullOrEmpty(output) || output == source) output = "a.out";
 
-    // Lex + parse + sema + compile to bytecode.
-    var content = File.ReadAllText(source);
-    var file = new SourceFile(source, content);
+    // Lex + parse (with its libraries) + sema + compile to bytecode.
     var diags = new DiagnosticBag();
-    var tokens = new BasicLexer(file, diags).Lex();
-    var program = new BasicParser(tokens, file, diags).ParseProgram();
+    var program = LoadProgram(source, diags);
     var info = Analyzer.Analyze(program, diags);
 
     var useColor = !Console.IsErrorRedirected;
@@ -271,11 +268,8 @@ static int RunVm(ReadOnlySpan<string> args)
         return 1;
     }
 
-    var content = File.ReadAllText(path);
-    var file = new SourceFile(path, content);
     var diags = new DiagnosticBag();
-    var tokens = new BasicLexer(file, diags).Lex();
-    var program = new BasicParser(tokens, file, diags).ParseProgram();
+    var program = LoadProgram(path, diags);
     var info = Analyzer.Analyze(program, diags);
 
     var useColor = !Console.IsErrorRedirected;
@@ -336,11 +330,8 @@ static int RunAnalyze(ReadOnlySpan<string> args)
         return 1;
     }
 
-    var content = File.ReadAllText(path);
-    var file = new SourceFile(path, content);
     var diags = new DiagnosticBag();
-    var tokens = new BasicLexer(file, diags).Lex();
-    var program = new BasicParser(tokens, file, diags).ParseProgram();
+    var program = LoadProgram(path, diags);
     var info = Analyzer.Analyze(program, diags);
 
     var useColor = !Console.IsErrorRedirected;
@@ -391,41 +382,16 @@ static int RunProgram(ReadOnlySpan<string> args)
         }
     }
 
-    // Lex + parse each file. Modules go first in the combined statement list
-    // so they're declaration-registered before the main file's executable
-    // body runs (declarations don't execute, so this only affects ordering
-    // of any future module-level init we add).
+    // The main file with its libraries (LIBRARY), and any module files named after it,
+    // whose statements go first — so their modules are set up before the main program.
     var diags = new DiagnosticBag();
+    var mainProgram = LoadProgram(files[0], diags);
     var allStatements = new List<ArcadeBasic.Parser.Ast.Stmt>();
-    SourceFile? mainFile = null;
-    var moduleFiles = new List<ArcadeBasic.Parser.Ast.Program>();
-
-    var mainPath = files[0];
-    foreach (var path in files)
+    foreach (var path in files.Skip(1))
     {
-        var content = File.ReadAllText(path);
-        var file = new SourceFile(path, content);
-        var tokens = new BasicLexer(file, diags).Lex();
-        var program = new BasicParser(tokens, file, diags).ParseProgram();
-        if (path == mainPath)
-        {
-            mainFile = file;
-        }
-        else
-        {
-            moduleFiles.Add(program);
-        }
-        // Defer combining — we want modules first.
+        var file = new SourceFile(path, File.ReadAllText(path));
+        allStatements.AddRange(new BasicParser(new BasicLexer(file, diags).Lex(), file, diags).ParseProgram().Statements);
     }
-
-    // Now combine: modules first, then main.
-    foreach (var mod in moduleFiles) allStatements.AddRange(mod.Statements);
-    // Re-parse main last (we already parsed it above; loop above stored
-    // module programs but discarded the main one — re-find it).
-    var mainContent = File.ReadAllText(mainPath);
-    var mainFileObj = mainFile ?? new SourceFile(mainPath, mainContent);
-    var mainTokens = new BasicLexer(mainFileObj, diags).Lex();
-    var mainProgram = new BasicParser(mainTokens, mainFileObj, diags).ParseProgram();
     allStatements.AddRange(mainProgram.Statements);
 
     var combined = new ArcadeBasic.Parser.Ast.Program(mainProgram.Span, allStatements);
@@ -557,3 +523,12 @@ static int RunBigDecimalSpike()
     Console.WriteLine(failures == 0 ? "spike: PASS" : $"spike: FAIL ({failures} failures)");
     return failures == 0 ? 0 : 1;
 }
+
+/// <summary>A program and the libraries its LIBRARY statements name (and theirs), each found
+/// in the folder of the file that names it.</summary>
+static ArcadeBasic.Parser.Ast.Program LoadProgram(string path, DiagnosticBag diags) =>
+    ProgramLoader.Load(new SourceFile(path, File.ReadAllText(path)), (name, from) =>
+    {
+        var library = Path.IsPathRooted(name) ? name : Path.Combine(Path.GetDirectoryName(from.Path) ?? "", name);
+        return File.Exists(library) ? new SourceFile(library, File.ReadAllText(library)) : null;
+    }, diags);
