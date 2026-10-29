@@ -199,6 +199,7 @@ arcade-basic analyze examples/factorial.bas
 - [**Contributing**](CONTRIBUTING.md) — build/test loop and concrete recipes for adding builtins, statements, opcodes.
 - [**Conformance**](docs/conformance.md) — known deviations from ISO 10279:1991 and implementation-defined choices.
 - [**Examples**](examples/README.md) — the sample programs and what each one shows.
+- [**Changelog**](CHANGELOG.md) — what each release changed.
 
 ## How it's built
 

@@ -63,7 +63,14 @@ static int Run(string[] args)
 
 static int PrintVersion()
 {
-    Console.WriteLine("arcade-basic 1.0.0");
+    // The build's version (Directory.Build.props, or the release's tag), and the SDK adds
+    // "+<commit>" when it knows it.
+    var version = System.Reflection.CustomAttributeExtensions
+        .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Bundles).Assembly)?.InformationalVersion ?? "";
+    var plus = version.IndexOf('+');
+    Console.WriteLine(plus < 0
+        ? $"arcade-basic {version}"
+        : $"arcade-basic {version[..plus]} ({version.Substring(plus + 1, Math.Min(7, version.Length - plus - 1))})");
     return 0;
 }
 

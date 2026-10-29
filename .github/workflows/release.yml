@@ -50,6 +50,14 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Resolve version label
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then name="${GITHUB_REF#refs/tags/}"; else name="${{ inputs.tag }}"; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=${name#v}" >> "$GITHUB_OUTPUT"      # v2.0.0 → 2.0.0
+
       - name: Publish AOT
         shell: bash
         run: |
@@ -57,26 +65,25 @@ jobs:
           # DON'T pass -p:PublishAot=true on the command line — that would
           # promote it to a global MSBuild property and propagate into the
           # netstandard2.1 builds of the multi-targeted libs, which can't AOT.
+          # The version, though, is everyone's: arcade-basic --version reports the tag.
           dotnet publish src/ArcadeBasic.Cli \
             --configuration Release \
             --runtime ${{ matrix.rid }} \
+            -p:Version=${{ steps.ver.outputs.version }} \
             --output publish/aot
 
       - name: Smoke-test the binary
         shell: bash
         run: |
-          ./publish/aot/arcade-basic${{ matrix.ext }} --version
-          ./publish/aot/arcade-basic${{ matrix.ext }} run examples/hello.bas
-
-      - name: Resolve version label
-        id: ver
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          cli=./publish/aot/arcade-basic${{ matrix.ext }}
+          "$cli" --version | tee version.txt
+          grep -F "arcade-basic ${{ steps.ver.outputs.version }}" version.txt
+          "$cli" run examples/hello.bas
+          # A standalone program, built by the binary we're shipping, runs on this OS.
+          "$cli" build examples/hello.bas -o hello${{ matrix.ext }}
+          ./hello${{ matrix.ext }} | tee hello.txt
+          grep -F "answer is 42" hello.txt
 
       - name: Stage artifact
         shell: bash
@@ -100,6 +107,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -110,11 +119,22 @@ jobs:
         id: tag
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then name="${GITHUB_REF#refs/tags/}"; else name="${{ inputs.tag }}"; fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=${name#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          # This version's section: from its "## <version>" heading to the next "## ".
+          awk -v v="${{ steps.tag.outputs.version }}" '
+            /^## / { if (found) exit; found = ($2 == v); next }
+            found' CHANGELOG.md > notes.md
+          if [[ ! -s notes.md ]]; then
+            echo "::warning::CHANGELOG.md has no section for ${{ steps.tag.outputs.version }}"
+            : > notes.md
           fi
+          cat notes.md
 
       - name: List artifacts
         run: ls -la dist/
@@ -124,5 +144,6 @@ jobs:
         with:
           name: ${{ steps.tag.outputs.name }}
           tag_name: ${{ steps.tag.outputs.name }}
-          generate_release_notes: true
+          body_path: notes.md
+          generate_release_notes: true      # (after the notes: the commits since the last release)
           files: dist/*

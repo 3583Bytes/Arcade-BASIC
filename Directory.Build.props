@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <!-- Per-project: libs multi-target net10.0;netstandard2.1; CLI/tests use TargetFramework=net10.0. -->
+    <!-- The version builds report (arcade-basic -v). A release sets it from its tag
+         (.github/workflows/release.yml); this is the next one. -->
+    <Version>2.0.0</Version>
     <LangVersion>13</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
