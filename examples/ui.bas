@@ -1,7 +1,8 @@
 ! ui.bas — the parts an application's screen is made of, for a program that draws    @library
 ! (LIBRARY "ui.bas"): a theme of colours and text sizes; rounded boxes, outlines and
 ! shadows; text that's measured, cut to fit and wrapped; buttons, badges and a progress
-! bar; a text field's typing; and a dialog over a dimmed screen. kanban.bas is made with it.
+! bar; a text field's typing; and a dialog over a dimmed screen. ui-gallery.bas shows every
+! part, and kanban.bas is made with it.
 !
 ! It's "immediate mode": each frame the program calls UIBEGIN (the screen and the
 ! pointer), then UICLEAR and draws everything — a button is drawn by the call that says
@@ -44,6 +45,7 @@ MODULE UI
   PUBLIC UIMAXTYPED
 
   SHARE UIPX, UIPY                 ! where the pointer was pressed
+  SHARE UILOCKED                   ! 1 while what's drawn doesn't answer the pointer (UILOCK)
   SHARE UILASTF, UILASTX, UILASTY  ! the press before: its frame and place, for a double-click
   SHARE UIOX, UIOY, UIOS, UIDW, UIDH
   SHARE UIWL$(1 TO 64), UIWP(1 TO 64)              ! a wrapping's lines and where each starts
@@ -168,6 +170,7 @@ MODULE UI
   ! UICLEAR(C): start drawing a frame — the screen cleared to colour C.
   PUBLIC SUB UICLEAR(C)
     CLEAR
+    LET UILOCKED = 0
     CALL UIBOX(0, 0, UIW, UIH, 0, C)
     LET UINC = 0
   END SUB
@@ -355,14 +358,21 @@ MODULE UI
   ! Is the pointer in the box X, Y, W, H?
   PUBLIC FUNCTION UIIN(X, Y, W, H)
     UIIN = 0
-    IF UIMS >= 0 AND UIMX >= X AND UIMX < X + W AND UIMY >= Y AND UIMY < Y + H THEN UIIN = 1
+    IF UILOCKED = 0 AND UIMS >= 0 AND UIMX >= X AND UIMX < X + W AND UIMY >= Y AND UIMY < Y + H THEN UIIN = 1
   END FUNCTION
 
   ! Was the pointer pressed in the box X, Y, W, H (and is it still held, or just let go)?
   PUBLIC FUNCTION UIPRESSEDIN(X, Y, W, H)
     UIPRESSEDIN = 0
-    IF UIMS >= 1 AND UIPX >= X AND UIPX < X + W AND UIPY >= Y AND UIPY < Y + H THEN UIPRESSEDIN = 1
+    IF UILOCKED = 0 AND UIMS >= 1 AND UIPX >= X AND UIPX < X + W AND UIPY >= Y AND UIPY < Y + H THEN UIPRESSEDIN = 1
   END FUNCTION
+
+  ! UILOCK(1): what's drawn from now on doesn't answer the pointer — buttons don't light up
+  ! or click, UIIN says no — until UILOCK(0). For the screen behind a dialog: lock, draw
+  ! it, unlock, draw the dialog. (UICLEAR unlocks.)
+  PUBLIC SUB UILOCK(L)
+    LET UILOCKED = L
+  END SUB
 
   ! Forget this press: it's done its work (closed a dialog, say), so letting go of it clicks
   ! nothing.

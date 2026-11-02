@@ -29,7 +29,7 @@ public class GraphicsTests
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
         var recorder = new RecordingGraphicsDevice();
-        var printed = new StringWriter();
+        var printed = new StringWriter { NewLine = "\n" };   // the same on every OS
         new BasicVm(BasicCompiler.Compile(program, info), printed, TextReader.Null, recorder).Run();
         return (recorder.Transcript, printed.ToString());
     }

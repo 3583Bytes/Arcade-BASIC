@@ -389,7 +389,8 @@ statement; see [conformance](conformance.md#modules).
 
 [`examples/ui.bas`](../examples/ui.bas) is one to use: the parts an application's
 screen is made of — a theme, rounded boxes and shadows, text that fits, buttons, typing
-and dialogs — which [`examples/kanban.bas`](../examples/kanban.bas) is made with.
+and dialogs — which [`examples/ui-gallery.bas`](../examples/ui-gallery.bas) shows, part by
+part, and [`examples/kanban.bas`](../examples/kanban.bas) is made with.
 
 ### `HANDLER`
 

@@ -40,6 +40,8 @@ the last one. Releases before 2.0.0 are on the
   where it is, and help in a dialog over the dimmed board. It's made with
   **`examples/ui.bas`**, a library of components any program can use (`LIBRARY
   "ui.bas"`): a theme, boxes, text that fits, buttons, badges, typing and dialogs.
+  **`examples/ui-gallery.bas`** shows every part, each with the line of BASIC that
+  draws it.
 - **The language**, closer to the standard:
   - `DATA` takes unquoted strings, `DATA red, big apple, 3 apples`, as old listings
     write them (the editor colours them as strings).
