@@ -2,8 +2,9 @@
 ! components in ui.bas (LIBRARY "ui.bas"): rounded lanes and cards with shadows, text in
 ! sizes and weights, wrapped to fit, buttons, menus, and dialogs over the dimmed board. It
 ! keeps itself in a file, kanban.board, saving after every change and opening it again
-! next time — so it can track real work. (In the browser IDE the file stays in the
-! browser: File → Program files.)
+! next time — so it can track real work. Another board is a file of its own (work.board);
+! kanban.last says which one was open, to open it again. (In the browser IDE the files
+! stay in the browser: File → Program files.)
 !
 ! It's worked with the mouse, as an application is: click a card to select it (it opens up
 ! to show all its text), double-click it to edit it where it is, drag it to another lane or
@@ -41,6 +42,15 @@ FUNCTION FIT$(S$, W)
     FIT$ = S$
   ELSE
     FIT$ = LEFT$(S$, W - 1) & "…"
+  END IF
+END FUNCTION
+
+! "1 card", "3 cards".
+FUNCTION CARDS$(N)
+  IF N = 1 THEN
+    CARDS$ = "1 card"
+  ELSE
+    CARDS$ = LTRIM$(STR$(N)) & " cards"
   END IF
 END FUNCTION
 
@@ -196,9 +206,14 @@ LET EBH = 0
 CALL UIBEGIN                       ! the screen, and whether there's a mouse
 IF UIMS >= 0 THEN LET HASMOUSE = 1
 GOSUB 9990              ! today's date, for the title bar
-GOSUB 9900              ! open kanban.board, if it's there
+GOSUB 9960              ! the board that was open last time (kanban.last), else kanban
+GOSUB 9900              ! open it, if it's there
+IF LOADOK = 0 AND LOADBAD = 0 AND BOARD$ <> "kanban" THEN
+  LET BOARD$ = "kanban"   ! (it's gone: the usual one)
+  GOSUB 9900
+END IF
 IF LOADOK = 1 THEN
-  LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+  LET MSG$ = "Opened " & FILE$ & " · " & CARDS$(NT)
 ELSEIF LOADBAD = 1 THEN
   LET NOSAVE = 1
   IF HASMOUSE = 1 THEN
@@ -1530,7 +1545,8 @@ RETURN
 ! 9170  OPEN — open the board BNAME$ in place of this one.
 ! 9180  SAVE AS — save this board as BNAME$ (its own name: where it is), and
 !        carry on there.
-!        Each says what happened in MSG$; BOK = 1 if it did it.
+!        Each says what happened in MSG$; BOK = 1 if it did it — and then
+!        it's the board to open next time (9970).
 ! ----------------------------------------------------------------------
 9160 REM ---- a new board ----
 LET BOK = 0
@@ -1549,6 +1565,7 @@ ELSE
   NEXT CI
   LET MSG$ = "A new board, " & BOARD$ & ".board"
   GOSUB 9790
+  GOSUB 9970
   LET BOK = 1
 END IF
 RETURN
@@ -1560,7 +1577,8 @@ LET BOARD$ = BNAME$
 GOSUB 9900
 IF LOADOK = 1 THEN
   LET NOSAVE = 0
-  LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+  LET MSG$ = "Opened " & FILE$ & " · " & CARDS$(NT)
+  GOSUB 9970
   LET BOK = 1
 ELSE
   IF LOADBAD = 1 THEN
@@ -1587,7 +1605,8 @@ LET BOARD$ = BNAME$
 GOSUB 9800
 IF SAVEOK = 1 THEN
   LET NOSAVE = 0
-  LET MSG$ = "Saved " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+  LET MSG$ = "Saved " & FILE$ & " · " & CARDS$(NT)
+  GOSUB 9970
   LET BOK = 1
 ELSE
   LET MSG$ = "Couldn't save " & FILE$
@@ -1862,6 +1881,38 @@ ELSE
   LET TTASK$(LI) = RST$
 END IF
 IF TLANE(LI) < 1 OR TLANE(LI) > 3 THEN LET TLANE(LI) = 1
+RETURN
+
+! ----------------------------------------------------------------------
+! 9960  LAST TIME — BOARD$ is the board kanban.last names, if it names one.
+! 9970  REMEMBER — kanban.last names BOARD$, to open it next time.
+! ----------------------------------------------------------------------
+9960 REM ---- the board open last time ----
+LET LN$ = ""
+WHEN EXCEPTION IN
+  OPEN #3: NAME "kanban.last", ACCESS INPUT
+  LINE INPUT #3: LN$
+  CLOSE #3
+USE
+  CLOSE #3
+END WHEN
+GOSUB 9940
+LET BNAME$ = LTRIM$(RTRIM$(LN$))
+IF BNAME$ <> "" THEN
+  GOSUB 9130
+  IF NAMEOK = 1 THEN LET BOARD$ = BNAME$
+  LET MSG$ = ""
+END IF
+RETURN
+
+9970 REM ---- remember the board ----
+WHEN EXCEPTION IN
+  OPEN #3: NAME "kanban.last", ACCESS OUTPUT
+  PRINT #3: BOARD$
+  CLOSE #3
+USE
+  CLOSE #3
+END WHEN
 RETURN
 
 ! ----------------------------------------------------------------------

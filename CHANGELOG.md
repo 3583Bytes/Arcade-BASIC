@@ -44,7 +44,7 @@ the last one. Releases before 2.0.0 are on the
   click a card's ••• (or right-click it) for its menu — edit, move it to another lane or to
   the top or bottom, delete it, with Undo after; "+ Add a card" adds one after another;
   and the board's name opens a menu to start a new board, open one or save as, each
-  with a dialog for the name. (Without a mouse it still takes typed commands.) It's
+  with a dialog for the name — and the board that was open is the one it opens next time. (Without a mouse it still takes typed commands.) It's
   made with **`examples/ui.bas`**, a library of components any program can use
   (`LIBRARY "ui.bas"`): a theme, boxes, text that fits, buttons, badges, typing, menus
   that pop up, and dialogs. **`examples/ui-gallery.bas`** shows every part, each with

@@ -18,7 +18,7 @@ namespace ArcadeBasic.Conformance.Tests;
 public sealed class KanbanDragTests : IDisposable
 {
     private const string BoardFile = "kanban.board";
-    private static readonly string[] Boards = [BoardFile, "home.board", "work.board"];
+    private static readonly string[] Boards = [BoardFile, "home.board", "work.board", "kanban.last"];
 
     public KanbanDragTests() => Forget();
     public void Dispose() => Forget();
@@ -349,6 +349,34 @@ public sealed class KanbanDragTests : IDisposable
         NextFrame(vm);
         Assert.Contains(screen.Frame, t => t.Text == "Opened home.board · 7 cards");
         Assert.Equal("4", screen.Count("To Do"));
+    }
+
+    [Fact]
+    public void ItOpensTheBoardThatWasOpenLastTime()
+    {
+        var screen = new Screen();
+        var vm = Start(screen);
+        screen.Click("kanban.board ▾");
+        Frames(vm);
+        screen.Click("New board…");
+        Frames(vm);
+        screen.Type("work" + Enter);
+        NextFrame(vm);
+        screen.Click("+ Add a card");
+        Frames(vm);
+        screen.Type("Write the report" + Enter + Esc);
+        NextFrame(vm);
+
+        var again = new Screen();                                      // closed, and opened again
+        Start(again);
+        Assert.True(again.Shows("work.board ▾"));
+        Assert.Contains(again.Frame, t => t.Text == "Opened work.board · 1 card");
+        Assert.True(again.Shows("Write the report"));
+
+        File.Delete("work.board");                                     // (it's gone: the usual board)
+        var third = new Screen();
+        Start(third);
+        Assert.True(third.Shows("kanban.board ▾"));
     }
 
     private static string ExamplesDir()
