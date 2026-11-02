@@ -171,19 +171,21 @@ public sealed class ReadyEditTests : IDisposable
         File.WriteAllLines("readyedit.files", ["READY-EDIT 1", names[0], names.Length.ToString(), .. names, "0"]);
 
     [Fact]
-    public void TheFirstRunShowsANewFileThatSaysHowItWorks()
+    public void TheFirstRunShowsABlankNewFile()
     {
         var screen = new Screen();
         var vm = Start(screen);
 
         Assert.Equal("File   Edit   Tabs    Esc: the menus", screen.Row(0).Trim());
         Assert.True(screen.Shows("untitled-1"));
-        Assert.Equal("Welcome to Ready Edit, a text editor written in Arcade BASIC.", screen.Line(0));
-        // a tab character runs on to the next stop of 4, a faint → where it starts
-        Assert.Equal("→   This line starts with a tab,", screen.Line(6));
-        Assert.StartsWith("→   →   and this one with two.", screen.Line(7));
+        Assert.Equal(["", ""], [screen.Line(0), screen.Line(1)]);
+        Assert.False(screen.Shows("●"));                                // nothing to save
         Assert.EndsWith("Ln 1, Col 1", screen.Row(1));               // top right
-        Assert.Equal("come back next time. Esc opens the menus, which show the keys.", screen.Line(10));
+
+        // a tab character runs on to the next stop of 4, a faint → where it starts
+        screen.Type(Tab, Tab, "two tabs");
+        NextFrame(vm);
+        Assert.Equal("→   →   two tabs", screen.Line(0));
 
         // the File menu, under its title: each item with its key (Esc, then the letter)
         var file = screen.Frame.First(t => t.Text == "File").At;

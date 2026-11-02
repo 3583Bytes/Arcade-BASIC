@@ -394,8 +394,7 @@ FOR SI = 1 TO SNR
 NEXT SI
 LET MSGW = 0
 IF NTABS = 0 THEN
-  GOSUB 7200
-  GOSUB 7250                       ! a few words on how it works
+  GOSUB 7200                       ! a blank one
   LET MSG$ = ""
 ELSE
   FOR SI = 1 TO NTABS
@@ -756,7 +755,7 @@ GOSUB 7710                         ! (readyedit.files remembers which one shows)
 RETURN
 
 ! ======================================================================
-! 7200  A NEW FILE, in a tab of its own.  7250  The welcome text in it.
+! 7200  A NEW FILE, in a tab of its own.
 ! ======================================================================
 7200 REM ---- a new file ----
 IF NTABS >= MAXTAB THEN
@@ -776,33 +775,6 @@ LET TX$(CT, 1) = ""
 GOSUB 7120
 LET MSG$ = "A new file: Save as gives it a name"
 RETURN
-
-7250 REM ---- the welcome text ----
-LET NL = 0
-DO
-  READ W$
-  IF W$ = "*" THEN EXIT DO
-  ! (^ stands for a tab character)
-  DO WHILE POS(W$, "^") > 0
-    LET WP = POS(W$, "^")
-    LET W$ = LEFT$(W$, WP - 1) & KTAB$ & MID$(W$, WP + 1)
-  LOOP
-  LET NL = NL + 1
-  LET TX$(CT, NL) = W$
-LOOP
-RETURN
-DATA "Welcome to Ready Edit, a text editor written in Arcade BASIC."
-DATA ""
-DATA "Type anywhere. Click to move the cursor; drag to select."
-DATA "The bar at the top opens and saves files, and each file gets a tab."
-DATA ""
-DATA "Tab characters show out to the next stop, with a faint arrow:"
-DATA "^This line starts with a tab,"
-DATA "^^and this one with two. Select lines and press Tab or Shift+Tab."
-DATA ""
-DATA "This file has no name yet: Save as gives it one. Files you open"
-DATA "come back next time. Esc opens the menus, which show the keys."
-DATA "*"
 
 ! ======================================================================
 ! 7300  CLOSE TAB CLT — with unsaved changes, only the second time of asking.
