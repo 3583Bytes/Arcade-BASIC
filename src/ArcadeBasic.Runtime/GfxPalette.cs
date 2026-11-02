@@ -28,17 +28,20 @@ public sealed class GfxPalette
         Array.Fill(_nearestXterm, -1);
     }
 
-    /// <summary>SET COLOR MIX: intensities 0–1 (the caller has clamped them).</summary>
-    public void Set(int index, double red, double green, double blue)
+    /// <summary>SET COLOR MIX: intensities and opacity 0–1 (the caller has clamped them).</summary>
+    public void Set(int index, double red, double green, double blue, double opacity = 1)
     {
         if ((uint)index >= Count) return;
-        _argb[index] = ToArgb(red, green, blue);
+        _argb[index] = ToArgb(red, green, blue, opacity);
         _mixed[index] = true;
         _nearest16[index] = _nearestXterm[index] = -1;
     }
 
     /// <summary>The colour an index shows, as 0xAARRGGBB (an index out of range shows as 1).</summary>
     public int Argb(int index) => _argb[(uint)index < Count ? index : 1];
+
+    /// <summary>How opaque a colour is, 0–1: its alpha.</summary>
+    public double Opacity(int index) => ((Argb(index) >> 24) & 0xFF) / 255.0;
 
     /// <summary>Is this one of the 16 standard colours, still as it started?</summary>
     public bool IsStandard(int index) => (uint)index < 16 && !_mixed[index];
@@ -74,8 +77,8 @@ public sealed class GfxPalette
         return (((c >> 16) & 0xFF) / 255.0, ((c >> 8) & 0xFF) / 255.0, (c & 0xFF) / 255.0);
     }
 
-    public static int ToArgb(double red, double green, double blue) =>
-        unchecked((int)0xFF000000) | (Byte(red) << 16) | (Byte(green) << 8) | Byte(blue);
+    public static int ToArgb(double red, double green, double blue, double opacity = 1) =>
+        (Byte(opacity) << 24) | (Byte(red) << 16) | (Byte(green) << 8) | Byte(blue);
 
     private static int Byte(double v) => (int)Math.Round(Math.Clamp(v, 0, 1) * 255);
 

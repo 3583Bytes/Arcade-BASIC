@@ -83,7 +83,10 @@ static int PrintUsage()
           lex <file>            Run the lexer over <file> and print the token stream.
           parse <file>          Lex + parse <file> and pretty-print the AST.
           analyze <file>        Lex + parse + analyze; print symbol summary.
-          run <file>            Compile <file> and run it (vm does the same).
+          run <file>            Compile <file> and run it (vm does the same). A program that
+                                draws opens in a window (the desktop player, arcade-player,
+                                next to arcade-basic, or --player <path>), its files the
+                                ones in this folder; --terminal draws in the terminal.
           build <file> [-o <out>]  Compile to a self-contained binary that bundles the VM.
             --desktop             ... a desktop app instead: the program in a window
                                   (needs the desktop player, arcade-player; --player <path>;
@@ -246,11 +249,7 @@ static int RunBuild(ReadOnlySpan<string> args)
 /// player is the one given, else `arcade-player` next to this CLI.</summary>
 static int BuildDesktop(string source, string? output, byte[] payload, string? player, string? icon)
 {
-    if (player is null)
-    {
-        var here = Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
-        player = new[] { "arcade-player", "arcade-player.exe" }.Select(n => Path.Combine(here, n)).FirstOrDefault(File.Exists);
-    }
+    player = FindPlayer(player) ?? player;
     if (player is null || !File.Exists(player))
     {
         Console.Error.WriteLine(player is null
@@ -351,10 +350,10 @@ static int RunAnalyze(ReadOnlySpan<string> args)
 
 static int RunProgram(ReadOnlySpan<string> args)
 {
-    var files = ParseRenderOptions(args, out var svgPath, out var wavPath);
+    var files = ParseRenderOptions(args, out var svgPath, out var wavPath, out var screen, out var player);
     if (files.Count < 1)
     {
-        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...] [--svg <out.svg>] [--wav <out.wav>]");
+        Console.Error.WriteLine("usage: arcade-basic run <main-file> [module-file ...] [--svg <out.svg>] [--wav <out.wav>] [--window | --terminal] [--player <arcade-player>]");
         return 2;
     }
 
@@ -400,6 +399,22 @@ static int RunProgram(ReadOnlySpan<string> args)
         // compiler's own rules (a bug to report, rather than the program's fault).
         Console.Error.WriteLine($"compile error: {ex.Message}");
         return 1;
+    }
+
+    // A program that draws opens in a window, the desktop player's, when someone's at this
+    // terminal (or --window asks) and there's a player. Without one it draws here.
+    if (svgPath is null && wavPath is null && screen != Screen.Terminal
+        && (screen == Screen.Window || info.Draws && !Console.IsInputRedirected && !Console.IsOutputRedirected))
+    {
+        if (FindPlayer(player) is { } found) return RunInWindow(found, compiled, files[0]);
+        if (screen == Screen.Window)
+        {
+            Console.Error.WriteLine(player is null
+                ? "no desktop player (arcade-player) next to arcade-basic; name one with --player <path>"
+                : $"no desktop player at {player}");
+            return 1;
+        }
+        Console.Error.WriteLine("note: no desktop player (arcade-player) next to arcade-basic, so this draws in the terminal");
     }
 
     var (audio, wav) = MakeAudio(wavPath);
@@ -469,17 +484,64 @@ static int RunWithConsoleGraphics(Func<TextReader, IGraphicsDevice?, IKeyboard?,
     }
 }
 
-/// <summary>Extract the optional "--svg &lt;path&gt;" and "--wav &lt;path&gt;"
-/// output options, returning the remaining (file) arguments.</summary>
-static List<string> ParseRenderOptions(ReadOnlySpan<string> args, out string? svgPath, out string? wavPath)
+/// <summary>Run <paramref name="compiled"/> in the desktop player's window (desktop/player):
+/// its files are the ones in this folder, and what it prints, and an error it ends with,
+/// come back to this terminal. The player's exit code is the program's.</summary>
+static int RunInWindow(string player, ArcadeBasic.Bytecode.Program compiled, string source)
+{
+    var program = Path.Combine(Path.GetTempPath(), $"arcade-basic-{Environment.ProcessId}.bin");
+    File.WriteAllBytes(program, BytecodeSerializer.Serialize(compiled));
+    // Ctrl+C stops the player (it has the terminal too); this waits for it, then tidies up.
+    ConsoleCancelEventHandler stay = (_, e) => e.Cancel = true;
+    Console.CancelKeyPress += stay;
+    try
+    {
+        using var window = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(player)
+        {
+            ArgumentList = { program, "--folder", Directory.GetCurrentDirectory(), "--title", Path.GetFileNameWithoutExtension(source) },
+            UseShellExecute = false,
+        })!;
+        window.WaitForExit();
+        return window.ExitCode;
+    }
+    catch (System.ComponentModel.Win32Exception ex)
+    {
+        Console.Error.WriteLine($"couldn't start the desktop player ({player}): {ex.Message}");
+        return 1;
+    }
+    finally
+    {
+        Console.CancelKeyPress -= stay;
+        File.Delete(program);
+    }
+}
+
+/// <summary>The desktop player: <paramref name="given"/> if it's there, else `arcade-player`
+/// next to this CLI, if that is.</summary>
+static string? FindPlayer(string? given)
+{
+    if (given is not null) return File.Exists(given) ? given : null;
+    var here = Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
+    return new[] { "arcade-player", "arcade-player.exe" }.Select(n => Path.Combine(here, n)).FirstOrDefault(File.Exists);
+}
+
+/// <summary>Extract the optional "--svg &lt;path&gt;" and "--wav &lt;path&gt;" output
+/// options, where to draw ("--window", "--terminal") and "--player &lt;path&gt;",
+/// returning the remaining (file) arguments.</summary>
+static List<string> ParseRenderOptions(ReadOnlySpan<string> args, out string? svgPath, out string? wavPath, out Screen screen, out string? player)
 {
     svgPath = null;
     wavPath = null;
+    screen = Screen.Auto;
+    player = null;
     var rest = new List<string>();
     for (var i = 0; i < args.Length; i++)
     {
         if (args[i] == "--svg" && i + 1 < args.Length) { svgPath = args[++i]; }
         else if (args[i] == "--wav" && i + 1 < args.Length) { wavPath = args[++i]; }
+        else if (args[i] == "--window") screen = Screen.Window;
+        else if (args[i] == "--terminal") screen = Screen.Terminal;
+        else if (args[i] == "--player" && i + 1 < args.Length) { player = args[++i]; screen = Screen.Window; }
         else rest.Add(args[i]);
     }
     return rest;
@@ -530,3 +592,7 @@ static ArcadeBasic.Parser.Ast.Program LoadProgram(string path, DiagnosticBag dia
         var library = Path.IsPathRooted(name) ? name : Path.Combine(Path.GetDirectoryName(from.Path) ?? "", name);
         return File.Exists(library) ? new SourceFile(library, File.ReadAllText(library)) : null;
     }, diags);
+
+/// <summary>Where <c>run</c> draws: in a window if it can (a program that draws, at a
+/// terminal), or as --window or --terminal says.</summary>
+internal enum Screen { Auto, Window, Terminal }

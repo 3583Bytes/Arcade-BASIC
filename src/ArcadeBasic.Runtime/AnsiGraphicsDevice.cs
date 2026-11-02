@@ -25,7 +25,7 @@ namespace ArcadeBasic.Runtime;
 /// (<see cref="IPointerPresence"/>), so a program on a terminal that can't report the
 /// mouse carries on without one.
 /// </summary>
-public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice, IPointer, IPointerPresence
+public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice, ITextDevice, IPointer, IPointerPresence
 {
     private const string Esc = "\x1b[";
 
@@ -92,18 +92,26 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
         }
     }
 
-    public void DrawPoints(IReadOnlyList<GfxPoint> points) => Draw(() => _surface.Points(points, _pointColor));
+    // A colour that's more see-through than not isn't drawn: a cell can't show half of one.
+    public void DrawPoints(IReadOnlyList<GfxPoint> points) { if (Shown(_pointColor)) Draw(() => _surface.Points(points, _pointColor)); }
 
-    public void DrawLines(IReadOnlyList<GfxPoint> polyline) => Draw(() => _surface.Lines(polyline, _lineColor, _lineStyle));
+    public void DrawLines(IReadOnlyList<GfxPoint> polyline) { if (Shown(_lineColor)) Draw(() => _surface.Lines(polyline, _lineColor, _lineStyle)); }
 
-    public void FillArea(IReadOnlyList<GfxPoint> polygon) => Draw(() => _surface.Area(polygon, _areaColor));
+    public void FillArea(IReadOnlyList<GfxPoint> polygon) { if (Shown(_areaColor)) Draw(() => _surface.Area(polygon, _areaColor)); }
 
-    public void DrawText(GfxPoint at, string text) => Draw(() => _surface.Text(at, text, _textColor));
+    public void DrawText(GfxPoint at, string text) { if (Shown(_textColor)) Draw(() => _surface.Text(at, text, _textColor)); }
 
     public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible) =>
-        Draw(() => _surface.Cells(rect, columns, rows, colors, visible));
+        Draw(() => _surface.Cells(rect, columns, rows, Array.ConvertAll(colors, c => c >= 0 && Shown(c) ? c : -1), visible));
 
-    public void SetColorMix(int index, double red, double green, double blue) => _palette.Set(index, red, green, blue);
+    public void SetColorMix(int index, double red, double green, double blue, double opacity) => _palette.Set(index, red, green, blue, opacity);
+
+    private bool Shown(int color) => _palette.Opacity(color) >= 0.5;
+
+    // Text is one cell high, in the terminal's font, whatever its height and font.
+    public void SetTextStyle(GfxTextStyle style) { }
+    public double TextWidth(string text, GfxTextStyle style) { EnsureSized(); return (double)text.Length / _cols; }
+    public double UsualTextHeight { get { EnsureSized(); return 1.0 / CanvasRows; } }
 
     private void Draw(Action draw)
     {

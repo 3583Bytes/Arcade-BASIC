@@ -162,7 +162,7 @@ The same engine — compiled to bytecode, run on a VM — runs everywhere:
 
 | | Command | |
 |---|---|---|
-| **Command line** | `arcade-basic run foo.bas` | Runs a program in a terminal; its graphics are drawn with Braille and ANSI colours, its sound played, and the mouse works where the terminal reports it. `--svg out.svg` and `--wav out.wav` save them instead. |
+| **Command line** | `arcade-basic run foo.bas` | Runs a program in a terminal. One that draws opens in a window of its own, as in the browser, when the desktop player is next to `arcade-basic` (its files are the ones in the folder you ran it from); without it, or with `--terminal`, its graphics are drawn in the terminal with Braille and ANSI colours, and the mouse works where the terminal reports it. `--svg out.svg` and `--wav out.wav` save them instead. |
 | **Native binary** | `arcade-basic build foo.bas -o foo` | One self-contained executable for Linux, macOS or Windows; no .NET needed where it runs. |
 | **Desktop app** | `arcade-basic build foo.bas --desktop` | Your program in a window of its own, as in the browser (a Mac `.app`, or a Windows or Linux executable). Needs the desktop player ([`desktop/player`](desktop/player)). |
 | **REPL** | `arcade-basic repl` | Type a line, see it run; blocks (`FOR`, `SUB`, …) continue on the next line. |
@@ -221,6 +221,8 @@ them all again (it needs Node 22 or later and Firefox).
 arcade-basic <command> [args]
 
   run <file>              compile to bytecode and run it on the VM (vm is the same)
+    --window, --terminal  ... a program that draws: in the desktop player's window (if
+                          it's next to arcade-basic, or --player <arcade-player>), or here
   build <file> [-o out]   produce a self-contained native binary
     --desktop             ... or a desktop app: the program in a window (--player <arcade-player>)
   repl                    interactive Arcade BASIC session

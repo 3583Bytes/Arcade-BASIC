@@ -67,6 +67,9 @@ it prints.
 [SET … STYLE / COLOR](#graphics) · [ASK …](#graphics) · [CLEAR](#graphics) ·
 [GRAPH POINTS / LINES / AREA / TEXT](#graphics) ·
 [MAT GRAPH CELLS / SET COLOR MIX](#pictures-and-colours-mat-graph-cells-set-color-mix) ·
+[SET TEXT HEIGHT / JUSTIFY](#text-set-text-height-justify-font-textwidth) ·
+[SET TEXT FONT / TEXTWIDTH](#text-set-text-height-justify-font-textwidth)† ·
+[ROUND corners / see-through colours](#rounded-corners-and-see-through-colours)† ·
 [LOCATE POINT / GET POINT](#mouse-locate-point--get-point-get-mouse) ·
 [GET MOUSE](#mouse-locate-point--get-point-get-mouse)†
 
@@ -274,6 +277,23 @@ CALL GREET("Adam")          ! hi Adam
 ```
 [▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=Cw51UnAPcnUN0fBz9HVV0eRSUAgI8vQLUVDKyFRQslYAi3K5-rkoBIc6cXE5O_r4QNUrOaYk5ippKsCBokJGpgJIkAsA)
 
+An array parameter is written with parentheses, `B()` (`M(,)` for two dimensions),
+and takes an array by its name, `CALL SORT(A)` or `CALL SORT(A())`. The SUB works on
+the caller's array itself, so what it changes the caller sees. A `FUNCTION` takes
+arrays the same way.
+
+```basic
+DIM A(3)
+SUB FILL(B(), V)
+  FOR I = LBOUND(B) TO UBOUND(B)
+    LET B(I) = V
+  NEXT I
+END SUB
+CALL FILL(A, 7)
+PRINT A(2)                  !  7
+```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=ZcwhDsMwDEBR7lP8MVsq2kBRQbykkqUsndqk2v1PMjAN9bNHfo4XSR8mx3DWqFVdbeI0gXXbCRaqb6NldaNvjD8EoJaOaxgLp0Arn05IaZljuDxTrb9pmphN3nu0TtK7cekGs3wB)
+
 ### `CALL`
 
 Invoke a `SUB`. Required — there's no implicit-call syntax for SUBs.
@@ -366,6 +386,10 @@ own variables; any other statement belongs in a module (where it runs first) or
 the main program. The file is looked for next to the file that names it — in the
 browser IDE, among the open tabs (and the bundled examples). True BASIC's
 statement; see [conformance](conformance.md#modules).
+
+[`examples/ui.bas`](../examples/ui.bas) is one to use: the parts an application's
+screen is made of — a theme, rounded boxes and shadows, text that fits, buttons, typing
+and dialogs — which [`examples/kanban.bas`](../examples/kanban.bas) is made with.
 
 ### `HANDLER`
 
@@ -562,8 +586,8 @@ PRINT A; B; C              !  10   20   30
 
 Declare items to populate the program's `DATA` pool. Statements may appear
 anywhere — they're all concatenated in source order at compile time.
-Items are numbers and quoted strings. (The standard's unquoted strings, `DATA red,
-green`, aren't supported yet.)
+Items are numbers and strings, quoted or not: `DATA red, big apple` is two strings,
+`"a, b"` one with a comma in it.
 
 ```basic
 DATA "alpha", "beta"       ! strings
@@ -576,7 +600,9 @@ PRINT NAME2$; Z            ! beta 3
 ### `RESTORE`
 
 Rewind the `DATA` cursor to the start of the pool, so the next `READ`
-re-reads from the beginning.
+re-reads from the beginning. `RESTORE 200` goes to line 200's `DATA` (the first at or
+after that line) instead, so a program can keep a table under a line number and read
+it again whenever it needs it.
 
 ```basic
 DATA 1, 2, 3
@@ -889,7 +915,7 @@ would hide one, so it's best not to.
 | `LOG(x)` `LOG2(x)` `LOG10(x)` | the natural, base-2 and base-10 logarithm (x must be positive) |
 | `MAX(x, y, …)` `MIN(x, y, …)` | the largest or smallest of any number of values |
 
-`MOD` and `REMAINDER` are [operators](#mod--remainder): `7 MOD 3`.
+`MOD(x, y)` and `REMAINDER(x, y)` are also [operators](#mod--remainder): `7 MOD 3`.
 
 ```basic
 PRINT ABS(-3); SGN(-3); SQR(16)                  !  3 -1  4
@@ -1362,6 +1388,63 @@ have. Both are ANSI Full BASIC (§13.3.4.4, §13.2); `CELLS` isn't a reserved wo
 See [`examples/maze3d.bas`](../examples/maze3d.bas) — textured walls (one texture
 column per screen column), floor and ceiling, and sprites with see-through parts.
 
+### Text: `SET TEXT HEIGHT`, `JUSTIFY`, `FONT`, `TEXTWIDTH`
+
+`GRAPH TEXT` draws in the screen's usual text — monospace, 80 columns across — until
+these change it. `SET TEXT HEIGHT` sets its size in window units (the height of the
+font: a capital is about 0.7 of it); 0 goes back to the usual size. `SET TEXT JUSTIFY`
+says where on the text the point given to `GRAPH TEXT` is: `"LEFT"`, `"CENTER"` or
+`"RIGHT"` across, and `"TOP"`, `"CAP"`, `"HALF"`, `"BASE"` (the baseline: the start) or
+`"BOTTOM"` up — `"CENTER", "HALF"` centres a label on a point. `SET TEXT FONT` picks
+`"MONO"` (the usual font) or `"SANS"`, either `"BOLD"`. `TEXTWIDTH(s$)` is how wide
+`GRAPH TEXT` would draw `s$` now, in window units — measured by the screen it's drawn on,
+so a box fits its text in any font.
+
+```basic
+SET WINDOW 0, 100, 0, 60
+SET TEXT FONT "SANS BOLD"
+SET TEXT HEIGHT 4
+SET TEXT JUSTIFY "CENTER", "HALF"
+GRAPH TEXT, AT 50, 30: "Centred"         ! in the middle of the screen
+SET TEXT FONT "SANS"
+SET TEXT JUSTIFY "LEFT", "BASE"
+LET W = TEXTWIDTH("Underlined")
+GRAPH TEXT, AT 10, 10: "Underlined"
+GRAPH LINES: 10, 9; 10 + W, 9           ! exactly as long as the word
+ASK TEXT HEIGHT H                        ! read them back: ASK TEXT JUSTIFY H$, V$ and ASK TEXT FONT F$ too
+```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dZBfT4MwFMXf-RRnDQ8a-1Din2QYH9goK0rArJ3oI9Kqi6wkjET99qZkk2nmfblp7-_mnnMkVyjTPC5KMIqAMer6FfMkV1D8USEpcgUio1xiVmQxGSeCpwuhcDH-3K6kSpMnkDnPFV8SCiKiLCHeYhndi4GhiBQuGcU5C0Hmxvad0QT7mmBt0b8ZbNZaNwbty_Da1p0x9pgocuR6xhPlbs8iyYmXOYu4GZgyjZU4ISurTdesrdHk9K-2YMghxCG0Y7I05zIciOk1AoYzlBRT4EC--azqvvlCtUXT2lfXnYGPttNeJO9-JSfwT03QmUq7xQ2eq_o9xM_q3qTwKR58VFaPsyGVxEfftt43)
+
+A terminal draws text one character to a cell, whatever its height and font.
+`SET TEXT HEIGHT` and `JUSTIFY` are ANSI Full BASIC (§13.2.4); `SET TEXT FONT` and
+`TEXTWIDTH` are Arcade BASIC's. `HEIGHT`, `JUSTIFY` and `FONT` aren't reserved words.
+
+### Rounded corners and see-through colours
+
+`GRAPH AREA, ROUND r:` and `GRAPH LINES, ROUND r:` round each corner of the shape to a
+radius of `r` window units (measured up), round on the screen whatever the window's
+proportions — a corner too small for it is rounded less. A fourth value in
+`SET COLOR MIX` is how opaque the colour is, from 1 (solid, as without it) to 0
+(invisible): `0.3` lets most of what's beneath show through — a shadow, a highlight, a
+dimmed screen behind a dialog.
+
+```basic
+SET WINDOW 0, 100, 0, 60
+SET COLOR MIX (20) 0, 0, 0, 0.4          ! black, 40% opaque: a shadow
+SET COLOR MIX (21) 0.25, 0.45, 0.9       ! blue
+SET AREA COLOR 20
+GRAPH AREA, ROUND 2: 31, 19; 71, 19; 71, 39; 31, 39
+SET AREA COLOR 21
+GRAPH AREA, ROUND 2: 30, 20; 70, 20; 70, 40; 30, 40
+SET LINE COLOR 1
+GRAPH LINES, ROUND 1: 10, 10; 20, 50; 30, 10   ! a rounded peak
+ASK COLOR MIX (20) R, G, B, OPACITY      ! the opacity comes back fourth
+```
+[▶ Try it](https://3583bytes.github.io/Arcade-BASIC/#code=dZBRa4MwFIXf_RVnD4MVQrmJdkV9cq10sk5LdHR7TDXD4Ta7Vhn798NUi6wshBw4yf0gXxpm2EbxMtmCGDgR6_KWrDTMsEjWicRj9IwbQROc7ro9dXBeV9i9q7xicOga9V59tdqDwrFURf19geET0FTMDMOc7gjTavM-kGHQDwmyVjLY3JuOQSZP8RLCg80ZuOtjPkrb9U1vuxcU_g-FGAT5mI_SId_0zknBOorDnjJAuiodKNwDN-J8CGKY9dOczJcUDnX7WegCe60qK0gf_jqVDCuGO4ZkEyyi7GWQ0ZS6k5m_NT_I6w99xE7lFV7r9tCU1i8)
+
+A terminal shows a colour that's more see-through than not (opacity under 0.5) not at
+all, and any other as solid. Both are Arcade BASIC's; `ROUND` isn't a reserved word.
+
 ### Mouse: `LOCATE POINT` / `GET POINT`, `GET MOUSE`
 
 Pointer input comes back in the same problem coordinates you draw with. It works
@@ -1536,7 +1619,5 @@ PLAY "MS T140 O5 L16 C C G G"    ! staccato
   FIXED/REAL/STRING/NUMERIC, FILES/FILETYPE, RANDOM, REWRITE, RSET, …) — the parser
   rejects statements built around them with a clear error. See
   [conformance.md](conformance.md) for the full deviation list.
-- Known gaps: `LBOUND` and `UBOUND` are recognised but can't be called yet (passing
-  them an array name is rejected); `MOD` and `REMAINDER` work as operators
-  (`7 MOD 3`) but not yet in the standard's function form (`MOD(7, 3)`); and `DATA`
-  doesn't take the standard's unquoted strings.
+- Known gap: `MAT` statements don't work on a procedure's array parameter yet (a
+  `FOR` loop over `LBOUND` to `UBOUND` does).

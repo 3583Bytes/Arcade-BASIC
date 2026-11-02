@@ -179,6 +179,7 @@ public sealed class BasicVm
                 "EXTEXT" => BuiltinKind.Extext,
                 "INKEY" => BuiltinKind.Inkey,
                 "KEYDOWN" => BuiltinKind.Keydown,
+                "TEXTWIDTH" => BuiltinKind.TextWidth,
                 "RND" => BuiltinKind.Rnd,
                 "ABS" => BuiltinKind.Abs,
                 "SGN" => BuiltinKind.Sgn,
@@ -197,7 +198,7 @@ public sealed class BasicVm
     /// <summary>What each of the program's builtins is, worked out once: the ones the VM
     /// answers itself, the numeric ones it computes unboxed under OPTION ARITHMETIC
     /// NATIVE, and the rest (BuiltinImpls' table).</summary>
-    private enum BuiltinKind { Table, Extype, Exline, Extext, Inkey, Keydown, Rnd, Abs, Sgn, Int, Sqr, Sin, Cos, Tan, Atn }
+    private enum BuiltinKind { Table, Extype, Exline, Extext, Inkey, Keydown, TextWidth, Rnd, Abs, Sgn, Int, Sqr, Sin, Cos, Tan, Atn }
 
     private readonly BuiltinKind[] _builtinKinds;
     private readonly BuiltinImpls.BuiltinFn?[] _builtinFns;
@@ -751,6 +752,33 @@ public sealed class BasicVm
                         }
                         break;
                     }
+                case Opcode.GfxDrawRound:
+                    {
+                        var geom = (int)ReadU32(code, ref pc);
+                        var count = (int)ReadU32(code, ref pc);
+                        var radius = stack.PopNumber();
+                        var pts = new GfxPoint[count];
+                        for (var i = count - 1; i >= 0; i--)
+                        {
+                            var y = stack.PopNumber();
+                            var x = stack.PopNumber();
+                            pts[i] = new GfxPoint(x, y);
+                        }
+                        if (geom == 1) _gfx.EmitLines(pts, _graphics, radius);
+                        else _gfx.EmitArea(pts, _graphics, radius);
+                        break;
+                    }
+                case Opcode.GfxSetText:
+                    switch (ReadU32(code, ref pc))
+                    {
+                        case 0: _gfx.SetTextHeight(stack.PopNumber()); break;
+                        case 1:
+                            var vertical = ((StringValue)stack.Pop()).V;
+                            _gfx.SetTextJustify(((StringValue)stack.Pop()).V, vertical);
+                            break;
+                        default: _gfx.SetTextFont(((StringValue)stack.Pop()).V); break;
+                    }
+                    break;
                 case Opcode.GfxText:
                     {
                         var hasImage = (int)ReadU32(code, ref pc);
@@ -799,6 +827,16 @@ public sealed class BasicVm
                         var red = stack.PopNumber();
                         var index = GraphicsState.ToIndex((NumericValue)stack.Pop());
                         _gfx.SetColorMix(index, red, green, blue, _graphics);
+                        break;
+                    }
+                case Opcode.GfxSetColorMixOpacity:
+                    {
+                        var opacity = stack.PopNumber();
+                        var blue = stack.PopNumber();
+                        var green = stack.PopNumber();
+                        var red = stack.PopNumber();
+                        var index = GraphicsState.ToIndex((NumericValue)stack.Pop());
+                        _gfx.SetColorMix(index, red, green, blue, _graphics, opacity);
                         break;
                     }
                 case Opcode.GfxAskColorMix:
@@ -1027,6 +1065,9 @@ public sealed class BasicVm
                                 break;
                             case BuiltinKind.Keydown:
                                 stack.Push(NumericValue.Bool(_keys.IsDown(((StringValue)args[0]).V), _native));
+                                break;
+                            case BuiltinKind.TextWidth:
+                                stack.Push(GraphicsState.Coordinate(_gfx.TextWidth(((StringValue)args[0]).V, _graphics), _native));
                                 break;
                             case BuiltinKind.Rnd:
                                 stack.Push(_random.Next(_native));   // this run's sequence; any argument is ignored
@@ -1332,6 +1373,12 @@ public sealed class BasicVm
                 case Opcode.Restore:
                     _dataCursors[(int)ReadU32(code, ref pc)] = 0;
                     break;
+                case Opcode.RestoreAt:
+                    {
+                        var pool = (int)ReadU32(code, ref pc);
+                        _dataCursors[pool] = (int)ReadU32(code, ref pc);
+                        break;
+                    }
                 case Opcode.MatRead:
                     {
                         var pool = (int)ReadU32(code, ref pc);

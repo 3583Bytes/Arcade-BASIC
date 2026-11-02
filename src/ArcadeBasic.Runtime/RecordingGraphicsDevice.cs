@@ -10,7 +10,7 @@ namespace ArcadeBasic.Runtime;
 /// VM must yield identical transcripts. Coordinates are formatted at fixed
 /// precision so the text is stable across platforms.
 /// </summary>
-public sealed class RecordingGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
+public sealed class RecordingGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice, ITextDevice
 {
     private readonly StringBuilder _log = new();
 
@@ -56,8 +56,22 @@ public sealed class RecordingGraphicsDevice : IGraphicsDevice, ICellArrayDevice,
         _log.Append('\n');
     }
 
-    public void SetColorMix(int index, double red, double green, double blue) =>
-        _log.Append("COLOR MIX ").Append(index).Append(' ').Append(F(red)).Append(' ').Append(F(green)).Append(' ').Append(F(blue)).Append('\n');
+    public void SetColorMix(int index, double red, double green, double blue, double opacity)
+    {
+        _log.Append("COLOR MIX ").Append(index).Append(' ').Append(F(red)).Append(' ').Append(F(green)).Append(' ').Append(F(blue));
+        if (opacity < 1) _log.Append(" OPACITY ").Append(F(opacity));
+        _log.Append('\n');
+    }
+
+    // Text is 1/24 of the surface high unless it's set, and as wide as GfxTextMetrics says.
+    public double UsualTextHeight => 1.0 / 24;
+
+    public void SetTextStyle(GfxTextStyle style) =>
+        _log.Append("TEXT STYLE ").Append(F(style.Height)).Append(style.Sans ? " SANS" : " MONO").Append(style.Bold ? " BOLD" : "").Append('\n');
+
+    public double TextWidth(string text, GfxTextStyle style) =>
+        GfxTextMetrics.Ems(text, style.Sans, style.Bold) * (style.Height > 0 ? style.Height : UsualTextHeight)
+        * (DeviceSize.Width > 0 ? DeviceSize.Height / DeviceSize.Width : 1);
 
     private void Emit(string verb, IReadOnlyList<GfxPoint> pts)
     {

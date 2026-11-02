@@ -1245,6 +1245,7 @@ public sealed partial class BasicParser
             if (Match(TokenKind.LParen))
             {
                 isArray = true;
+                while (Match(TokenKind.Comma)) { }   // B(,) for two dimensions: the commas only show it
                 if (!ExpectKind(TokenKind.RParen, "')' (array parameter)")) return null;
             }
             ps.Add(new Param(t.Span, name, isString, isArray));
@@ -1339,6 +1340,22 @@ public sealed partial class BasicParser
                 ErrorAt(Peek(), ErrExpectedToken, "expected STYLE or COLOR");
                 return null;
             }
+            case TokenKind.KwText when Peek(1).Kind != TokenKind.KwColor:
+            {
+                // SET TEXT HEIGHT h | JUSTIFY horizontal$, vertical$ | FONT font$
+                Advance();
+                if (TextAttribute() is not { } attribute) return null;
+                var values = new List<Expr>();
+                var e = ParseExpression(); if (e is null) return null;
+                values.Add(e);
+                if (attribute == GfxTextAttribute.Justify)
+                {
+                    if (!ExpectKind(TokenKind.Comma, "','")) return null;
+                    e = ParseExpression(); if (e is null) return null;
+                    values.Add(e);
+                }
+                return new SetTextStmt(SpanFrom(start, Previous().Span), attribute, values);
+            }
             case TokenKind.KwText:
             case TokenKind.KwArea:
             {
@@ -1350,7 +1367,7 @@ public sealed partial class BasicParser
             }
             case TokenKind.KwColor:
             {
-                // SET COLOR MIX (index) red, green, blue
+                // SET COLOR MIX (index) red, green, blue [, opacity]
                 Advance();
                 var index = ParseColorMixIndex(); if (index is null) return null;
                 var red = ParseExpression(); if (red is null) return null;
@@ -1358,7 +1375,12 @@ public sealed partial class BasicParser
                 var green = ParseExpression(); if (green is null) return null;
                 if (!ExpectKind(TokenKind.Comma, "','")) return null;
                 var blue = ParseExpression(); if (blue is null) return null;
-                return new SetColorMixStmt(SpanFrom(start, Previous().Span), index, red, green, blue);
+                Expr? opacity = null;
+                if (Match(TokenKind.Comma))
+                {
+                    opacity = ParseExpression(); if (opacity is null) return null;
+                }
+                return new SetColorMixStmt(SpanFrom(start, Previous().Span), index, red, green, blue, opacity);
             }
             default:
                 ErrorAt(Peek(), ErrExpectedToken,
@@ -1423,8 +1445,15 @@ public sealed partial class BasicParser
                 break;
             case TokenKind.KwText:
                 Advance();
-                if (!ExpectKind(TokenKind.KwColor, "'COLOR'")) return null;
-                obj = GfxAskObject.TextColor; break;
+                if (Match(TokenKind.KwColor)) { obj = GfxAskObject.TextColor; break; }
+                if (TextAttribute() is not { } attribute) return null;
+                obj = attribute switch
+                {
+                    GfxTextAttribute.Height => GfxAskObject.TextHeight,
+                    GfxTextAttribute.Justify => GfxAskObject.TextJustify,
+                    _ => GfxAskObject.TextFont,
+                };
+                break;
             case TokenKind.KwArea:
                 Advance();
                 if (!ExpectKind(TokenKind.KwColor, "'COLOR'")) return null;
@@ -1439,12 +1468,17 @@ public sealed partial class BasicParser
                 var green = ParseExpression(); if (green is null) return null;
                 if (!ExpectKind(TokenKind.Comma, "','")) return null;
                 var blue = ParseExpression(); if (blue is null) return null;
+                Expr? opacity = null;
+                if (Match(TokenKind.Comma))
+                {
+                    opacity = ParseExpression(); if (opacity is null) return null;
+                }
                 Expr? status = null;
                 if (Match(TokenKind.KwStatus))
                 {
                     status = ParseExpression(); if (status is null) return null;
                 }
-                return new AskColorMixStmt(SpanFrom(start, Previous().Span), index, red, green, blue, status);
+                return new AskColorMixStmt(SpanFrom(start, Previous().Span), index, red, green, blue, status, opacity);
             }
             default:
                 ErrorAt(Peek(), ErrExpectedToken, "expected a graphics object after ASK");
@@ -1452,6 +1486,23 @@ public sealed partial class BasicParser
         }
 
         return FinishAsk(start, obj);
+    }
+
+    /// <summary>HEIGHT, JUSTIFY or FONT, after SET TEXT / ASK TEXT. They aren't reserved
+    /// words (nor is ROUND), so they arrive as identifiers.</summary>
+    private GfxTextAttribute? TextAttribute()
+    {
+        var t = Peek();
+        GfxTextAttribute? attribute = t.Kind != TokenKind.Identifier ? null : t.Text.ToUpperInvariant() switch
+        {
+            "HEIGHT" => GfxTextAttribute.Height,
+            "JUSTIFY" => GfxTextAttribute.Justify,
+            "FONT" => GfxTextAttribute.Font,
+            _ => null,
+        };
+        if (attribute is null) ErrorAt(t, ErrExpectedToken, "expected COLOR, HEIGHT, JUSTIFY or FONT after TEXT");
+        else Advance();
+        return attribute;
     }
 
     /// <summary>MIX (index), after SET COLOR / ASK COLOR.</summary>
@@ -1495,9 +1546,21 @@ public sealed partial class BasicParser
                 _ => GfxGeometry.Area,
             };
             Advance();
+            // GRAPH LINES|AREA, ROUND r: … rounds the corners (ROUND isn't a reserved word).
+            Expr? round = null;
+            if (geom != GfxGeometry.Points && Match(TokenKind.Comma))
+            {
+                if (Peek() is not { Kind: TokenKind.Identifier } word || !string.Equals(word.Text, "ROUND", StringComparison.OrdinalIgnoreCase))
+                {
+                    ErrorAt(Peek(), ErrExpectedToken, "expected ROUND after ','");
+                    return null;
+                }
+                Advance();
+                round = ParseExpression(); if (round is null) return null;
+            }
             if (!ExpectKind(TokenKind.Colon, "':'")) return null;
             var pts = ParsePointList();
-            return pts is null ? null : new GraphStmt(SpanFrom(start, Previous().Span), geom, pts);
+            return pts is null ? null : new GraphStmt(SpanFrom(start, Previous().Span), geom, pts, round);
         }
         if (k == TokenKind.KwText)
         {

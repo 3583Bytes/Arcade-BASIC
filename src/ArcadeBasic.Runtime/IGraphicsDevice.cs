@@ -17,6 +17,7 @@ public enum GfxQuery
     Window, Viewport, DeviceWindow, DeviceViewport, DeviceSize, Clip,
     PointStyle, LineStyle, MaxPointStyle, MaxLineStyle,
     PointColor, LineColor, TextColor, AreaColor, MaxColor,
+    TextHeight, TextJustify, TextFont,
 }
 
 /// <summary>
@@ -84,6 +85,30 @@ public interface ICellArrayDevice
 public interface IColorMixDevice
 {
     /// <summary>Colour <paramref name="index"/> (0 to MaxColor) is now red, green and
-    /// blue at these intensities, each 0–1.</summary>
-    void SetColorMix(int index, double red, double green, double blue);
+    /// blue at these intensities, each 0–1, and this opaque: 1 hides what's beneath, 0.5
+    /// lets half of it through.</summary>
+    void SetColorMix(int index, double red, double green, double blue, double opacity);
+}
+
+/// <summary>How GRAPH TEXT looks (SET TEXT HEIGHT, SET TEXT FONT): its height — the font's
+/// size, as a fraction of the surface's height; 0 for the device's usual size — and its
+/// font, monospace or sans-serif, regular or bold.</summary>
+public readonly record struct GfxTextStyle(double Height, bool Sans, bool Bold)
+{
+    public static readonly GfxTextStyle Usual = new(0, false, false);
+}
+
+/// <summary>Optional: a device that draws text in more than one size and font, and can
+/// say how wide it draws — for TEXTWIDTH and SET TEXT JUSTIFY. Without it, text is the
+/// device's usual size and font and its width is estimated (<see cref="GfxTextMetrics"/>).</summary>
+public interface ITextDevice
+{
+    /// <summary>GRAPH TEXT is drawn in <paramref name="style"/> from now on (CLEAR doesn't change it).</summary>
+    void SetTextStyle(GfxTextStyle style);
+
+    /// <summary>How wide <paramref name="text"/> is in <paramref name="style"/>, as a fraction of the surface's width.</summary>
+    double TextWidth(string text, GfxTextStyle style);
+
+    /// <summary>The height of the device's usual text (<see cref="GfxTextStyle.Usual"/>), as a fraction of the surface's height.</summary>
+    double UsualTextHeight { get; }
 }

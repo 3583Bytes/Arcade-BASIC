@@ -42,6 +42,7 @@ public sealed class Analyzer
     private readonly Dictionary<Expr, BasicType> _types = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<int, Stmt> _labels = new();
     private readonly List<List<DataItem>> _dataPools = [[]];
+    private readonly Dictionary<int, (int Unit, int Item)> _restorePoints = new();
     private readonly Dictionary<Scope, int> _moduleUnits = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Stmt, int> _dataUnits = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DimSpec, ArraySymbol> _arrays = new(ReferenceEqualityComparer.Instance);
@@ -50,6 +51,7 @@ public sealed class Analyzer
     private readonly Dictionary<ModuleStmt, Scope> _moduleScopes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CallStmt, SubSymbol> _callTargets = new(ReferenceEqualityComparer.Instance);
     private OptionArithmeticStmt? _arithmetic;
+    private bool _draws;
 
     private Analyzer(DiagnosticBag diagnostics)
     {
@@ -71,12 +73,14 @@ public sealed class Analyzer
             Resolutions = a._resolutions,
             ExpressionTypes = a._types,
             DataPools = a._dataPools,
+            RestorePoints = a._restorePoints,
             DataUnits = a._dataUnits,
             Arrays = a._arrays,
             LineLabels = a._labels,
             CallTargets = a._callTargets,
             ModuleScopes = a._moduleScopes,
             Arithmetic = a._arithmetic?.Mode == ArithmeticMode.Native ? ArithmeticMode.Native : ArithmeticMode.Decimal,
+            Draws = a._draws,
         };
     }
 
@@ -109,6 +113,9 @@ public sealed class Analyzer
                 _diags.Error(ErrDuplicateDeclaration, stmt.Span,
                     $"line label {label} appears more than once");
             }
+            // RESTORE label: the DATA from this line on (its unit's, as many as came before it).
+            var unit = UnitOf(scope);
+            _restorePoints.TryAdd(label, (unit, _dataPools[unit].Count));
         }
 
         switch (stmt)
@@ -448,6 +455,10 @@ public sealed class Analyzer
                     {
                         _diags.Error(ErrUndefinedLineLabel, n.Span, $"line label {lbl} not found");
                     }
+                    else if (rs.LabelTarget is NumberExpr at && int.TryParse(at.Text, out var line) && _restorePoints[line].Unit != UnitOf(scope))
+                    {
+                        _diags.Error(ErrUndefinedLineLabel, at.Span, $"line {line} is in another program-unit: RESTORE goes to its own DATA");
+                    }
                 }
                 break;
 
@@ -484,20 +495,35 @@ public sealed class Analyzer
             case SetColorStmt scl:
                 ExpectType(scl.Index, AnalyzeExpr(scl.Index, scope), BasicType.Numeric, "color index");
                 break;
+            case SetTextStmt st:
+                foreach (var v in st.Values)
+                {
+                    var (want, what) = st.Attribute switch
+                    {
+                        GfxTextAttribute.Height => (BasicType.Numeric, "TEXT HEIGHT"),
+                        GfxTextAttribute.Justify => (BasicType.String, "TEXT JUSTIFY"),
+                        _ => (BasicType.String, "TEXT FONT"),
+                    };
+                    ExpectType(v, AnalyzeExpr(v, scope), want, what);
+                }
+                break;
             case ClearStmt:
                 break;
             case GraphStmt g:
+                _draws = true;
                 foreach (var pt in g.Points)
                 {
                     ExpectType(pt.X, AnalyzeExpr(pt.X, scope), BasicType.Numeric, "graphics X coordinate");
                     ExpectType(pt.Y, AnalyzeExpr(pt.Y, scope), BasicType.Numeric, "graphics Y coordinate");
                 }
+                if (g.Round is not null) ExpectType(g.Round, AnalyzeExpr(g.Round, scope), BasicType.Numeric, "ROUND radius");
                 if (g.Kind == GfxGeometry.Lines && g.Points.Count < 2)
                     _diags.Error(ErrGraphics, g.Span, "GRAPH LINES needs at least two points");
                 if (g.Kind == GfxGeometry.Area && g.Points.Count < 3)
                     _diags.Error(ErrGraphics, g.Span, "GRAPH AREA needs at least three points");
                 break;
             case GraphTextStmt gt:
+                _draws = true;
                 ExpectType(gt.AtX, AnalyzeExpr(gt.AtX, scope), BasicType.Numeric, "GRAPH TEXT X");
                 ExpectType(gt.AtY, AnalyzeExpr(gt.AtY, scope), BasicType.Numeric, "GRAPH TEXT Y");
                 if (gt.Image is null)
@@ -514,6 +540,7 @@ public sealed class Analyzer
                 AnalyzeAskGfx(ag, scope);
                 break;
             case MatGraphCellsStmt mg:
+                _draws = true;
                 ExpectType(mg.X1, AnalyzeExpr(mg.X1, scope), BasicType.Numeric, "graphics X coordinate");
                 ExpectType(mg.Y1, AnalyzeExpr(mg.Y1, scope), BasicType.Numeric, "graphics Y coordinate");
                 ExpectType(mg.X2, AnalyzeExpr(mg.X2, scope), BasicType.Numeric, "graphics X coordinate");
@@ -528,10 +555,12 @@ public sealed class Analyzer
                 ExpectType(sm.Red, AnalyzeExpr(sm.Red, scope), BasicType.Numeric, "red intensity");
                 ExpectType(sm.Green, AnalyzeExpr(sm.Green, scope), BasicType.Numeric, "green intensity");
                 ExpectType(sm.Blue, AnalyzeExpr(sm.Blue, scope), BasicType.Numeric, "blue intensity");
+                if (sm.Opacity is not null) ExpectType(sm.Opacity, AnalyzeExpr(sm.Opacity, scope), BasicType.Numeric, "opacity");
                 break;
             case AskColorMixStmt am:
                 ExpectType(am.Index, AnalyzeExpr(am.Index, scope), BasicType.Numeric, "color index");
                 AnalyzeNumericTargets(scope, "ASK COLOR MIX", am.Red, am.Green, am.Blue);
+                if (am.Opacity is not null) AnalyzeNumericTargets(scope, "ASK COLOR MIX", am.Opacity);
                 if (am.Status is not null) AnalyzeNumericTargets(scope, "ASK COLOR MIX STATUS", am.Status);
                 break;
 
@@ -688,7 +717,7 @@ public sealed class Analyzer
                             $"SUB '{call.Name}' expects {ss.Params.Count} arg(s), got {call.Args.Count}");
                     }
                 }
-                foreach (var a in call.Args) AnalyzeExpr(a, scope);
+                AnalyzeArguments(call.Args, (sym as SubSymbol)?.Params, call.Name, scope);
                 break;
             }
             case MatAssignStmt mat:
@@ -797,6 +826,12 @@ public sealed class Analyzer
                 $"MAT target '{name}{(isString ? "$" : "")}' is undeclared",
                 "explicit DIM is required for arrays");
         }
+        else if (sym is ParamSymbol { IsArray: true })
+        {
+            _diags.Error(ErrInvalidAssignmentTarget, span,
+                $"MAT doesn't work on an array parameter ('{name}') yet",
+                "use a FOR loop over LBOUND to UBOUND");
+        }
         else if (sym is not ArraySymbol)
         {
             _diags.Error(ErrInvalidAssignmentTarget, span,
@@ -814,7 +849,14 @@ public sealed class Analyzer
                     _diags.Error(ErrTypeMismatch, n.Span,
                         $"MAT operand '{n.Name}' type does not match target");
                 }
-                if (Find(scope, Scope.Key(n.Name, n.IsString)) is not ArraySymbol)
+                var operand = Find(scope, Scope.Key(n.Name, n.IsString));
+                if (operand is ParamSymbol { IsArray: true })
+                {
+                    _diags.Error(ErrUndefinedName, n.Span,
+                        $"MAT doesn't work on an array parameter ('{n.Name}') yet",
+                        "use a FOR loop over LBOUND to UBOUND");
+                }
+                else if (operand is not ArraySymbol)
                 {
                     _diags.Error(ErrUndefinedName, n.Span,
                         $"MAT operand '{n.Name}' is not a declared array");
@@ -904,9 +946,14 @@ public sealed class Analyzer
                     ExpectType(ag.Targets[2], TypeOfTarget(ag.Targets[2]), BasicType.String, "ASK DEVICE SIZE unit");
                 }
                 break;
-            case GfxAskObject.Clip:
+            case GfxAskObject.Clip or GfxAskObject.TextFont:
                 expected = 1;
-                ExpectType(ag.Targets[0], TypeOfTarget(ag.Targets[0]), BasicType.String, "ASK CLIP variable");
+                ExpectType(ag.Targets[0], TypeOfTarget(ag.Targets[0]), BasicType.String, $"ASK {(ag.Object == GfxAskObject.Clip ? "CLIP" : "TEXT FONT")} variable");
+                break;
+            case GfxAskObject.TextJustify:
+                expected = 2;
+                foreach (var t in ag.Targets)
+                    ExpectType(t, TypeOfTarget(t), BasicType.String, "ASK TEXT JUSTIFY variable");
                 break;
             default:
                 expected = 1;
@@ -953,9 +1000,9 @@ public sealed class Analyzer
                             "explicit DIM is required for arrays in this implementation");
                         _resolutions[c] = new ResolvedError("array");
                     }
-                    else if (sym is ArraySymbol arr)
+                    else if (sym is ArraySymbol or ParamSymbol { IsArray: true })
                     {
-                        _resolutions[c] = new ResolvedArrayAccess(arr);
+                        _resolutions[c] = new ResolvedArrayAccess(sym);
                     }
                     else
                     {
@@ -1088,13 +1135,13 @@ public sealed class Analyzer
         switch (sym)
         {
             case VariableSymbol v: _resolutions[n] = new ResolvedVariable(v); return v.IsString ? BasicType.String : BasicType.Numeric;
-            case ParamSymbol p: _resolutions[n] = new ResolvedParam(p); return p.IsString ? BasicType.String : BasicType.Numeric;
+            case ParamSymbol { IsArray: false } p: _resolutions[n] = new ResolvedParam(p); return p.IsString ? BasicType.String : BasicType.Numeric;
             case ConstantSymbol c: _resolutions[n] = new ResolvedConstant(c); return c.IsString ? BasicType.String : BasicType.Numeric;
             case BuiltinSymbol bsym when bsym.Signature.MinArgs == 0:
                 // 0-arg builtin used without parens — equivalent to a parameterless call.
                 _resolutions[n] = new ResolvedBuiltinCall(bsym);
                 return bsym.IsString ? BasicType.String : BasicType.Numeric;
-            case ArraySymbol:
+            case ArraySymbol or ParamSymbol:
                 _diags.Error(ErrCannotCall, n.Span,
                     $"'{n.Name}' is an array; index it with parentheses");
                 _resolutions[n] = new ResolvedError("array-without-index");
@@ -1122,13 +1169,22 @@ public sealed class Analyzer
         }
 
         // Resolve args first so partial errors still record argument types. LBOUND(A) and
-        // UBOUND(A) take an array itself.
-        var argTypes = new BasicType[c.Args.Count];
-        for (var i = 0; i < c.Args.Count; i++)
+        // UBOUND(A) take an array itself, and so does a FUNCTION's or DEF's array parameter.
+        BasicType[] argTypes;
+        if (sym is BuiltinSymbol { Name: "LBOUND" or "UBOUND" } bound)
         {
-            argTypes[i] = i == 0 && sym is BuiltinSymbol { Name: "LBOUND" or "UBOUND" } bound
-                ? AnalyzeArrayArgument(c.Args[0], bound.Name, scope)
-                : AnalyzeExpr(c.Args[i], scope);
+            argTypes = new BasicType[c.Args.Count];
+            for (var i = 0; i < c.Args.Count; i++)
+            {
+                argTypes[i] = i == 0
+                    ? AnalyzeArrayArgument(c.Args[0], $"{bound.Name} takes an array: its name, with no subscripts ({bound.Name}(A))", scope)
+                    : AnalyzeExpr(c.Args[i], scope);
+            }
+        }
+        else
+        {
+            var ps = sym switch { FunctionSymbol f => f.Params, DefSymbol d => d.Params, _ => null };
+            argTypes = AnalyzeArguments(c.Args, ps, c.Name, scope);
         }
 
         if (sym is null)
@@ -1149,6 +1205,14 @@ public sealed class Analyzer
                 }
                 _resolutions[c] = new ResolvedArrayAccess(arr);
                 return arr.IsString ? BasicType.String : BasicType.Numeric;
+
+            case ParamSymbol { IsArray: true } param:
+                for (var i = 0; i < c.Args.Count; i++)
+                {
+                    ExpectType(c.Args[i], argTypes[i], BasicType.Numeric, "array index");
+                }
+                _resolutions[c] = new ResolvedArrayAccess(param);
+                return param.IsString ? BasicType.String : BasicType.Numeric;
 
             case BuiltinSymbol bsym:
                 CheckBuiltinSignature(c, bsym, argTypes);
@@ -1178,24 +1242,52 @@ public sealed class Analyzer
         }
     }
 
-    /// <summary>An argument that's an array itself (LBOUND(A)'s A): an array's name, with no
-    /// subscripts, or a SUB's array parameter.</summary>
-    private BasicType AnalyzeArrayArgument(Expr arg, string function, Scope scope)
+    /// <summary>A call's arguments, against the parameters <paramref name="ps"/> (null when the
+    /// callee isn't known): an array parameter takes an array itself, any other an expression.</summary>
+    private BasicType[] AnalyzeArguments(IReadOnlyList<Expr> args, IReadOnlyList<Param>? ps, string callee, Scope scope)
     {
-        switch (arg is NameRefExpr n ? Find(scope, Scope.Key(n.Name, n.IsString)) : null)
+        var types = new BasicType[args.Count];
+        for (var i = 0; i < args.Count; i++)
         {
-            case ArraySymbol array:
-                _resolutions[arg] = new ResolvedWholeArray(array);
-                return _types[arg] = array.IsString ? BasicType.String : BasicType.Numeric;
-            case ParamSymbol { IsArray: true } param:
-                _resolutions[arg] = new ResolvedParam(param);
-                return _types[arg] = param.IsString ? BasicType.String : BasicType.Numeric;
-            default:
-                var type = AnalyzeExpr(arg, scope);
-                _diags.Error(ErrTypeMismatch, arg.Span,
-                    $"{function} takes an array: its name, with no subscripts ({function}(A))");
-                return type;
+            if (ps is not null && i < ps.Count && ps[i].IsArray)
+            {
+                var p = ps[i];
+                var array = $"{p.Name}{(p.IsString ? "$" : "")}()";
+                types[i] = AnalyzeArrayArgument(args[i],
+                    $"'{callee}' takes an array for {array}: its name, with no subscripts", scope);
+                if (_resolutions.GetValueOrDefault(args[i]) is ResolvedWholeArray && types[i] != (p.IsString ? BasicType.String : BasicType.Numeric))
+                {
+                    _diags.Error(ErrTypeMismatch, args[i].Span,
+                        $"'{callee}' takes a {(p.IsString ? "string" : "numeric")} array for {array}");
+                }
+            }
+            else
+            {
+                types[i] = AnalyzeExpr(args[i], scope);
+            }
         }
+        return types;
+    }
+
+    /// <summary>An argument that's an array itself (LBOUND(A)'s A, or an array passed to a
+    /// SUB or FUNCTION): an array's name — with no subscripts, or with empty parentheses,
+    /// A() — or an array parameter's. Otherwise <paramref name="error"/>.</summary>
+    private BasicType AnalyzeArrayArgument(Expr arg, string error, Scope scope)
+    {
+        var symbol = arg switch
+        {
+            NameRefExpr n => Find(scope, Scope.Key(n.Name, n.IsString)),
+            CallOrIndexExpr { Args.Count: 0 } c => Find(scope, Scope.Key(c.Name, c.IsString)),
+            _ => null,
+        };
+        if (symbol is ArraySymbol or ParamSymbol { IsArray: true })
+        {
+            _resolutions[arg] = new ResolvedWholeArray(symbol);
+            return _types[arg] = symbol.IsString ? BasicType.String : BasicType.Numeric;
+        }
+        var type = AnalyzeExpr(arg, scope);
+        _diags.Error(ErrTypeMismatch, arg.Span, error);
+        return type;
     }
 
     private void CheckBuiltinSignature(CallOrIndexExpr c, BuiltinSymbol b, BasicType[] argTypes)

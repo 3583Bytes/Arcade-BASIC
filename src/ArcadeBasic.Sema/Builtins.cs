@@ -89,6 +89,12 @@ internal static class Builtins
         yield return new BuiltinSymbol("KEYDOWN", IsString: false,
             new BuiltinSignature(1, 1, [BuiltinArgType.String]));
 
+        // TEXTWIDTH(s$) — how wide GRAPH TEXT would draw s$ (at the current TEXT HEIGHT and
+        // FONT), in window units. An Arcade BASIC extension; the engines measure it on
+        // their graphics device.
+        yield return new BuiltinSymbol("TEXTWIDTH", IsString: false,
+            new BuiltinSignature(1, 1, [BuiltinArgType.String]));
+
         // Bound queries (used with array names)
         yield return new BuiltinSymbol("LBOUND", IsString: false,
             new BuiltinSignature(1, 2, [BuiltinArgType.Any, BuiltinArgType.Numeric]));

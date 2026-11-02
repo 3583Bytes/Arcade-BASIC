@@ -21,8 +21,9 @@ public sealed class KanbanDragTests : IDisposable
     public KanbanDragTests() => File.Delete(BoardFile);
     public void Dispose() => File.Delete(BoardFile);
 
-    /// <summary>An 80 x 24-cell screen (like the terminal's) that keeps each presented
-    /// frame's text, with a pointer and keyboard the test drives.</summary>
+    /// <summary>A screen (the browser's proportions, 5 x 3) that keeps each presented frame's
+    /// text, with a pointer and keyboard the test drives. It doesn't measure text, so the
+    /// board's laid out with GraphicsState's estimates (Helvetica's widths).</summary>
     private sealed class Screen : IGraphicsDevice, IPointer, IKeyboard
     {
         private readonly List<(GfxPoint At, string Text)> _drawing = [];
@@ -55,11 +56,11 @@ public sealed class KanbanDragTests : IDisposable
 
         public bool Shows(string text) => Frame.Any(t => t.Text == text);
 
-        /// <summary>The number drawn beside a lane's name: how many cards it has.</summary>
+        /// <summary>The number on the badge beside a lane's name: how many cards it has.</summary>
         public string Count(string lane)
         {
             var name = Frame.Single(t => t.Text == lane).At;
-            return Frame.First(t => t.At.Y == name.Y && t.At.X > name.X && t.Text.All(char.IsDigit)).Text;
+            return Frame.First(t => Math.Abs(t.At.Y - name.Y) < 0.02 && t.At.X > name.X && t.Text.All(char.IsDigit)).Text;
         }
 
         public void Type(string keys)
@@ -90,12 +91,15 @@ public sealed class KanbanDragTests : IDisposable
 
     private static BasicVm Start(Screen screen)
     {
-        var source = File.ReadAllText(Path.Combine(ExamplesDir(), "kanban.bas"));
-        var file = new SourceFile("kanban.bas", source);
+        var path = Path.Combine(ExamplesDir(), "kanban.bas");
         var diags = new DiagnosticBag();
-        var program = new BasicParser(new BasicLexer(file, diags).Lex(), file, diags).ParseProgram();
+        var program = ProgramLoader.Load(new SourceFile(path, File.ReadAllText(path)), (name, from) =>   // (and ui.bas, its LIBRARY)
+        {
+            var library = Path.Combine(Path.GetDirectoryName(from.Path)!, name);
+            return File.Exists(library) ? new SourceFile(library, File.ReadAllText(library)) : null;
+        }, diags);
         var info = Analyzer.Analyze(program, diags);
-        Assert.False(diags.HasErrors);
+        Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
         var vm = new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), new LineInputQueue(), screen, screen);
         Assert.Equal(StepStatus.Sleeping, NextFrame(vm));
         return vm;
@@ -108,7 +112,7 @@ public sealed class KanbanDragTests : IDisposable
     {
         var screen = new Screen();
         var vm = Start(screen);
-        Assert.True(screen.Shows("+ add a card"));                     // it found the mouse
+        Assert.True(screen.Shows("+ Add a card"));                     // it found the mouse
         Assert.Contains(screen.Frame, t => t.Text.StartsWith("A new board", StringComparison.Ordinal));
 
         // Card #4 starts in To Do; press on it, drag it over Done: it follows the pointer
@@ -118,7 +122,7 @@ public sealed class KanbanDragTests : IDisposable
         screen.Pointer = grab;
         screen.Events.Enqueue(new PointerEvent(true, grab));
         NextFrame(vm);
-        var done = new GfxPoint(screen.TextStarting("DONE").X + 0.02, 0.5);
+        var done = new GfxPoint(screen.TextStarting("Done").X + 0.02, 0.5);
         screen.Pointer = done;
         NextFrame(vm);
         Assert.Equal(2, screen.Frame.Count(t => t.Text.StartsWith("Select a card", StringComparison.Ordinal)));
@@ -128,15 +132,15 @@ public sealed class KanbanDragTests : IDisposable
         screen.Events.Enqueue(new PointerEvent(false, done));
         NextFrame(vm);
         Assert.Contains(screen.Frame, t => t.Text == "Moved #4 to Done");
-        Assert.Equal("3", screen.Count("TO DO"));                       // 4 → 3
-        Assert.Equal("3", screen.Count("DONE"));                        // 2 → 3
+        Assert.Equal("3", screen.Count("To Do"));                       // 4 → 3
+        Assert.Equal("3", screen.Count("Done"));                        // 2 → 3
         Assert.Contains("3 4 Select a card and press Delete (twice) to remove it", SavedCards());
 
-        // Typing goes onto the board; Q + Enter quits.
+        // Typing a command goes in the status bar; Q + Enter quits.
         screen.Type("q");
         NextFrame(vm);
         Assert.True(screen.Shows("> "));
-        Assert.True(screen.Shows("q_"));
+        Assert.True(screen.Shows("q"));
         screen.Keys.Enqueue(Enter);
         Assert.Equal(StepStatus.Halted, NextFrame(vm));
     }
@@ -148,8 +152,8 @@ public sealed class KanbanDragTests : IDisposable
         var screen = new Screen();
         var vm = Start(screen);
         Assert.Contains(screen.Frame, t => t.Text == "Opened kanban.board · 2 cards");
-        Assert.Equal("0", screen.Count("TO DO"));
-        Assert.Equal("1", screen.Count("DOING"));
+        Assert.Equal("0", screen.Count("To Do"));
+        Assert.Equal("1", screen.Count("Doing"));
 
         screen.Type("A Paint the fence" + Enter + "D 7" + Enter);        // a new card gets #12; #11 stays #11
         NextFrame(vm);
@@ -183,13 +187,14 @@ public sealed class KanbanDragTests : IDisposable
         screen.Type(" ");                                              // puts it down
         NextFrame(vm);
         Assert.Contains(screen.Frame, t => t.Text == "Put it down");
-        Assert.Equal("2", screen.Count("DOING"));
+        Assert.Equal("2", screen.Count("Doing"));
         Assert.Equal(["2 2", "2 5"], SavedCards().Where(l => l.StartsWith('2')).Select(l => l[..3]));
 
-        screen.Keys.Enqueue(Enter);                                    // edit it: its text, the cursor at the end
+        screen.Keys.Enqueue(Enter);                                    // edit it, where it is: its text, the caret at the end
         screen.Type(" fast");
         NextFrame(vm);
-        Assert.True(screen.Shows("Edit #2: "));
+        Assert.Contains(screen.Frame, t => t.Text.StartsWith("Editing #2", StringComparison.Ordinal));
+        Assert.Contains(screen.Frame, t => t.Text.EndsWith("fast", StringComparison.Ordinal));
         screen.Keys.Enqueue(Enter);
         NextFrame(vm);
         Assert.Contains(screen.Frame, t => t.Text == "Changed #2");
@@ -212,14 +217,22 @@ public sealed class KanbanDragTests : IDisposable
         for (var i = 1; i <= 25; i++) screen.Type($"A Job {i}" + Enter);
         screen.Keys.Enqueue("\u001b");                                 // (let go of the last one added)
         NextFrame(vm);
-        Assert.Equal("29", screen.Count("TO DO"));
+        Assert.Equal("29", screen.Count("To Do"));
         var more = screen.TextStarting("▼ ");
         Assert.Matches(@"^▼ \d+ more$", screen.Frame.First(t => t.At == more).Text);
 
-        screen.Click(new GfxPoint(more.X + 0.02, more.Y + 0.01));        // show the next ones
-        NextFrame(vm);
-        Assert.Contains(screen.Frame, t => t.Text.StartsWith("▲ ", StringComparison.Ordinal));
+        // Show the next ones (pressed, let go, and drawn again), until the last shows.
+        for (var page = 0; page < 12 && !screen.Shows("Job 25"); page++)
+        {
+            more = screen.TextStarting("▼ ");
+            screen.Click(new GfxPoint(more.X + 0.02, more.Y + 0.01));
+            NextFrame(vm);
+            NextFrame(vm);
+            NextFrame(vm);
+            Assert.Contains(screen.Frame, t => t.Text.StartsWith("▲ ", StringComparison.Ordinal));
+        }
         Assert.True(screen.Shows("Job 25"));
+        Assert.DoesNotContain(screen.Frame, t => t.Text.StartsWith("▼ ", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -227,11 +240,14 @@ public sealed class KanbanDragTests : IDisposable
     {
         var screen = new Screen();
         var vm = Start(screen);
-        Assert.Equal(22.25 / 24, screen.TextStarting("TO DO").Y, 6);    // 2 rows from the top of 24
+        // (in points from the top: the screen is 960 across, so 576 down, then 720)
+        var name = (1 - screen.TextStarting("To Do").Y) * 576;
+        var add = (1 - screen.TextStarting("+ Add a card").Y) * 576;   // (a lane's: the title bar's is "+ New card")
 
-        screen.DeviceSize = new GfxDeviceSize(160, 120, "OTHER");      // the window grows to 30 rows
+        screen.DeviceSize = new GfxDeviceSize(160, 120, "OTHER");      // the window grows taller
         NextFrame(vm);
-        Assert.Equal(28.25 / 30, screen.TextStarting("TO DO").Y, 6);    // 2 rows from the top of 30
+        Assert.Equal(name, (1 - screen.TextStarting("To Do").Y) * 720, 6);        // the lanes' names stay where they were
+        Assert.Equal(add + 144, (1 - screen.TextStarting("+ Add a card").Y) * 720, 6);   // and the lanes reach the new bottom
     }
 
     private static string ExamplesDir()

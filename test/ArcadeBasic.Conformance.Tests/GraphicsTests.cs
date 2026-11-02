@@ -15,7 +15,11 @@ namespace ArcadeBasic.Conformance.Tests;
 [Collection(ScoreFiles.Collection)]
 public class GraphicsTests
 {
-    private static string Draw(string source)
+    private static string Draw(string source) => DrawAndPrint(source).Drawing;
+
+    /// <summary>What the program draws (on a 1 x 1 surface whose text is 1/24 of it high, a
+    /// monospace character 0.6 of that wide) and what it prints.</summary>
+    private static (string Drawing, string Printed) DrawAndPrint(string source)
     {
         var file = new SourceFile("gfx.bas", source);
         var diags = new DiagnosticBag();
@@ -25,8 +29,90 @@ public class GraphicsTests
         Assert.False(diags.HasErrors, string.Join("\n", diags.All.Select(d => d.Render(false))));
 
         var recorder = new RecordingGraphicsDevice();
-        new BasicVm(BasicCompiler.Compile(program, info), new StringWriter(), TextReader.Null, recorder).Run();
-        return recorder.Transcript;
+        var printed = new StringWriter();
+        new BasicVm(BasicCompiler.Compile(program, info), printed, TextReader.Null, recorder).Run();
+        return (recorder.Transcript, printed.ToString());
+    }
+
+    // -- Text attributes, TEXTWIDTH, rounded corners, opacity ---------------------
+
+    [Fact]
+    public void TextHeightAndFontAreTheDevices()
+    {
+        var (drawing, printed) = DrawAndPrint("""
+            SET WINDOW 0, 10, 0, 20
+            ASK TEXT HEIGHT H
+            PRINT H
+            SET TEXT HEIGHT 2
+            SET TEXT FONT "sans bold"
+            GRAPH TEXT, AT 1, 1: "big"
+            ASK TEXT HEIGHT H
+            ASK TEXT FONT F$
+            PRINT H; F$
+            SET TEXT HEIGHT 0
+            SET TEXT FONT "MONO"
+            GRAPH TEXT, AT 1, 1: "usual"
+            """);
+        Assert.Equal(" 0.83333333 \n 2 SANS BOLD\n", printed);   // the usual 1/24 of the surface: 20/24 units
+        Assert.Contains("TEXT STYLE 0.1000 SANS BOLD\nTEXT 0.1000,0.0500 \"big\"", drawing);   // 2 of 20 units: 0.1 of the surface
+        Assert.Contains("TEXT STYLE 0.0000 MONO\nTEXT 0.1000,0.0500 \"usual\"", drawing);
+    }
+
+    [Fact]
+    public void JustifyPutsThePointWhereItSaysOnTheText()
+    {
+        // "abcd" at height 1 of 10 is 4 x 0.6 x 0.1 = 0.24 of the surface across.
+        var (drawing, printed) = DrawAndPrint("""
+            SET WINDOW 0, 10, 0, 10
+            SET TEXT HEIGHT 1
+            PRINT TEXTWIDTH("abcd")
+            SET TEXT JUSTIFY "center", "half"
+            GRAPH TEXT, AT 5, 5: "abcd"
+            SET TEXT JUSTIFY "RIGHT", "TOP"
+            GRAPH TEXT, AT 5, 5: "abcd"
+            SET TEXT JUSTIFY "MIDDLE", "BOTTOM"
+            GRAPH TEXT, AT 5, 5: "abcd"
+            ASK TEXT JUSTIFY H$, V$
+            PRINT H$; " "; V$
+            """);
+        Assert.Equal(" 2.4 \nRIGHT BOTTOM\n", printed);   // (MIDDLE isn't one: RIGHT stays)
+        Assert.Contains("TEXT 0.3800,0.4650 \"abcd\"", drawing);   // half the width left, the middle of a capital down
+        Assert.Contains("TEXT 0.2600,0.4200 \"abcd\"", drawing);   // all of it left, 0.8 of the height down
+        Assert.Contains("TEXT 0.2600,0.5200 \"abcd\"", drawing);   // and 0.2 up
+    }
+
+    [Fact]
+    public void RoundCornersAreArcs()
+    {
+        var drawing = Draw("""
+            SET WINDOW 0, 10, 0, 10
+            GRAPH AREA, ROUND 1: 0, 0; 10, 0; 10, 10; 0, 10
+            GRAPH LINES, ROUND 100: 0, 0; 10, 0; 10, 10
+            """);
+        var lines = drawing.Split('\n');
+        var area = lines.Single(l => l.StartsWith("AREA ")).Split(' ').Skip(1).ToList();
+        Assert.Equal(4 * 11, area.Count);                        // a quarter circle of 10 steps at each corner
+        Assert.Equal("0.0000,0.1000", area[0]);                  // the first corner's arc starts up its left edge
+        Assert.Equal("0.1000,0.0000", area[10]);                 // and ends along its bottom one
+        Assert.DoesNotContain("0.0000,0.0000", area);            // no corner is left square
+        var line = lines.Single(l => l.StartsWith("LINES ")).Split(' ').Skip(1).ToList();
+        Assert.Equal(["0.0000,0.0000", "0.5000,0.0000"], line.Take(2));   // a radius too big for the edges is half of them
+        Assert.Equal("1.0000,1.0000", line[^1]);                 // the ends stay where they are
+    }
+
+    [Fact]
+    public void AColourCanBeSeeThrough()
+    {
+        var (drawing, printed) = DrawAndPrint("""
+            SET COLOR MIX (9) 0, 0, 0, 0.25
+            SET COLOR MIX (10) 1, 0, 0
+            ASK COLOR MIX (9) R, G, B, A
+            ASK COLOR MIX (10) R, G, B, A2
+            PRINT A; A2
+            """);
+        Assert.Equal(" 0.25  1 \n", printed);
+        Assert.Contains("COLOR MIX 9 0.0000 0.0000 0.0000 OPACITY 0.2500\n", drawing);
+        Assert.Contains("COLOR MIX 10 1.0000 0.0000 0.0000\n", drawing);
     }
 
     [Fact]

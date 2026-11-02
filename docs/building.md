@@ -144,9 +144,10 @@ binary, producing one self-contained executable (see
 ```
 
 > **Graphics programs run standalone too.** A §13 graphics program (e.g.
-> `examples/kanban.bas`) renders in the terminal when run via `arcade-basic
-> run`/`vm` or as a standalone binary — the CLI draws with a Braille + ANSI
-> backend.
+> `examples/kanban.bas`) renders in the terminal when run as a standalone binary,
+> or via `arcade-basic run`/`vm` without the desktop player next to it (or with
+> `--terminal`) — the CLI draws with a Braille + ANSI backend. With the player,
+> `run` opens it in a window instead (see below).
 > It activates only on an interactive terminal; piped/redirected output falls
 > back to no rendering (use `--svg <file>` for headless output). Needs a
 > terminal with Braille-glyph and ANSI/VT support (Windows Terminal, modern
@@ -168,7 +169,10 @@ desktop/player/build.sh                          # → desktop/player/target/rel
 open maze3d.app
 ```
 
-Copy `arcade-player` next to `arcade-basic` and `--player` isn't needed. On Linux the
+Copy `arcade-player` next to `arcade-basic` and `--player` isn't needed — and then
+`arcade-basic run` opens a program that draws in the player's window too, rather than
+drawing in the terminal: its files are the ones in the folder you ran it from, and what
+it prints, and an error it stops with, come back to the terminal. On Linux the
 player also needs WebKitGTK (`libwebkit2gtk-4.1`), as every Tauri app does; Windows
 10 and 11 have the web view it uses (WebView2) built in.
 

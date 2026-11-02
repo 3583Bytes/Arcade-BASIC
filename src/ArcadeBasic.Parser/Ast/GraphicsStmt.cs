@@ -18,6 +18,10 @@ public sealed record class SetStyleStmt(SourceSpan Span, GfxStyleKind Prim, Expr
 /// <summary>SET POINT|LINE|TEXT|AREA COLOR n.</summary>
 public sealed record class SetColorStmt(SourceSpan Span, GfxColorKind Target, Expr Index) : Stmt(Span);
 
+/// <summary>SET TEXT HEIGHT h | SET TEXT JUSTIFY horizontal$, vertical$ | SET TEXT FONT
+/// font$ (the last an Arcade BASIC extension): how GRAPH TEXT looks from now on.</summary>
+public sealed record class SetTextStmt(SourceSpan Span, GfxTextAttribute Attribute, IReadOnlyList<Expr> Values) : Stmt(Span);
+
 /// <summary>ASK &lt;object&gt; targets [STATUS var].</summary>
 public sealed record class AskGfxStmt(
     SourceSpan Span, GfxAskObject Object, IReadOnlyList<Expr> Targets, Expr? Status) : Stmt(Span);
@@ -25,8 +29,9 @@ public sealed record class AskGfxStmt(
 /// <summary>CLEAR — clear the graphic display.</summary>
 public sealed record class ClearStmt(SourceSpan Span) : Stmt(Span);
 
-/// <summary>GRAPH POINTS|LINES|AREA : x,y; x,y; …</summary>
-public sealed record class GraphStmt(SourceSpan Span, GfxGeometry Kind, IReadOnlyList<GfxCoord> Points) : Stmt(Span);
+/// <summary>GRAPH POINTS|LINES|AREA [, ROUND r] : x,y; x,y; … — ROUND, an Arcade BASIC
+/// extension, rounds the corners of LINES and AREA.</summary>
+public sealed record class GraphStmt(SourceSpan Span, GfxGeometry Kind, IReadOnlyList<GfxCoord> Points, Expr? Round = null) : Stmt(Span);
 
 /// <summary>GRAPH TEXT, AT x,y (: str$ | , USING image : items).</summary>
 public sealed record class GraphTextStmt(
@@ -37,12 +42,13 @@ public sealed record class GraphTextStmt(
 public sealed record class MatGraphCellsStmt(
     SourceSpan Span, Expr X1, Expr Y1, Expr X2, Expr Y2, string ArrayName) : Stmt(Span);
 
-/// <summary>SET COLOR MIX (index) red, green, blue.</summary>
-public sealed record class SetColorMixStmt(SourceSpan Span, Expr Index, Expr Red, Expr Green, Expr Blue) : Stmt(Span);
+/// <summary>SET COLOR MIX (index) red, green, blue [, opacity] — the opacity an Arcade
+/// BASIC extension.</summary>
+public sealed record class SetColorMixStmt(SourceSpan Span, Expr Index, Expr Red, Expr Green, Expr Blue, Expr? Opacity = null) : Stmt(Span);
 
-/// <summary>ASK COLOR MIX (index) red, green, blue [STATUS var].</summary>
+/// <summary>ASK COLOR MIX (index) red, green, blue [, opacity] [STATUS var].</summary>
 public sealed record class AskColorMixStmt(
-    SourceSpan Span, Expr Index, Expr Red, Expr Green, Expr Blue, Expr? Status) : Stmt(Span);
+    SourceSpan Span, Expr Index, Expr Red, Expr Green, Expr Blue, Expr? Status, Expr? Opacity = null) : Stmt(Span);
 
 /// <summary>A coordinate pair in a GRAPH point-list.</summary>
 public sealed record class GfxCoord(Expr X, Expr Y);
@@ -51,6 +57,7 @@ public enum GfxRectKind { Window, Viewport, DeviceWindow, DeviceViewport }
 public enum GfxStyleKind { Point, Line }
 public enum GfxColorKind { Point, Line, Text, Area }
 public enum GfxGeometry { Points, Lines, Area }
+public enum GfxTextAttribute { Height, Justify, Font }
 
 /// <summary>What an ASK statement queries. Ordinals must stay in lock-step with
 /// <c>ArcadeBasic.Runtime.GfxQuery</c> — the interpreter and compiler cast
@@ -60,4 +67,5 @@ public enum GfxAskObject
     Window, Viewport, DeviceWindow, DeviceViewport, DeviceSize, Clip,
     PointStyle, LineStyle, MaxPointStyle, MaxLineStyle,
     PointColor, LineColor, TextColor, AreaColor, MaxColor,
+    TextHeight, TextJustify, TextFont,
 }

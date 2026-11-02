@@ -25,5 +25,5 @@ public sealed class NullGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
     public void DrawText(GfxPoint at, string text) { }
     public void Flush() { }
     public void DrawCells(GfxRect rect, int columns, int rows, int[] colors, GfxRect visible) { }
-    public void SetColorMix(int index, double red, double green, double blue) { }
+    public void SetColorMix(int index, double red, double green, double blue, double opacity) { }
 }

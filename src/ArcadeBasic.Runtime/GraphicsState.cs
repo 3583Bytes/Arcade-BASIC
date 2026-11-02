@@ -42,6 +42,14 @@ public sealed class GraphicsState
     public int PointStyle = 3;  // 1 dot, 2 plus, 3 asterisk
     public int PointColor = 1, LineColor = 1, TextColor = 1, AreaColor = 1;
 
+    // Text attributes (§13.2.4): the height in problem coordinates (null: the device's
+    // usual size), and where the point given to GRAPH TEXT is on the text. The font is an
+    // Arcade BASIC extension.
+    public double? TextHeight;
+    public string JustifyHorizontal = "LEFT", JustifyVertical = "BASE";
+    public bool TextSans, TextBold;
+    private GfxTextStyle _sentStyle = GfxTextStyle.Usual;   // what the device was last told
+
     /// <summary>Convert an evaluated numeric value to a drawing coordinate.</summary>
     public static double ToCoord(NumericValue v) => v.D;
 
@@ -80,6 +88,9 @@ public sealed class GraphicsState
         GfxQuery.MaxColor => Num(dev.MaxColor, native),
         GfxQuery.MaxPointStyle => Num(dev.MaxPointStyle, native),
         GfxQuery.MaxLineStyle => Num(dev.MaxLineStyle, native),
+        GfxQuery.TextHeight => Num(TextHeight ?? UsualTextHeight(dev) / YScale, native),
+        GfxQuery.TextJustify => new StringValue(index == 0 ? JustifyHorizontal : JustifyVertical),
+        GfxQuery.TextFont => new StringValue((TextSans ? "SANS" : "MONO") + (TextBold ? " BOLD" : "")),
         _ => Num(0, native),
     };
 
@@ -123,6 +134,54 @@ public sealed class GraphicsState
 
     private static bool InUnit(double v) => v is >= 0 and <= 1;
 
+    // -- Text attributes -------------------------------------------------
+
+    /// <summary>SET TEXT HEIGHT: a height of zero or less is the device's usual size.</summary>
+    public void SetTextHeight(double height) => TextHeight = height > 0 && double.IsFinite(height) ? height : null;
+
+    /// <summary>SET TEXT JUSTIFY: LEFT, CENTER or RIGHT, and TOP, CAP, HALF, BASE or BOTTOM. A
+    /// value that's none of these leaves its justification as it was (11070, nonfatal).</summary>
+    public void SetTextJustify(string horizontal, string vertical)
+    {
+        horizontal = horizontal.Trim().ToUpperInvariant();
+        vertical = vertical.Trim().ToUpperInvariant();
+        if (horizontal is "LEFT" or "CENTER" or "RIGHT") JustifyHorizontal = horizontal;
+        if (vertical is "TOP" or "CAP" or "HALF" or "BASE" or "BOTTOM") JustifyVertical = vertical;
+    }
+
+    /// <summary>SET TEXT FONT: MONO or SANS, either BOLD ("SANS BOLD"); a font that doesn't
+    /// say is MONO, and words it doesn't know are ignored.</summary>
+    public void SetTextFont(string font)
+    {
+        var words = font.ToUpperInvariant().Split([' ', ',', '-'], StringSplitOptions.RemoveEmptyEntries);
+        TextSans = words.Contains("SANS");
+        TextBold = words.Contains("BOLD");
+    }
+
+    /// <summary>The text attributes as the device takes them.</summary>
+    private GfxTextStyle Style() => new(TextHeight is { } h ? h * YScale : 0, TextSans, TextBold);
+
+    private static double UsualTextHeight(IGraphicsDevice dev) => dev is ITextDevice text ? text.UsualTextHeight : 1.0 / 24;
+
+    /// <summary>How wide <paramref name="text"/> is as a fraction of the surface's width.</summary>
+    private static double SurfaceTextWidth(string text, GfxTextStyle style, IGraphicsDevice dev)
+    {
+        if (dev is ITextDevice measured) return measured.TextWidth(text, style);
+        var size = dev.DeviceSize;
+        var height = style.Height > 0 ? style.Height : UsualTextHeight(dev);
+        return GfxTextMetrics.Ems(text, style.Sans, style.Bold) * height * (size.Width > 0 && size.Height > 0 ? size.Height / size.Width : 1);
+    }
+
+    /// <summary>TEXTWIDTH(text$): how wide GRAPH TEXT would draw it now, in problem coordinates.</summary>
+    public double TextWidth(string text, IGraphicsDevice dev) => SurfaceTextWidth(text, Style(), dev) / XScale;
+
+    /// <summary>How far problem coordinates stretch on the surface: a unit across, and a unit
+    /// up, as a fraction of the surface's width and height.</summary>
+    private double XScale => Math.Abs((Viewport.Right - Viewport.Left) / (Window.Right - Window.Left)
+        * (DeviceViewport.Right - DeviceViewport.Left) / (DeviceWindow.Right - DeviceWindow.Left));
+    private double YScale => Math.Abs((Viewport.Top - Viewport.Bottom) / (Window.Top - Window.Bottom)
+        * (DeviceViewport.Top - DeviceViewport.Bottom) / (DeviceWindow.Top - DeviceWindow.Bottom));
+
     // -- Emit: problem coords → clipped normalized-surface primitives ----
 
     public void EmitPoints(IReadOnlyList<GfxPoint> problem, IGraphicsDevice dev)
@@ -137,11 +196,15 @@ public sealed class GraphicsState
         if (outPts.Count > 0) dev.DrawPoints(outPts);
     }
 
-    public void EmitLines(IReadOnlyList<GfxPoint> problem, IGraphicsDevice dev)
+    /// <summary>GRAPH LINES, with each corner rounded to <paramref name="radius"/> (problem
+    /// coordinates, measured up) when it's more than zero — a corner of a shape that ends where
+    /// it starts too.</summary>
+    public void EmitLines(IReadOnlyList<GfxPoint> problem, IGraphicsDevice dev, double radius = 0)
     {
         var clip = EffectiveClipRect();
         var ndc = new GfxPoint[problem.Count];
         for (var i = 0; i < problem.Count; i++) ndc[i] = ToNdc(problem[i]);
+        if (radius > 0) ndc = Rounded(ndc, radius, closed: ndc.Length > 3 && Near(ndc[0], ndc[^1]), dev);
 
         // Clip each segment; emit maximal connected runs that survive.
         var run = new List<GfxPoint>();
@@ -163,11 +226,14 @@ public sealed class GraphicsState
         if (run.Count >= 2) dev.DrawLines(run);
     }
 
-    public void EmitArea(IReadOnlyList<GfxPoint> problem, IGraphicsDevice dev)
+    /// <summary>GRAPH AREA, with its corners rounded to <paramref name="radius"/> when it's
+    /// more than zero.</summary>
+    public void EmitArea(IReadOnlyList<GfxPoint> problem, IGraphicsDevice dev, double radius = 0)
     {
         var clip = EffectiveClipRect();
         var poly = new List<GfxPoint>(problem.Count);
         foreach (var p in problem) poly.Add(ToNdc(p));
+        if (radius > 0) poly = [.. Rounded([.. poly], radius, closed: true, dev)];
         var clipped = ClipPolygon(poly, clip);
         if (clipped.Count >= 3)
         {
@@ -176,8 +242,82 @@ public sealed class GraphicsState
         }
     }
 
-    public void EmitText(GfxPoint problemAt, string text, IGraphicsDevice dev) =>
-        dev.DrawText(ToSurface(ToNdc(problemAt)), text);
+    /// <summary>GRAPH TEXT: in the current height and font, placed so that the point is where
+    /// TEXT JUSTIFY says on it.</summary>
+    public void EmitText(GfxPoint problemAt, string text, IGraphicsDevice dev)
+    {
+        var style = Style();
+        if (dev is ITextDevice textDevice && style != _sentStyle) textDevice.SetTextStyle(_sentStyle = style);
+        var at = ToSurface(ToNdc(problemAt));
+        var across = JustifyHorizontal switch { "CENTER" => 0.5, "RIGHT" => 1.0, _ => 0.0 };
+        if (across > 0) at = at with { X = at.X - across * SurfaceTextWidth(text, style, dev) };
+        // The device draws from the baseline; the font's size spans 0.2 below it to 0.8 above,
+        // and a capital is 0.7 high.
+        var up = JustifyVertical switch { "TOP" => 0.8, "CAP" => 0.7, "HALF" => 0.35, "BOTTOM" => -0.2, _ => 0.0 };
+        if (up != 0) at = at with { Y = at.Y - up * (style.Height > 0 ? style.Height : UsualTextHeight(dev)) };
+        dev.DrawText(at, text);
+    }
+
+    // -- Rounded corners -------------------------------------------------
+
+    /// <summary>The points (NDC) with each corner — the first and last too, when
+    /// <paramref name="closed"/> — replaced by an arc of <paramref name="radius"/> (problem
+    /// coordinates, measured up), round on the device whatever the window's proportions, and
+    /// smaller where two corners would meet.</summary>
+    private GfxPoint[] Rounded(GfxPoint[] ndc, double radius, bool closed, IGraphicsDevice dev)
+    {
+        // Work in the device's own units, where a circle is round.
+        var size = dev.DeviceSize;
+        var kx = Math.Abs((DeviceViewport.Right - DeviceViewport.Left) / (DeviceWindow.Right - DeviceWindow.Left)) * Math.Max(size.Width, 1e-9);
+        var ky = Math.Abs((DeviceViewport.Top - DeviceViewport.Bottom) / (DeviceWindow.Top - DeviceWindow.Bottom)) * Math.Max(size.Height, 1e-9);
+        var r = radius * Math.Abs((Viewport.Top - Viewport.Bottom) / (Window.Top - Window.Bottom)) * ky;
+        var pts = new List<(double X, double Y)>(ndc.Length);
+        foreach (var p in ndc)
+        {
+            var q = (p.X * kx, p.Y * ky);
+            if (pts.Count == 0 || Math.Abs(pts[^1].X - q.Item1) > 1e-9 || Math.Abs(pts[^1].Y - q.Item2) > 1e-9) pts.Add(q);
+        }
+        if (closed && pts.Count > 1 && Math.Abs(pts[0].X - pts[^1].X) < 1e-9 && Math.Abs(pts[0].Y - pts[^1].Y) < 1e-9) pts.RemoveAt(pts.Count - 1);
+        var n = pts.Count;
+        if (n < 3 || !(r > 0)) return ndc;
+
+        const int StepsPerQuarter = 10;
+        var output = new List<GfxPoint>(n * (StepsPerQuarter + 2));
+        void Add(double x, double y) => output.Add(new GfxPoint(x / kx, y / ky));
+        for (var i = 0; i < n; i++)
+        {
+            var v = pts[i];
+            if (!closed && (i == 0 || i == n - 1)) { Add(v.X, v.Y); continue; }
+            var a = pts[(i - 1 + n) % n];
+            var b = pts[(i + 1) % n];
+            double ax = a.X - v.X, ay = a.Y - v.Y, bx = b.X - v.X, by = b.Y - v.Y;
+            double la = Math.Sqrt(ax * ax + ay * ay), lb = Math.Sqrt(bx * bx + by * by);
+            ax /= la; ay /= la; bx /= lb; by /= lb;
+            var angle = Math.Acos(Math.Clamp(ax * bx + ay * by, -1, 1));   // between the two edges
+            if (angle < 1e-3 || angle > Math.PI - 1e-3) { Add(v.X, v.Y); continue; }
+            var t = Math.Tan(angle / 2);
+            var d = Math.Min(r / t, Math.Min(la, lb) / 2);    // from the corner to where the arc meets each edge
+            var rr = d * t;
+            double sx = ax + bx, sy = ay + by, sl = Math.Sqrt(sx * sx + sy * sy);
+            var h = rr / Math.Sin(angle / 2);
+            double cx = v.X + sx / sl * h, cy = v.Y + sy / sl * h;   // the arc's centre
+            double x1 = v.X + ax * d, y1 = v.Y + ay * d, x2 = v.X + bx * d, y2 = v.Y + by * d;   // on the edges
+            var from = Math.Atan2(y1 - cy, x1 - cx);
+            var sweep = Math.Atan2(y2 - cy, x2 - cx) - from;
+            while (sweep > Math.PI) sweep -= 2 * Math.PI;
+            while (sweep < -Math.PI) sweep += 2 * Math.PI;
+            var steps = Math.Max(1, (int)Math.Ceiling(Math.Abs(sweep) / (Math.PI / 2) * StepsPerQuarter - 1e-6));
+            Add(x1, y1);
+            for (var s = 1; s < steps; s++)
+            {
+                var angleAt = from + sweep * s / steps;
+                Add(cx + rr * Math.Cos(angleAt), cy + rr * Math.Sin(angleAt));
+            }
+            Add(x2, y2);
+        }
+        if (closed && output.Count > 0 && ndc.Length > 0 && Near(ndc[0], ndc[^1])) output.Add(output[0]);   // (LINES: back to the start)
+        return [.. output];
+    }
 
     /// <summary>
     /// MAT GRAPH CELLS (ANSI X3.113 §13.3.4.4): fill the rectangle with corners
@@ -265,40 +405,47 @@ public sealed class GraphicsState
 
     // -- COLOR MIX -------------------------------------------------------
 
-    private double[]? _mix;   // red, green, blue per colour index, once SET COLOR MIX is used
+    private double[]? _mix;   // red, green, blue and opacity per colour index, once SET COLOR MIX is used
 
-    /// <summary>SET COLOR MIX (index) red, green, blue. An index outside 0 to MAX COLOR is
-    /// exception 11085 and an intensity outside 0–1 is 11088 — both nonfatal: the mix is
-    /// left as it was, and an intensity is taken to the nearest end of the range.</summary>
-    public void SetColorMix(int index, double red, double green, double blue, IGraphicsDevice dev)
+    /// <summary>SET COLOR MIX (index) red, green, blue [, opacity]. An index outside 0 to MAX
+    /// COLOR is exception 11085 and an intensity outside 0–1 is 11088 — both nonfatal: the
+    /// mix is left as it was, and an intensity is taken to the nearest end of the range. The
+    /// opacity (an Arcade BASIC extension) is 1, solid, unless it's given.</summary>
+    public void SetColorMix(int index, double red, double green, double blue, IGraphicsDevice dev, double opacity = 1)
     {
         if (index < 0 || index > dev.MaxColor || index >= GfxPalette.Count) return;
         red = Intensity(red);
         green = Intensity(green);
         blue = Intensity(blue);
+        opacity = Intensity(opacity);
         var mix = Mixes();
-        mix[3 * index] = red;
-        mix[3 * index + 1] = green;
-        mix[3 * index + 2] = blue;
-        if (dev is IColorMixDevice mixDevice) mixDevice.SetColorMix(index, red, green, blue);
+        mix[4 * index] = red;
+        mix[4 * index + 1] = green;
+        mix[4 * index + 2] = blue;
+        mix[4 * index + 3] = opacity;
+        if (dev is IColorMixDevice mixDevice) mixDevice.SetColorMix(index, red, green, blue, opacity);
     }
 
     /// <summary>What ASK COLOR MIX (index) reads: component 0–2 is red, green or blue (the
     /// last SET COLOR MIX for it, else its starting colour); 3 is the STATUS — 11086 for
-    /// an index outside 0 to MAX COLOR, whose intensities read as zero.</summary>
+    /// an index outside 0 to MAX COLOR, whose intensities read as zero; 4 is the opacity.</summary>
     public Value QueryColorMix(int index, int component, IGraphicsDevice dev, bool native)
     {
         var valid = index >= 0 && index <= dev.MaxColor && index < GfxPalette.Count;
         if (component == 3) return Num(valid ? 0 : 11086, native);
-        return Num(valid ? Mixes()[3 * index + component] : 0, native);
+        var mix = Mixes();
+        return Num(!valid ? 0 : component == 4 ? mix[4 * index + 3] : mix[4 * index + component], native);
     }
 
     private double[] Mixes()
     {
         if (_mix is not null) return _mix;
-        _mix = new double[3 * GfxPalette.Count];
+        _mix = new double[4 * GfxPalette.Count];
         for (var i = 0; i < GfxPalette.Count; i++)
-            (_mix[3 * i], _mix[3 * i + 1], _mix[3 * i + 2]) = GfxPalette.DefaultMix(i);
+        {
+            (_mix[4 * i], _mix[4 * i + 1], _mix[4 * i + 2]) = GfxPalette.DefaultMix(i);
+            _mix[4 * i + 3] = 1;
+        }
         return _mix;
     }
 

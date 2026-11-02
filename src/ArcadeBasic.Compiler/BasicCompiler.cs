@@ -380,7 +380,19 @@ public sealed class BasicCompiler
             case MatInputStmt mi: CompileMatInput(mi); break;
             case MatReadStmt mrd: CompileMatRead(mrd); break;
             case ReadStmt rd: CompileRead(rd); break;
-            case RestoreStmt rs: _current.Emit(Opcode.Restore); _current.EmitU32(DataPoolOf(rs)); break;
+            case RestoreStmt rs:
+                if (rs.LabelTarget is NumberExpr target && int.TryParse(target.Text, out var line) && _info.RestorePoints.TryGetValue(line, out var point))
+                {
+                    _current.Emit(Opcode.RestoreAt);   // RESTORE line: that line's DATA on
+                    _current.EmitU32(DataPoolOf(rs));
+                    _current.EmitU32((uint)point.Item);
+                }
+                else
+                {
+                    _current.Emit(Opcode.Restore);
+                    _current.EmitU32(DataPoolOf(rs));
+                }
+                break;
             case ModuleVarsStmt vars:
                 // The module's SHARE / PUBLIC arrays are dimensioned as it starts up.
                 CompileDim(new DimStmt(vars.Span, [.. vars.Items.Where(i => i.Bounds.Count > 0)]));
@@ -425,7 +437,17 @@ public sealed class BasicCompiler
                 CompileExpr(sm.Red);
                 CompileExpr(sm.Green);
                 CompileExpr(sm.Blue);
-                _current.Emit(Opcode.GfxSetColorMix);
+                if (sm.Opacity is null) _current.Emit(Opcode.GfxSetColorMix);
+                else
+                {
+                    CompileExpr(sm.Opacity);
+                    _current.Emit(Opcode.GfxSetColorMixOpacity);
+                }
+                break;
+            case SetTextStmt st:
+                foreach (var v in st.Values) CompileExpr(v);
+                _current.Emit(Opcode.GfxSetText);
+                _current.EmitU32((uint)(int)st.Attribute);
                 break;
             case AskColorMixStmt am: CompileAskColorMix(am); break;
             case DataStmt:
@@ -491,7 +513,7 @@ public sealed class BasicCompiler
                 // Push value first, then subscripts; StoreElement pops subs (reverse) then value.
                 CompileExpr(a.Value);
                 foreach (var arg in c.Args) CompileExpr(arg);
-                EmitStoreElement(ra.Symbol.OwnerScope!, ra.Symbol.Slot, c.Args.Count);
+                EmitStoreElement(ra.Symbol.OwnerScope!, ra.Slot, c.Args.Count);
                 break;
             default:
                 throw new UnsupportedFeatureException("invalid assignment target");
@@ -513,7 +535,8 @@ public sealed class BasicCompiler
     private void CompileGraph(GraphStmt g)
     {
         foreach (var c in g.Points) { CompileExpr(c.X); CompileExpr(c.Y); }
-        _current.Emit(Opcode.GfxDraw);
+        if (g.Round is not null) CompileExpr(g.Round);
+        _current.Emit(g.Round is null ? Opcode.GfxDraw : Opcode.GfxDrawRound);
         _current.EmitU32((uint)(int)g.Kind);
         _current.EmitU32((uint)g.Points.Count);
     }
@@ -554,11 +577,11 @@ public sealed class BasicCompiler
     private void CompileAskColorMix(AskColorMixStmt am)
     {
         // The index is evaluated once, into a temp; then each
-        // target gets its component — red, green, blue, then the status.
+        // target gets its component — red, green, blue, the status, then the opacity.
         var indexSlot = AllocTemp();
         CompileExpr(am.Index);
         _current.Emit(Opcode.StoreLocal); _current.EmitU32(indexSlot);
-        Expr?[] targets = [am.Red, am.Green, am.Blue, am.Status];
+        Expr?[] targets = [am.Red, am.Green, am.Blue, am.Status, am.Opacity];
         for (var component = 0; component < targets.Length; component++)
         {
             if (targets[component] is not { } target) continue;
@@ -604,7 +627,7 @@ public sealed class BasicCompiler
                 if (_info.Resolve(c) is not ResolvedArrayAccess ra)
                     throw new UnsupportedFeatureException($"ASK target '{c.Name}' is not an array element");
                 foreach (var arg in c.Args) CompileExpr(arg);
-                EmitStoreElement(ra.Symbol.OwnerScope!, ra.Symbol.Slot, c.Args.Count);
+                EmitStoreElement(ra.Symbol.OwnerScope!, ra.Slot, c.Args.Count);
                 break;
             default:
                 throw new UnsupportedFeatureException("invalid ASK target");
@@ -1098,7 +1121,7 @@ public sealed class BasicCompiler
                 {
                     if (_info.Resolve(c) is not ResolvedArrayAccess ra)
                         throw new UnsupportedFeatureException($"INPUT target '{c.Name}' is not an array reference");
-                    return (ScopeDepth(ra.Symbol.OwnerScope!), ra.Symbol.Slot, ra.Symbol.IsString, c.Args.Count, c.Args);
+                    return (ScopeDepth(ra.Symbol.OwnerScope!), ra.Slot, ra.Symbol.IsString, c.Args.Count, c.Args);
                 }
             default:
                 throw new UnsupportedFeatureException($"INPUT target kind {target.GetType().Name}");
@@ -1484,7 +1507,7 @@ public sealed class BasicCompiler
             case ResolvedBuiltinCall rb:
                 EmitBuiltinCall(rb.Symbol.Name, 0);
                 break;
-            case ResolvedWholeArray wa: EmitLoadSymbolSlot(wa.Symbol.OwnerScope!, wa.Symbol.Slot); break;   // (LBOUND(A))
+            case ResolvedWholeArray wa: EmitLoadSymbolSlot(wa.Symbol.OwnerScope!, wa.Slot); break;   // LBOUND(A), CALL S(A)
             default:
                 throw new UnsupportedFeatureException($"name ref {resolved.GetType().Name} not supported by VM");
         }
@@ -1517,7 +1540,10 @@ public sealed class BasicCompiler
                 break;
             case ResolvedArrayAccess ra:
                 foreach (var a in c.Args) CompileExpr(a);
-                EmitLoadElement(ra.Symbol.OwnerScope!, ra.Symbol.Slot, c.Args.Count);
+                EmitLoadElement(ra.Symbol.OwnerScope!, ra.Slot, c.Args.Count);
+                break;
+            case ResolvedWholeArray wa:   // CALL S(A()): the array itself
+                EmitLoadSymbolSlot(wa.Symbol.OwnerScope!, wa.Slot);
                 break;
             default:
                 throw new UnsupportedFeatureException($"call/index target {resolved.GetType().Name} not supported by VM");

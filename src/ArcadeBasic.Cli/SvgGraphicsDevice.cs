@@ -11,7 +11,7 @@ namespace ArcadeBasic.Cli;
 /// Y-flipped to SVG's top-left origin. This is the Phase-1 backend: vector
 /// output, deterministic, no UI.
 /// </summary>
-public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice
+public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColorMixDevice, ITextDevice
 {
     private const int Size = 1000;
     private readonly StringBuilder _body = new();
@@ -19,6 +19,8 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColo
 
     private int _lineStyle = 1, _pointStyle = 3;
     private int _pointColor = 1, _lineColor = 1, _textColor = 1, _areaColor = 1;
+    private GfxTextStyle _textStyle = GfxTextStyle.Usual;
+    private const int UsualFontSize = 24;
 
     public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
@@ -50,7 +52,7 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColo
 
     public void DrawPoints(IReadOnlyList<GfxPoint> points)
     {
-        var fill = Color(_pointColor);
+        var fill = Color(_pointColor) + Opacity("fill", _pointColor);
         foreach (var p in points)
         {
             var (x, y) = Map(p);
@@ -61,23 +63,31 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColo
 
     public void DrawLines(IReadOnlyList<GfxPoint> polyline)
     {
-        _body.Append("  <polyline fill=\"none\" stroke=\"").Append(Color(_lineColor))
+        _body.Append("  <polyline fill=\"none\" stroke=\"").Append(Color(_lineColor)).Append(Opacity("stroke", _lineColor))
              .Append("\" stroke-width=\"2\"").Append(Dash(_lineStyle))
              .Append(" points=\"").Append(Points(polyline)).Append("\" />\n");
     }
 
     public void FillArea(IReadOnlyList<GfxPoint> polygon)
     {
-        _body.Append("  <polygon fill=\"").Append(Color(_areaColor))
+        _body.Append("  <polygon fill=\"").Append(Color(_areaColor)).Append(Opacity("fill", _areaColor))
              .Append("\" points=\"").Append(Points(polygon)).Append("\" />\n");
     }
 
     public void DrawText(GfxPoint at, string text)
     {
         var (x, y) = Map(at);
+        var font = _textStyle == GfxTextStyle.Usual ? FormattableString.Invariant($"font-size=\"{UsualFontSize}\"")
+            : FormattableString.Invariant($"font-size=\"{FontSize(_textStyle):F2}\" font-family=\"{(_textStyle.Sans ? "Helvetica, Arial, sans-serif" : "monospace")}\"")
+              + (_textStyle.Bold ? " font-weight=\"bold\"" : "");
         _body.Append(FormattableString.Invariant(
-            $"  <text x=\"{x:F2}\" y=\"{y:F2}\" fill=\"{Color(_textColor)}\" font-size=\"24\">{Escape(text)}</text>\n"));
+            $"  <text x=\"{x:F2}\" y=\"{y:F2}\" fill=\"{Color(_textColor)}{Opacity("fill", _textColor)}\" {font}>{Escape(text)}</text>\n"));
     }
+
+    public double UsualTextHeight => (double)UsualFontSize / Size;
+    public void SetTextStyle(GfxTextStyle style) => _textStyle = style;
+    public double TextWidth(string text, GfxTextStyle style) => GfxTextMetrics.Ems(text, style.Sans, style.Bold) * FontSize(style) / Size;
+    private double FontSize(GfxTextStyle style) => (style.Height > 0 ? style.Height : UsualTextHeight) * Size;
 
     public void Flush() { }
 
@@ -102,14 +112,14 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColo
                 {
                     var (x, y) = Map(new GfxPoint(left, top));
                     _body.Append(FormattableString.Invariant(
-                        $"  <rect x=\"{x:F2}\" y=\"{y:F2}\" width=\"{(right - left) * Size:F2}\" height=\"{(top - bottom) * Size:F2}\" fill=\"{Color(color)}\" />\n"));
+                        $"  <rect x=\"{x:F2}\" y=\"{y:F2}\" width=\"{(right - left) * Size:F2}\" height=\"{(top - bottom) * Size:F2}\" fill=\"{Color(color)}{Opacity("fill", color)}\" />\n"));
                 }
                 c = end;
             }
         }
     }
 
-    public void SetColorMix(int index, double red, double green, double blue) => _palette.Set(index, red, green, blue);
+    public void SetColorMix(int index, double red, double green, double blue, double opacity) => _palette.Set(index, red, green, blue, opacity);
 
     public string ToSvg()
     {
@@ -141,6 +151,13 @@ public sealed class SvgGraphicsDevice : IGraphicsDevice, ICellArrayDevice, IColo
         (uint)index >= GfxPalette.Count ? Palette[1]   // out of range: the default colour
         : _palette.IsStandard(index) ? Palette[index]
         : "#" + (_palette.Argb(index) & 0xFFFFFF).ToString("x6", CultureInfo.InvariantCulture);
+
+    /// <summary>The rest of a colour attribute for a see-through colour: <c>" fill-opacity="0.5</c>
+    /// (the attribute's closing quote is the caller's).</summary>
+    private string Opacity(string attribute, int index) =>
+        (uint)index < GfxPalette.Count && _palette.Opacity(index) < 1
+            ? FormattableString.Invariant($"\" {attribute}-opacity=\"{_palette.Opacity(index):0.###}")
+            : "";
 
     private static string Dash(int style) => style switch
     {

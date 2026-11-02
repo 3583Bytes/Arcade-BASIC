@@ -48,9 +48,25 @@ public abstract record class ResolvedRef;
 
 public sealed record class ResolvedVariable(VariableSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedParam(ParamSymbol Symbol) : ResolvedRef;
-public sealed record class ResolvedArrayAccess(ArraySymbol Symbol) : ResolvedRef;
-/// <summary>An array itself, by its name with no subscripts: LBOUND(A)'s A.</summary>
-public sealed record class ResolvedWholeArray(ArraySymbol Symbol) : ResolvedRef;
+/// <summary>An element of an array: a DIMmed one (<see cref="ArraySymbol"/>) or a
+/// procedure's array parameter (<see cref="ParamSymbol"/>, which holds the caller's array).</summary>
+public sealed record class ResolvedArrayAccess(Symbol Symbol) : ResolvedRef
+{
+    public int Slot => SlotOf(Symbol);
+
+    internal static int SlotOf(Symbol symbol) => symbol switch
+    {
+        ArraySymbol a => a.Slot,
+        ParamSymbol { IsArray: true } p => p.Slot,
+        _ => throw new InvalidOperationException($"'{symbol.Name}' is not an array"),
+    };
+}
+/// <summary>An array itself, by its name with no subscripts: LBOUND(A)'s A, or an array
+/// passed to a SUB or FUNCTION. A DIMmed array or an array parameter, as above.</summary>
+public sealed record class ResolvedWholeArray(Symbol Symbol) : ResolvedRef
+{
+    public int Slot => ResolvedArrayAccess.SlotOf(Symbol);
+}
 public sealed record class ResolvedBuiltinCall(BuiltinSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedSubCall(SubSymbol Symbol) : ResolvedRef;
 public sealed record class ResolvedFunctionCall(FunctionSymbol Symbol) : ResolvedRef;

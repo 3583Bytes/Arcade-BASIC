@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.JavaScript;
 using ArcadeBasic.Runtime;
 
 namespace ArcadeBasic.Web;
@@ -15,7 +16,7 @@ namespace ArcadeBasic.Web;
 /// It's also the pointer for LOCATE POINT and GET MOUSE: the page reports pointer
 /// positions and primary-button presses/releases in the same unit square.
 /// </summary>
-internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArrayDevice, IColorMixDevice
+internal sealed partial class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArrayDevice, IColorMixDevice, ITextDevice
 {
     // Command encoding (main.js `drawFrame` must match):
     //   Color  target index
@@ -29,8 +30,9 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArr
     //          atlasX atlasY         (the cells' colours, row-major from the top-left, are a
     //                                 columns x rows block of FrameCells' atlas at that spot)
     //   Palette argb0 … argb255     (first in a frame, when the colours have changed)
+    //   TextStyle height font        (height a fraction of the screen's, 0 the usual size; font 1 sans + 2 bold)
     internal const double Color = 2, Lines = 3, Area = 4, Points = 5, Text = 6, LineStyle = 7, PointStyle = 8,
-        Cells = 9, Palette = 10;
+        Cells = 9, Palette = 10, TextStyle = 11;
 
     // Each frame's cell arrays are packed into one atlas — the page uploads it as a
     // single image and draws every array from it — in shelves up to this wide.
@@ -40,6 +42,7 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArr
     private readonly List<string> _texts = [];
     private readonly int[] _colors = [1, 1, 1, 1];   // per GfxColorTarget: point, line, text, area
     private int _lineStyle = 1, _pointStyle = 3;    // GraphicsState's defaults
+    private GfxTextStyle _textStyle = GfxTextStyle.Usual;
     private double[]? _presented;
     private string[] _presentedTexts = [];
     private bool _everFlushed;
@@ -80,6 +83,7 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArr
         Array.Fill(_colors, 1);
         _lineStyle = 1;
         _pointStyle = 3;
+        _textStyle = GfxTextStyle.Usual;
         _presented = null;
         _presentedTexts = [];
         _presentedCells = [];
@@ -175,6 +179,7 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArr
         // Colours and styles outlive CLEAR, so the new frame starts by restating them.
         for (var t = 0; t < _colors.Length; t++) _commands.AddRange([Color, t, _colors[t]]);
         _commands.AddRange([LineStyle, _lineStyle, PointStyle, _pointStyle]);
+        if (_textStyle != GfxTextStyle.Usual) _commands.AddRange([TextStyle, _textStyle.Height, Font(_textStyle)]);
         _changed = true;
     }
 
@@ -203,9 +208,9 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArr
         _changed = true;
     }
 
-    public void SetColorMix(int index, double red, double green, double blue)
+    public void SetColorMix(int index, double red, double green, double blue, double opacity)
     {
-        _palette.Set(index, red, green, blue);
+        _palette.Set(index, red, green, blue, opacity);
         _paletteChanged = true;
         _changed = true;
     }
@@ -266,6 +271,31 @@ internal sealed class CanvasGraphicsDevice : IGraphicsDevice, IPointer, ICellArr
         _texts.Add(text);
         _changed = true;
     }
+
+    // -- Text: the page draws it (screen.js), and measures it ---------------------------
+
+    /// <summary>The page's usual text: a monospace font sized so 80 columns (0.6 of an em
+    /// each) fit across the 5 x 3 screen.</summary>
+    public double UsualTextHeight => 5.0 / 3 / (80 * GfxTextMetrics.MonospaceEm);
+
+    public void SetTextStyle(GfxTextStyle style)
+    {
+        _textStyle = style;
+        _commands.AddRange([TextStyle, style.Height, Font(style)]);
+        _changed = true;
+    }
+
+    /// <summary>How wide the page draws <paramref name="text"/>: measured by the page, on its
+    /// canvas as it is now (screen.js caches the answers).</summary>
+    public double TextWidth(string text, GfxTextStyle style) => MeasureText(text, Font(style), style.Height);
+
+    private static int Font(GfxTextStyle style) => (style.Sans ? 1 : 0) + (style.Bold ? 2 : 0);
+
+    /// <summary>screen.js's measureText: how wide <paramref name="text"/> is drawn in
+    /// <paramref name="font"/> (as <see cref="TextStyle"/> has it) at <paramref name="height"/> (0
+    /// the usual size), as a fraction of the screen's width.</summary>
+    [JSImport("measureText", "screen")]
+    private static partial double MeasureText(string text, int font, double height);
 
     private void Shape(double op, IReadOnlyList<GfxPoint> points)
     {

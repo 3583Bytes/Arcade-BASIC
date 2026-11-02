@@ -703,6 +703,65 @@ public class LanguageTests
     }
 
     [Fact]
+    public void RestoreToALineReadsItsData()
+    {
+        const string src = """
+            DATA "first", 1
+            GOSUB 100
+            RESTORE
+            READ A$
+            PRINT A$
+            END
+            100 REM ---- the table ----
+            RESTORE 200
+            READ A$, B$
+            PRINT A$; " "; B$
+            RETURN
+            200 DATA "second", "x"
+            DATA "third"
+            """;
+        Run(src).Output.Should().Be("second x\nfirst\n");
+    }
+
+    [Fact]
+    public void ArraysPassToSubsAndFunctions()
+    {
+        // The SUB gets the caller's array, so what it changes the caller sees; B(,) is a
+        // two-dimensional one, and an array parameter can be passed on.
+        const string src = """
+            DIM A(3), G(2, 3), W$(2)
+            SUB FILL(B(), V)
+              FOR I = LBOUND(B) TO UBOUND(B)
+                LET B(I) = V * I
+              NEXT I
+            END SUB
+            SUB GRID(M(,))
+              LET M(2, 3) = 23
+            END SUB
+            SUB PASSON(M(,))
+              CALL GRID(M)
+            END SUB
+            SUB NAMES(N$())
+              READ N$(1)
+              LET N$(2) = N$(1) & "!"
+            END SUB
+            FUNCTION TOTAL(B())
+              LET T = 0
+              FOR I = LBOUND(B) TO UBOUND(B)
+                LET T = T + B(I)
+              NEXT I
+              TOTAL = T
+            END FUNCTION
+            DATA hi
+            CALL FILL(A, 10)
+            CALL PASSON(G())
+            CALL NAMES(W$)
+            PRINT A(3); G(2, 3); W$(2); TOTAL(A)
+            """;
+        Run(src).Output.Should().Be(" 30  23 hi! 60 \n");
+    }
+
+    [Fact]
     public void ArrayReadWrite()
     {
         const string src = """

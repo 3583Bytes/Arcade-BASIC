@@ -2,7 +2,9 @@
 // no IDE. It runs programs the way the IDE does, with the same .NET side
 // (Playground.Run.cs) and the same screen, sound and stepping (screen.js, audio.js,
 // runner.js). In the desktop player (desktop/player) the page can ask to close the
-// window (`quit`); in a browser it just says the program has ended.
+// window (`quit`); in a browser it just says the program has ended. When `arcade-basic
+// run` opens a program in the desktop player (?folder), its files are the ones in the
+// folder it was run from, and what it prints and how it ended go to the terminal too.
 
 import { dotnet } from './_framework/dotnet.js';
 import { createScreen, connectInput } from './screen.js';
@@ -19,6 +21,7 @@ const store = {
 };
 const query = new URLSearchParams(location.search);
 const report = query.get('report');   // (tests: where to post what happened)
+const fromTerminal = query.has('folder');
 
 const audio = createAudio();
 audio.muted = !!report;     // (tests run silent)
@@ -61,6 +64,36 @@ inputRow.addEventListener('submit', e => {
   canvas.focus();
 });
 
+/** A run's files, from the folder it was run from and saved back to it as the program
+ *  writes them, as files.js keeps them in the browser. */
+function folderFiles() {
+  let P = null, lastSync = 0;
+  return {
+    async attach(playground) {
+      P = playground;
+      const saved = await fetch('folder').then(r => r.json());
+      const names = Object.keys(saved);
+      P.PutFiles(names, names.map(n => saved[n]));
+    },
+    sync(now = false) {
+      if (!P || (!now && performance.now() - lastSync < 500)) return;
+      lastSync = performance.now();
+      const changed = P.ChangedFiles();
+      for (let i = 0; i < changed.length; i += 2) {
+        const name = changed[i].split('/').map(encodeURIComponent).join('/');
+        toTerminal(`folder/${name}`, changed[i + 1]);
+      }
+    },
+  };
+}
+
+/** Post `text` to the desktop player (`print`, `ended`, a file), after what went before. */
+let posted = Promise.resolve();
+function toTerminal(path, text) {
+  posted = posted.then(() => fetch(path, { method: 'POST', body: text })).catch(() => {});
+  return posted;
+}
+
 function tick() {
   const r = run;
   r.ticks++;
@@ -80,7 +113,9 @@ function tick() {
     }
   }
   audio.play(P.TakeTones());                              // background music (MB)
-  appendOutput(P.TakeOutput());
+  const printed = P.TakeOutput();
+  appendOutput(printed);
+  if (fromTerminal && printed) toTerminal('print', printed);
   files.sync();
   const frame = P.TakeFrame();
   if (frame.length && screen.draw(frame, P.FrameText(), P.FrameCells())) {
@@ -92,9 +127,10 @@ function tick() {
 }
 
 /** The program has ended: say so, and close the window on the next key or click. */
-function finish(error) {
+async function finish(error) {
   if (error) appendOutput('\n' + error + '\n', 'error');
   files.sync(true);
+  if (fromTerminal) await toTerminal('ended', error ?? '');
   run = null;
   inputRow.style.display = 'none';
   sendReport({ ended: true, error });
@@ -119,7 +155,8 @@ function sendReport(extra = {}) {
 }
 
 try {
-  const { getAssemblyExports, getConfig, runMain } = await dotnet.create();
+  const { getAssemblyExports, getConfig, runMain, setModuleImports } = await dotnet.create();
+  setModuleImports('screen', { measureText: (text, font, height) => screen.measureText(text, font, height) });   // (TEXTWIDTH)
   P = (await getAssemblyExports(getConfig().mainAssemblyName)).Playground;
   await runMain();
   const response = await fetch('game.bin');
@@ -136,8 +173,8 @@ try {
 // else the program's file's.
 const title = query.get('title') || (document.title !== 'Arcade BASIC' ? document.title : P.Title()) || 'Arcade BASIC';
 document.title = title;
-files = createFiles({ store, key: `arcade-basic.files.${title}` });
-files.attach(P);
+files = fromTerminal ? folderFiles() : createFiles({ store, key: `arcade-basic.files.${title}` });
+await files.attach(P);
 say('');
 audio.reset();
 audio.unlock();             // (a desktop window may allow sound straight away; a browser waits for a key or click)

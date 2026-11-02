@@ -25,6 +25,21 @@ the last one. Releases before 2.0.0 are on the
   has it as its tab's icon too.
 - `arcade-basic build --desktop` on a Mac signs the Mac app ad hoc, so it opens on other
   Macs (after Open Anyway) rather than being called damaged.
+- **`arcade-basic run` opens a program that draws in a window**, the desktop player's,
+  when the player is next to `arcade-basic` (or `--player <path>`): it looks as it does in
+  the browser, its files are the ones in the folder you ran it from, and what it prints
+  and an error it stops with come back to the terminal. `--terminal` draws in the
+  terminal as before, which is also where it draws without a player.
+- **Graphics that look like an application's**: `SET TEXT HEIGHT` and `SET TEXT
+  JUSTIFY` (the standard's) size text and place it — `"CENTER", "HALF"` centres a label;
+  `SET TEXT FONT "SANS BOLD"` picks a font, and `TEXTWIDTH(s$)` says how wide text
+  draws; `GRAPH AREA, ROUND r:` (and `LINES`) rounds corners; and a fourth value in `SET
+  COLOR MIX` makes a colour see-through, for shadows and highlights.
+- **The Kanban board looks like an application**: rounded lanes and cards with shadows,
+  text in sizes and weights, wrapped to fit, a progress bar, buttons, editing a card
+  where it is, and help in a dialog over the dimmed board. It's made with
+  **`examples/ui.bas`**, a library of components any program can use (`LIBRARY
+  "ui.bas"`): a theme, boxes, text that fits, buttons, badges, typing and dialogs.
 - **The language**, closer to the standard:
   - `DATA` takes unquoted strings, `DATA red, big apple, 3 apples`, as old listings
     write them (the editor colours them as strings).
@@ -32,6 +47,10 @@ the last one. Releases before 2.0.0 are on the
     operators `x MOD y` and `x REMAINDER y`.
   - `LBOUND(A)` and `UBOUND(A)`, and `UBOUND(M, 2)` for a dimension, give an array's
     bounds; they were recognised but couldn't be called.
+  - Arrays pass to a `SUB` or `FUNCTION`: `SUB SORT(B())` (`M(,)` for two
+    dimensions), `CALL SORT(A)`. The procedure works on the caller's array. Passing one
+    was an error, and so was indexing an array parameter.
+  - `RESTORE 200` goes on reading from line 200's `DATA`; it went back to the start.
   - Giving a value to an array's name (`INPUT A` when `A` is an array), a constant
     (`LET PI = 3`) or a function is an error at its line, where it was an internal
     compiler error, a crash (`FOR A = …`), or nothing at all (`LET A = 1`).

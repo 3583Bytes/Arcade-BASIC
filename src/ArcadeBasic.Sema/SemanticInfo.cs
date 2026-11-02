@@ -21,6 +21,10 @@ public sealed class SemanticInfo
     /// program's first, then each MODULE's, in the order they appear.</summary>
     public required IReadOnlyList<IReadOnlyList<DataItem>> DataPools { get; init; }
 
+    /// <summary>Where RESTORE line goes: each labelled line's program-unit (an index into
+    /// <see cref="DataPools"/>) and how many of its DATA items come before it.</summary>
+    public IReadOnlyDictionary<int, (int Unit, int Item)> RestorePoints { get; init; } = new Dictionary<int, (int, int)>();
+
     /// <summary>The array each DIM (or a module's SHARE / PUBLIC) item declares. Reference-keyed.</summary>
     public required IReadOnlyDictionary<DimSpec, ArraySymbol> Arrays { get; init; }
 
@@ -40,6 +44,10 @@ public sealed class SemanticInfo
     /// (IEEE double) when an OPTION ARITHMETIC NATIVE appears anywhere, otherwise
     /// <see cref="ArithmeticMode.Decimal"/>.</summary>
     public ArithmeticMode Arithmetic { get; init; } = ArithmeticMode.Decimal;
+
+    /// <summary>Whether the program draws anything (GRAPH, GRAPH TEXT, MAT GRAPH CELLS), so
+    /// wants a screen: <c>arcade-basic run</c> opens a window for it.</summary>
+    public bool Draws { get; init; }
 
     /// <summary>Lookup the resolution for a given expression. Returns ResolvedError for unresolved names.</summary>
     public ResolvedRef Resolve(Expr expr) =>

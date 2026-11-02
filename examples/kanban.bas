@@ -1,27 +1,35 @@
-! kanban.bas — a Kanban board for your own tasks (To Do, Doing, Done), drawn with the  @category Graphics
-! ECMA-116 §13 graphics module. It keeps itself in a file, kanban.board, saving after
-! every change and opening it again next time — so it can track real work. (In the
-! browser IDE the file stays in the browser: File → Program files.)
+! kanban.bas — a Kanban board for your own tasks (To Do, Doing, Done), made with the     @category Graphics
+! components in ui.bas (LIBRARY "ui.bas"): rounded lanes and cards with shadows, text in
+! sizes and weights, wrapped to fit, buttons, and a dialog over the dimmed board. It keeps
+! itself in a file, kanban.board, saving after every change and opening it again next
+! time — so it can track real work. (In the browser IDE the file stays in the browser:
+! File → Program files.)
 !
-! With a mouse (in the browser IDE) click a card
-! to select it (it opens up to show all its text), double-click it to edit it, and drag
-! it to another lane or up and down; "+ add a card" adds one. The keyboard works too:
-! the arrow keys select, Enter edits, Space picks the card up (then the arrows move it),
-! Delete deletes. GET MOUSE and INKEY$ are an Arcade BASIC and a Microsoft BASIC
-! extension (see docs/conformance.md).
+! With a mouse click a card to select it (it opens up to show all its text), double-click
+! it to edit it where it is, and drag it to another lane or up and down; "+ Add a card"
+! adds one. The keyboard works too: the arrow keys select, Enter edits, Space picks the
+! card up (then the arrows move it), Delete deletes, and typing a letter starts a command.
+! GET MOUSE and INKEY$ are an Arcade BASIC and a Microsoft BASIC extension (see
+! docs/conformance.md).
 !
-! Without a mouse — a plain terminal, or piped input — type one command per line (LINE
-! INPUT reads the whole line, so a card may have commas in it); H lists them. Headless,
-! you can render a frame to SVG by piping commands and finishing with Q (it saves
-! kanban.board in the current folder as it goes):
+! Without a mouse — piped input, or a terminal that doesn't report one — type one command
+! per line (LINE INPUT reads the whole line, so a card may have commas in it); H lists
+! them. Headless, you can render a frame to SVG by piping commands and finishing with Q (it
+! saves kanban.board in the current folder as it goes):
 !   printf 'A Ship the demo\nM 5 doing\nQ\n' | \
 !     dotnet run --project src/ArcadeBasic.Cli -- run examples/kanban.bas --svg board.svg
 !
 ! Cards keep their number (#7) for good — the commands use it — and a lane keeps its
-! cards in the order you put them. The screen is laid out in text rows (one window unit
-! per row, from ASK DEVICE SIZE), so it looks the same in a terminal and in a window.
+! cards in the order you put them. The board is laid out in points (ui.bas's: 960 across,
+! y down) from the screen's size, so it follows a resized window; on a terminal it's laid
+! out in rows of text instead.
 
 OPTION BASE 1
+LIBRARY "ui.bas"
+DECLARE PUBLIC UIW, UIH, UIMX, UIMY, UIMS, UIDOUBLE, UICHANGED, UICELLS, UIROW, UICOL
+DECLARE PUBLIC UCBG, UCSURFACE, UCRAISED, UCHOVER, UCLINE, UCINK, UCMUTED, UCFAINT
+DECLARE PUBLIC UCACCENT, UCGOOD, UCDANGER, UCLIGHTEN, UISMALL, UIBODY, UITITLE, UIRADIUS
+DECLARE PUBLIC UITYPED$
 
 ! S$ cut to W columns, ending in "…" when it doesn't fit.
 FUNCTION FIT$(S$, W)
@@ -75,52 +83,32 @@ DIM ID(200)             ! each card's number, for good
 DIM TTASK$(200)         ! staging for an all-or-nothing load
 DIM TLANE(200)
 DIM TID(200)
-DIM CTOPY(200)          ! where each card was drawn: its top and bottom rows (-1: not drawn)
+DIM CTOPY(200)          ! where each card was drawn: its top and bottom, in points (-1: not drawn)
 DIM CBOTY(200)
 DIM TOK$(64)
-DIM WRAP$(64)
+DIM WRAP$(64)           ! a card's text in lines (UIWRAP), and where each starts
+DIM WRP(64)
 LET NT = 0
 LET NEXTID = 1
 LET BOARD$ = "kanban"   ! the board's file is BOARD$ & ".board"
 
 ! ---- the lanes ----
-DIM LNAME$(3)
 DIM LACC(3)             ! each lane's colour
 DIM LX(3)               ! its left edge
 DIM TOP(3)              ! how many of its cards are scrolled out of sight above
-DIM UPAT(3)             ! the rows of its "▲ n more" and "▼ n more" (-1: not shown)
+DIM UPAT(3)             ! where its "▲ n more" and "▼ n more" are (-1: not shown)
 DIM DNAT(3)
 DIM LCNT(3)             ! how many cards it has
 DIM VISN(3)             ! and how many showed
-LET LNAME$(1) = "TO DO"
-LET LNAME$(2) = "DOING"
-LET LNAME$(3) = "DONE"
+DIM LMAXL(3)            ! the most lines of a selected card it has room for
 
-! ---- colours: SET COLOR MIX makes a calm palette from 16 up (0-15 stay as they are) ----
-LET CPANEL = 16         ! a lane
-LET CPANEL2 = 17        ! the lane a card is being dragged over
-LET CCARD = 18
-LET CHOVER = 19         ! the card under the pointer
-LET CSEL = 20           ! the selected card
-LET CTEXT = 21
-LET CDIM = 22
-LET CBAR = 23           ! the title bar
-LET CWARN = 24
-LET LACC(1) = 25
-LET LACC(2) = 26
-LET LACC(3) = 27
-SET COLOR MIX (CPANEL) 0.09, 0.10, 0.13
-SET COLOR MIX (CPANEL2) 0.13, 0.15, 0.20
-SET COLOR MIX (CCARD) 0.17, 0.18, 0.23
-SET COLOR MIX (CHOVER) 0.23, 0.25, 0.32
-SET COLOR MIX (CSEL) 0.20, 0.29, 0.48
-SET COLOR MIX (CTEXT) 0.90, 0.92, 0.95
-SET COLOR MIX (CDIM) 0.50, 0.54, 0.61
-SET COLOR MIX (CBAR) 0.05, 0.06, 0.08
-SET COLOR MIX (CWARN) 1.00, 0.45, 0.42
-SET COLOR MIX (LACC(1)) 0.40, 0.62, 1.00      ! blue
-SET COLOR MIX (LACC(2)) 1.00, 0.76, 0.30      ! amber
-SET COLOR MIX (LACC(3)) 0.40, 0.82, 0.50      ! green
+! ---- colours: ui.bas's theme (240-254), and a colour for each lane ----
+LET LACC(1) = 16
+LET LACC(2) = 17
+LET LACC(3) = 18
+SET COLOR MIX (LACC(1)) 0.42, 0.62, 1.00      ! blue
+SET COLOR MIX (LACC(2)) 0.98, 0.74, 0.32      ! amber
+SET COLOR MIX (LACC(3)) 0.38, 0.80, 0.54      ! green
 
 ! ---- keys, as INKEY$ spells them ----
 LET KENTER$ = CHR$(13)
@@ -138,17 +126,13 @@ LET KDEL$ = CHR$(0) & CHR$(83)
 ! ---- what's going on ----
 LET MSG$ = ""
 LET HASMOUSE = 0        ! 1 when there's a mouse (and keys arrive one at a time)
-LET HELP = 0            ! 1 while the help screen shows
+LET HELP = 0            ! 1 while the help shows
 LET QUIT = 0
 LET DIRTY = 1           ! the screen needs drawing again
-LET FRAME = 0
 LET SELID = 0           ! the selected card's number, or 0
 LET KEEPSEL = 0         ! scroll so the selected card shows, next time it's drawn
 LET CARRY = 0           ! 1 while the selected card is picked up (Space)
 LET CONFIRMID = 0       ! the card Delete was pressed on once
-LET HOVERID = 0         ! the card under the pointer
-LET HOVERK = 0          ! what else is under it (a HITKIND) and in which lane
-LET HOVERL = 0
 LET PRESSID = 0         ! the card pressed on, and where
 LET PRESSX = 0
 LET PRESSY = 0
@@ -158,24 +142,17 @@ LET GRABDY = 0
 LET DROPLN = 0          ! where it would land: the lane, the card it would go before (0: the end)
 LET DROPBEFORE = 0
 LET MARKY = 0
-LET LASTID = 0          ! the last card clicked, and when (for a double-click)
-LET LASTF = -100
-LET MODE = 0            ! typing: 1 a command, 2 a card's new text, 3 a new card
-LET TYPED$ = ""
-LET CURP = 0            ! the cursor, after this many characters
+LET LASTID = 0          ! the last card clicked (for a double-click)
+LET MODE = 0            ! typing (ui.bas's UITYPED$): 1 a command, 2 a card's new text, 3 a new card
 LET EDITID = 0
 LET ADDLN = 1
 LET NOSAVE = 0          ! 1 when the file there couldn't be read: don't save over it
 LET SAVEOK = 0
 LET LOADOK = 0
 LET LOADBAD = 0
-LET BADD0 = 0           ! the buttons: from x to x
-LET BADD1 = 0
-LET BHELP0 = 0
-LET BHELP1 = 0
 LET RAW$ = ""
 LET NTOK = 0
-LET HITKIND = 0         ! 9700: 1 a card, 2 "▲ more", 3 "▼ more", 4 "+ add a card", 5 + Add, 6 Help
+LET HITKIND = 0         ! 9700: 1 a card, else 0
 LET HITID = 0
 LET HITLN = 0
 LET FILE$ = BOARD$ & ".board"
@@ -184,13 +161,23 @@ LET FI = 0              ! 8950's answer: a card's index
 LET LV = 0              ! 9140's: a lane
 LET NAMEOK = 0          ! 9130's and 9120's: a board's name is fine, and there's one by that name
 LET EXISTS = 0
-LET WRAPN = 0           ! 9200's: how many lines
-! the layout, measured as the board is drawn (9000)
-LET DEVW = 0
-LET DEVH = 0
-LET COLW = 25
-LET HEADY = 22
-LET CTOP = 20
+LET MX = 0              ! the pointer, as ui.bas found it this frame
+LET MY = 0
+LET MS = -1
+! the layout, in points (9000)
+LET LW = 296            ! a lane's width, and its top and bottom
+LET LT = 60
+LET LB = 540
+LET CW = 276            ! a card's width
+LET HEADH = 46          ! a lane's name, above its cards
+LET CINSET = 10         ! a card, inside its lane
+LET GUT = 16            ! between lanes, and between cards
+LET CGAP = 8
+LET H = 0               ! a card's height (9020)
+LET EBX = 0             ! the box being typed in (a card being edited or added), to click in
+LET EBY = 0
+LET EBW = 0
+LET EBH = 0
 
 GOSUB 9990              ! today's date, for the title bar
 GOSUB 9900              ! open kanban.board, if it's there
@@ -216,7 +203,7 @@ END IF
 
 DATA "Click a card to select it, double-click to edit it", 1
 DATA "Drag cards to another lane, or up and down", 1
-DATA "Add one with + add a card, or type A Buy milk", 1
+DATA "Add one with + Add a card, or type A Buy milk", 1
 DATA "Select a card and press Delete (twice) to remove it", 1
 DATA "Arrow keys select; Space picks a card up, arrows move it", 2
 DATA "The board saves itself as you go", 3
@@ -224,14 +211,15 @@ DATA "Press H for help", 3
 DATA "*", 0
 
 ! --- main loop ----------------------------------------------------------
-GET MOUSE MX, MY, MS
-IF MS < 0 THEN
+CALL UIBEGIN
+IF UIMS < 0 THEN
   ! No pointing device: one typed command per line.
   DO
-    GOSUB 9010                     ! draw the board (or the help screen)
+    GOSUB 9010                     ! draw the board (or the help)
     LINE INPUT ""; RAW$            ! whole line; "" ; suppresses the "?" prompt
     GOSUB 9150                     ! run it
     IF QUIT = 1 THEN EXIT DO
+    CALL UIBEGIN                   ! (the screen's size, for the next drawing)
   LOOP
 ELSE
   ! A mouse, and keys one at a time.
@@ -247,21 +235,18 @@ ELSE
       IF QUIT = 1 THEN EXIT DO
     LOOP
     IF QUIT = 1 THEN EXIT DO
-    IF DIRTY = 1 THEN              ! (so the mouse finds the cards where they are now)
-      GOSUB 9010
-      LET DIRTY = 0
-    END IF
-    ! the mouse: 2 = pressed, 1 = held, 3 = released, 0 = up
-    GET MOUSE MX, MY, MS
+    ! the screen and the mouse: 2 = pressed, 1 = held, 3 = released, 0 = up
+    CALL UIBEGIN
+    LET MX = UIMX
+    LET MY = UIMY
+    LET MS = UIMS
     GOSUB 8500
-    ! the screen changed size (a resized window): lay the board out again
-    ASK DEVICE SIZE NEWW, NEWH, DEVU$
-    IF NEWW <> DEVW OR NEWH <> DEVH THEN LET DIRTY = 1
-    IF DIRTY = 1 THEN
+    ! drawing it all again, when anything's changed (the pointer moving lights up what's
+    ! under it; the buttons are clicked as they're drawn)
+    IF DIRTY = 1 OR UICHANGED = 1 THEN
       GOSUB 9010
       LET DIRTY = 0
     END IF
-    LET FRAME = FRAME + 1
     SLEEP 0.03                     ! ~30 frames/second (also presents the frame)
   LOOP
 END IF
@@ -272,7 +257,7 @@ END
 ! ======================================================================
 8000 REM ---- a key ----
 IF HELP = 1 THEN
-  LET HELP = 0                     ! any key leaves the help screen
+  LET HELP = 0                     ! any key leaves the help
   RETURN
 END IF
 IF CONFIRMID > 0 THEN              ! Delete was pressed once: again deletes
@@ -287,7 +272,7 @@ IF CONFIRMID > 0 THEN              ! Delete was pressed once: again deletes
   IF K$ = KESC$ THEN RETURN
 END IF
 IF MODE > 0 THEN
-  GOSUB 8100                       ! the line being typed
+  GOSUB 8100                       ! the text being typed
   RETURN
 END IF
 IF K$ = KENTER$ OR K$ = CHR$(10) THEN
@@ -324,14 +309,13 @@ ELSEIF K$ = KUP$ OR K$ = KDN$ OR K$ = KLT$ OR K$ = KRT$ THEN
   GOSUB 8200                       ! select, or move the card picked up
 ELSEIF LEN(K$) = 1 AND K$ >= " " AND K$ <> KBS2$ THEN
   LET MODE = 1                     ! the start of a command
-  LET TYPED$ = K$
-  LET CURP = 1
+  CALL UIEDITSTART(K$)
   LET CARRY = 0
 END IF
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8050  EDIT the selected card: its text goes on the typing line.
+! 8050  EDIT the selected card, where it is on the board.
 ! ----------------------------------------------------------------------
 8050 REM ---- edit the selected card ----
 IF SELID = 0 THEN
@@ -347,44 +331,28 @@ IF FI = 0 THEN
 END IF
 LET MODE = 2
 LET EDITID = SELID
-LET TYPED$ = TASK$(FI)
-LET CURP = LEN(TYPED$)
+CALL UIEDITSTART(TASK$(FI))
 LET CARRY = 0
+LET KEEPSEL = 1
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8100  TYPING — K$ edits TYPED$ at the cursor; Enter finishes, Esc cancels.
+! 8100  TYPING — K$ edits what's typed (ui.bas: UIEDITKEY); Enter finishes,
+!        Esc cancels.
 ! ----------------------------------------------------------------------
 8100 REM ---- typing ----
-IF K$ = KENTER$ OR K$ = CHR$(10) THEN
+LET TYPEDKEY = UIEDITKEY(K$)
+IF TYPEDKEY = 1 THEN
   GOSUB 8150
-ELSEIF K$ = KESC$ THEN
+ELSEIF TYPEDKEY = -1 THEN
   IF MODE = 2 THEN
     LET MSG$ = "Left #" & LTRIM$(STR$(EDITID)) & " as it was"
   ELSE
     LET MSG$ = "Cancelled"
   END IF
   LET MODE = 0
-  LET TYPED$ = ""
-ELSEIF K$ = KBS$ OR K$ = KBS2$ THEN
-  IF CURP > 0 THEN
-    LET TYPED$ = LEFT$(TYPED$, CURP - 1) & MID$(TYPED$, CURP + 1)
-    LET CURP = CURP - 1
-  END IF
-  IF MODE = 1 AND TYPED$ = "" THEN LET MODE = 0   ! a command rubbed out
-ELSEIF K$ = KDEL$ THEN
-  IF CURP < LEN(TYPED$) THEN LET TYPED$ = LEFT$(TYPED$, CURP) & MID$(TYPED$, CURP + 2)
-ELSEIF K$ = KLT$ THEN
-  IF CURP > 0 THEN LET CURP = CURP - 1
-ELSEIF K$ = KRT$ THEN
-  IF CURP < LEN(TYPED$) THEN LET CURP = CURP + 1
-ELSEIF K$ = KHOME$ THEN
-  LET CURP = 0
-ELSEIF K$ = KEND$ THEN
-  LET CURP = LEN(TYPED$)
-ELSEIF LEN(K$) = 1 AND K$ >= " " AND K$ <> KBS2$ AND LEN(TYPED$) < 300 THEN
-  LET TYPED$ = LEFT$(TYPED$, CURP) & K$ & MID$(TYPED$, CURP + 1)
-  LET CURP = CURP + 1
+ELSEIF MODE = 1 AND UITYPED$ = "" THEN
+  LET MODE = 0                     ! a command rubbed out
 END IF
 RETURN
 
@@ -392,10 +360,9 @@ RETURN
 ! 8150  FINISH TYPING — run the command, change the card, or add the new one.
 ! ----------------------------------------------------------------------
 8150 REM ---- finish typing ----
-LET TXT$ = LTRIM$(RTRIM$(TYPED$))
+LET TXT$ = LTRIM$(RTRIM$(UITYPED$))
 LET WASMODE = MODE
 LET MODE = 0
-LET TYPED$ = ""
 IF WASMODE = 1 THEN
   LET RAW$ = TXT$
   GOSUB 9150
@@ -513,17 +480,22 @@ LET KEEPSEL = 1
 RETURN
 
 ! ======================================================================
-! 8500  THE MOUSE (MX, MY, MS): select, drag and drop, the buttons, scrolling.
+! 8500  THE MOUSE (MX, MY, MS): select, double-click, drag and drop. (The
+!        buttons — "+ Add a card", "▲ more", Help — click themselves as the board's
+!        drawn, 9030.)
 ! ======================================================================
 8500 REM ---- the mouse ----
 IF HELP = 1 THEN
   IF MS = 2 THEN
-    LET HELP = 0                   ! a click leaves the help screen
+    LET HELP = 0                   ! a click leaves the help ...
+    CALL UIFORGETPRESS             ! ... and clicks nothing beneath it
     LET DIRTY = 1
   END IF
   RETURN
 END IF
 IF MS = 2 THEN
+  IF UIONCONTROL() = 1 THEN RETURN ! a button's
+  IF MODE >= 2 AND UIIN(EBX, EBY, EBW, EBH) = 1 THEN RETURN   ! in what's being typed
   GOSUB 9700                       ! what's under the pointer
   IF CONFIRMID > 0 THEN
     LET CONFIRMID = 0
@@ -531,7 +503,7 @@ IF MS = 2 THEN
   END IF
   IF MODE >= 2 THEN GOSUB 8150     ! clicking away keeps what was typed
   IF HITKIND = 1 THEN
-    IF HITID = LASTID AND FRAME - LASTF <= 12 THEN
+    IF HITID = LASTID AND UIDOUBLE = 1 THEN
       LET SELID = HITID            ! a double-click: edit it
       GOSUB 8050
       LET LASTID = 0
@@ -543,26 +515,7 @@ IF MS = 2 THEN
       LET PRESSY = MY
       LET DRAGGING = 0
       LET LASTID = HITID
-      LET LASTF = FRAME
     END IF
-  ELSEIF HITKIND = 2 THEN
-    LET TOP(HITLN) = MAX(0, TOP(HITLN) - MAX(1, VISN(HITLN) - 1))
-  ELSEIF HITKIND = 3 THEN
-    LET TOP(HITLN) = TOP(HITLN) + MAX(1, VISN(HITLN) - 1)
-  ELSEIF HITKIND = 4 OR HITKIND = 5 THEN
-    LET ADDLN = HITLN              ! "+ add a card" in a lane, or + Add
-    IF HITKIND = 5 THEN
-      LET ADDLN = 1
-      LET FID = SELID
-      GOSUB 8950
-      IF FI > 0 THEN LET ADDLN = LANE(FI)
-    END IF
-    LET MODE = 3
-    LET TYPED$ = ""
-    LET CURP = 0
-    LET CARRY = 0
-  ELSEIF HITKIND = 6 THEN
-    LET HELP = 1
   ELSE
     LET SELID = 0                  ! a click on nothing
     LET CARRY = 0
@@ -570,12 +523,12 @@ IF MS = 2 THEN
   LET DIRTY = 1
 ELSEIF MS = 1 THEN
   IF PRESSID > 0 THEN
-    IF DRAGGING = 0 AND (ABS(MX - PRESSX) >= 1 OR ABS(MY - PRESSY) >= 0.6) THEN
+    IF DRAGGING = 0 AND (ABS(MX - PRESSX) >= 5 OR ABS(MY - PRESSY) >= 5) THEN
       LET FID = PRESSID
       GOSUB 8950
       IF FI > 0 AND CTOPY(FI) >= 0 THEN
         LET DRAGGING = 1
-        LET GRABDX = PRESSX - LX(LANE(FI))
+        LET GRABDX = PRESSX - LX(LANE(FI)) - CINSET
         LET GRABDY = PRESSY - CTOPY(FI)
         LET MSG$ = "Moving #" & LTRIM$(STR$(PRESSID)) & ": drop it in a lane"
       END IF
@@ -611,28 +564,19 @@ ELSEIF MS = 3 THEN
   LET PRESSID = 0
   LET DRAGGING = 0
   LET DIRTY = 1
-ELSEIF MS = 0 THEN
-  GOSUB 9700                       ! hover: the card, or the button, under the pointer
-  IF HITKIND <> 1 THEN LET HITID = 0
-  IF HITID <> HOVERID OR HITKIND <> HOVERK OR HITLN <> HOVERL THEN
-    LET HOVERID = HITID
-    LET HOVERK = HITKIND
-    LET HOVERL = HITLN
-    LET DIRTY = 1
-  END IF
 END IF
 RETURN
 
 ! ----------------------------------------------------------------------
 ! 8700  DROP — where the card being dragged would land, from the pointer:
 !        the lane (DROPLN, 0 for none), the card it would go before (DROPBEFORE,
-!        0 for the end of the lane), and the row edge to mark it at (MARKY).
+!        0 for the end of the lane), and where to mark it (MARKY).
 ! ----------------------------------------------------------------------
 8700 REM ---- where it would land ----
 LET DROPLN = 0
 LET DROPBEFORE = 0
 FOR DI = 1 TO 3
-  IF MX >= LX(DI) - 1 AND MX <= LX(DI) + COLW + 1 AND MY >= 1 AND MY <= HEADY + 1 THEN LET DROPLN = DI
+  IF MX >= LX(DI) - GUT / 2 AND MX < LX(DI) + LW + GUT / 2 AND MY >= LT AND MY <= LB THEN LET DROPLN = DI
 NEXT DI
 IF DROPLN = 0 THEN RETURN
 LET MARKY = -1
@@ -640,9 +584,9 @@ LET LASTVIS = 0
 FOR DI = 1 TO NT
   IF LANE(DI) = DROPLN AND ID(DI) <> PRESSID AND DROPBEFORE = 0 THEN
     IF CTOPY(DI) >= 0 THEN
-      IF MY > (CTOPY(DI) + CBOTY(DI) + 1) / 2 THEN
+      IF MY < (CTOPY(DI) + CBOTY(DI)) / 2 THEN
         LET DROPBEFORE = DI        ! above this card's middle: before it
-        LET MARKY = CTOPY(DI) + 1
+        LET MARKY = CTOPY(DI) - CGAP / 2
       ELSE
         LET LASTVIS = DI
       END IF
@@ -653,9 +597,9 @@ FOR DI = 1 TO NT
 NEXT DI
 IF MARKY < 0 THEN
   IF LASTVIS > 0 THEN
-    LET MARKY = CBOTY(LASTVIS)
+    LET MARKY = CBOTY(LASTVIS) + CGAP / 2
   ELSE
-    LET MARKY = CTOP + 1
+    LET MARKY = LT + HEADH
   END IF
 END IF
 RETURN
@@ -736,16 +680,11 @@ NEXT FJ
 RETURN
 
 ! ======================================================================
-! 9010  DRAW — the help screen or the board, scrolled (KEEPSEL) so the
-!        selected card shows.
+! 9010  DRAW — the board, scrolled (KEEPSEL) so the selected card shows; and
+!        the help over it, if it's up.
 ! ======================================================================
 9010 REM ---- draw ----
-IF HELP = 1 THEN
-  GOSUB 9050
-  RETURN
-END IF
 IF KEEPSEL = 1 AND SELID > 0 THEN
-  LET KEEPSEL = 0
   LET FID = SELID
   GOSUB 8950
   IF FI > 0 THEN
@@ -760,24 +699,481 @@ IF KEEPSEL = 1 AND SELID > 0 THEN
       IF CTOPY(FI) >= 0 THEN EXIT FOR
       LET TOP(KL) = TOP(KL) + 1    ! below what shows: scroll down a card
     NEXT KTRY
-    RETURN
   END IF
 END IF
 LET KEEPSEL = 0
-GOSUB 9000
+GOSUB 9000                         ! where everything goes
+GOSUB 9030                         ! and drawing it there
+IF HELP = 1 THEN GOSUB 9050
 RETURN
 
 ! ======================================================================
-! 9060  COLUMNS — the window width for the device measured in DEVW, DEVH. On
-!       a character screen (2 x 4 dots a cell, up to 40 rows) it's the screen's
-!       columns, so x = k is column k: an 80-unit window on 78 columns would put
-!       x = 0 and x = 1 in one cell, and on 116 space the columns unevenly. On a
-!       finer device (SVG, pixels) it's 80, scaled to fit.
+! 9000  LAYOUT — where the lanes, and the cards that show in them, go: in points,
+!        y down (ui.bas's), from the screen's size. Each lane: its name, then its
+!        cards from TOP(LN) on while they fit (a "▲ n more" above them if it's
+!        scrolled, "▼ n more" below if they don't all fit), then "+ Add a card".
+!        A card is its text, wrapped (three lines, or all of it when it's
+!        selected), and a row for its number. On a terminal everything's a row
+!        of text high, with no gaps.
 ! ======================================================================
-9060 REM ---- columns ----
-LET COLS = 80
-IF DEVW >= 2 AND DEVH <= 160 THEN LET COLS = INT(DEVW / 2)
-IF COLS < 60 THEN LET COLS = 60    ! floor: any narrower and the board is clipped
+9000 REM ---- layout ----
+IF UICELLS = 1 THEN
+  LET MX0 = UICOL                  ! the margin, and the gap between lanes
+  LET GUT = 2 * UICOL
+  LET TOPH = UIROW                 ! the title bar, the status bar, a lane's name
+  LET STATH = UIROW
+  LET HEADH = UIROW
+  LET CINSET = UICOL               ! a card, inside its lane; its text, inside it
+  LET CPADX = UICOL
+  LET CPADY = 0
+  LET LH = UIROW                   ! a line of its text, and its number's row
+  LET METAH = 0
+  LET CGAP = 0                     ! between cards
+  LET MOREH = UIROW                ! "▲ n more", "▼ n more", "+ Add a card"
+  LET ADDH = UIROW
+ELSE
+  LET MX0 = 20
+  LET GUT = 16
+  LET TOPH = 60
+  LET STATH = 36
+  LET HEADH = 46
+  LET CINSET = 10
+  LET CPADX = 14
+  LET CPADY = 11
+  LET LH = 21
+  LET METAH = 20
+  LET CGAP = 8
+  LET MOREH = 28
+  LET ADDH = 38
+END IF
+IF HASMOUSE = 0 THEN LET STATH = 2 * STATH   ! (the commands, then the status)
+LET LW = (UIW - 2 * MX0 - 2 * GUT) / 3
+LET LT = TOPH
+LET LB = UIH - STATH
+LET CW = LW - 2 * CINSET
+FOR LN = 1 TO 3
+  LET LX(LN) = MX0 + (LN - 1) * (LW + GUT)
+NEXT LN
+FOR I = 1 TO NT
+  LET CTOPY(I) = -1
+NEXT I
+LET EBW = 0
+FOR LN = 1 TO 3
+  LET LCNT(LN) = 0
+  FOR I = 1 TO NT
+    IF LANE(I) = LN THEN LET LCNT(LN) = LCNT(LN) + 1
+  NEXT I
+  ! the cards go from CY0 down to CY1: above "+ Add a card", or the new card being typed
+  LET CY0 = LT + HEADH
+  LET CY1 = LB - CINSET
+  IF HASMOUSE = 1 THEN
+    LET ADDBOX = ADDH
+    IF MODE = 3 AND ADDLN = LN THEN
+      LET ADDBOX = 2 * CPADY + UIEDITLINES(CW - 2 * CPADX, UIBODY, "SANS") * LH + METAH
+      LET EBX = LX(LN) + CINSET
+      LET EBY = CY1 - ADDBOX
+      LET EBW = CW
+      LET EBH = ADDBOX
+    END IF
+    LET CY1 = CY1 - ADDBOX - CGAP
+  END IF
+  LET SKIPN = TOP(LN)
+  IF SKIPN > LCNT(LN) - 1 THEN LET SKIPN = MAX(0, LCNT(LN) - 1)
+  LET TOP(LN) = SKIPN
+  LET UPAT(LN) = -1
+  LET DNAT(LN) = -1
+  LET VISN(LN) = 0
+  LET ROW = CY0
+  IF SKIPN > 0 THEN
+    LET UPAT(LN) = ROW
+    LET ROW = ROW + MOREH + CGAP
+  END IF
+  ! a selected card shows as much of its text as the lane has room for
+  LET LMAXL(LN) = MAX(1, INT((CY1 - CY0 - 2 * CPADY - METAH - 2 * (MOREH + CGAP)) / LH))
+  LET K = 0
+  LET FULL = 0
+  LET HID = 0
+  FOR I = 1 TO NT
+    IF LANE(I) = LN THEN
+      LET K = K + 1
+      IF K > SKIPN AND FULL = 0 THEN
+        GOSUB 9020                 ! its height: H
+        LET NEED = H
+        IF K < LCNT(LN) THEN LET NEED = H + CGAP + MOREH   ! (room for "▼ n more" after it)
+        IF ROW + NEED > CY1 AND VISN(LN) > 0 THEN
+          LET FULL = 1
+          LET HID = LCNT(LN) - K + 1
+        ELSE
+          LET CTOPY(I) = ROW
+          LET CBOTY(I) = ROW + H
+          LET VISN(LN) = VISN(LN) + 1
+          LET ROW = ROW + H + CGAP
+          IF MODE = 2 AND ID(I) = EDITID THEN
+            LET EBX = LX(LN) + CINSET
+            LET EBY = CTOPY(I)
+            LET EBW = CW
+            LET EBH = H
+          END IF
+        END IF
+      END IF
+    END IF
+  NEXT I
+  IF HID > 0 THEN LET DNAT(LN) = ROW
+NEXT LN
+RETURN
+
+! ----------------------------------------------------------------------
+! 9020  A CARD's lines and height: card I's text wrapped (or, being edited,
+!        what's typed) — NL lines of it, of NWRAP, in WRAP$() — and its height H.
+! ----------------------------------------------------------------------
+9020 REM ---- a card's lines ----
+LET CTW = CW - 2 * CPADX           ! its text's width (on a terminal its number's on its first line)
+IF UICELLS = 1 THEN LET CTW = CTW - (LEN(LTRIM$(STR$(ID(I)))) + 2) * UICOL
+IF MODE = 2 AND ID(I) = EDITID THEN
+  LET NWRAP = UIEDITLINES(CTW, UIBODY, "SANS")
+  LET NL = NWRAP
+ELSE
+  LET NWRAP = UIWRAP(TASK$(I), CTW, UIBODY, "SANS", WRAP$, WRP)
+  LET NL = MIN(NWRAP, 3)
+  IF ID(I) = SELID AND DRAGGING = 0 THEN LET NL = MIN(NWRAP, LMAXL(LANE(I)))
+END IF
+LET H = 2 * CPADY + NL * LH + METAH
+RETURN
+
+! ======================================================================
+! 9030  PAINT — the title bar, the lanes and their cards, a card being
+!        dragged, and the status bar. The buttons are clicked here, as they're
+!        drawn (ui.bas's UIBUTTON).
+! ======================================================================
+9030 REM ---- paint ----
+CALL UICLEAR(UCBG)
+! --- the title bar: the board's name, how it's going, and today ------------
+LET NDONE = 0
+FOR I = 1 TO NT
+  IF LANE(I) = 3 THEN LET NDONE = NDONE + 1
+NEXT I
+LET TY = TOPH / 2
+CALL UITEXT(MX0, TY, "Kanban", UITITLE, "SANS BOLD", UCINK)
+LET X = MX0 + UIWIDTH("Kanban", UITITLE, "SANS BOLD") + 12
+IF UICELLS = 1 THEN LET X = MX0 + 8 * UICOL
+LET PW = UIPILL(X, TY, FILE$, UISMALL, UCSURFACE, UCMUTED)
+LET RX = UIW - MX0                 ! the right of the bar, going left
+IF HASMOUSE = 1 THEN
+  LET BW = 120
+  IF UICELLS = 1 THEN LET BW = 12 * UICOL
+  LET BH = MIN(34, TOPH)
+  IF UIBUTTON(RX - BW, TY - BH / 2, BW, BH, "+ New card", "PRIMARY") THEN
+    LET ADDLN = 1                  ! (to the selected card's lane)
+    LET FID = SELID
+    GOSUB 8950
+    IF FI > 0 THEN LET ADDLN = LANE(FI)
+    LET MODE = 3
+    CALL UIEDITSTART("")
+    LET CARRY = 0
+    LET DIRTY = 1
+  END IF
+  LET RX = RX - BW - 8
+  LET BW = 70
+  IF UICELLS = 1 THEN LET BW = 6 * UICOL
+  IF UIBUTTON(RX - BW, TY - BH / 2, BW, BH, "Help", "GHOST") THEN
+    LET HELP = 1
+    LET DIRTY = 1
+  END IF
+  LET RX = RX - BW - 20
+END IF
+LET R$ = LTRIM$(STR$(NDONE)) & " of " & LTRIM$(STR$(NT)) & " done"
+IF UICELLS = 1 THEN
+  LET R$ = DAY$ & "  ·  " & R$
+  CALL UILABEL(X + PW + UICOL, 0, RX - X - PW - UICOL, UIROW, R$, UISMALL, "SANS", UCMUTED, "RIGHT")
+ELSE
+  LET FRAC = 0
+  IF NT > 0 THEN LET FRAC = NDONE / NT
+  CALL UIPROGRESS(RX - 90, TY - 3, 90, 6, FRAC, LACC(3))
+  LET RX = RX - 102
+  CALL UILABEL(X + PW + 12, 0, RX - X - PW - 12, TOPH, R$, UISMALL, "SANS", UCMUTED, "RIGHT")
+  LET RX = RX - UIWIDTH(R$, UISMALL, "SANS") - 10
+  CALL UILABEL(X + PW + 12, 0, RX - X - PW - 12, TOPH, DAY$ & "  ·", UISMALL, "SANS", UCFAINT, "RIGHT")
+END IF
+
+! --- the lanes ------------------------------------------------------------
+FOR LN = 1 TO 3
+  LET X0 = LX(LN)
+  LET FILL = UCSURFACE
+  IF DRAGGING = 1 AND DROPLN = LN THEN LET FILL = UCHOVER
+  CALL UIBOX(X0, LT, LW, LB - LT, 12, FILL)
+  ! its name and how many cards it has
+  LET HY = LT + HEADH / 2
+  IF UICELLS = 1 THEN
+    CALL UITEXT(X0 + CPADX, HY, UCASE$(LANENAME$(LN)), UIBODY, "SANS BOLD", LACC(LN))
+    LET X = X0 + CPADX + (LEN(LANENAME$(LN)) + 1) * UICOL
+  ELSE
+    CALL UIBOX(X0 + 16, HY - 4, 8, 8, 4, LACC(LN))
+    CALL UITEXT(X0 + 32, HY, LANENAME$(LN), UIBODY, "SANS BOLD", UCINK)
+    LET X = X0 + 32 + UIWIDTH(LANENAME$(LN), UIBODY, "SANS BOLD") + 8
+  END IF
+  LET PW = UIPILL(X, HY, LTRIM$(STR$(LCNT(LN))), UISMALL - 1, UCRAISED, UCMUTED)
+  ! scrolled: the cards above
+  IF UPAT(LN) >= 0 THEN
+    IF UIBUTTON(X0 + CINSET, UPAT(LN), CW, MOREH, "▲ " & LTRIM$(STR$(TOP(LN))) & " more", "GHOST") THEN
+      LET TOP(LN) = MAX(0, TOP(LN) - MAX(1, VISN(LN) - 1))
+      LET DIRTY = 1
+    END IF
+  END IF
+  ! its cards
+  FOR I = 1 TO NT
+    IF LANE(I) = LN AND CTOPY(I) >= 0 THEN
+      GOSUB 9020
+      LET CXL = X0 + CINSET
+      LET CYT = CTOPY(I)
+      LET CFILL = UCRAISED
+      LET CTCOL = UCINK
+      IF LN = 3 THEN LET CTCOL = UCMUTED   ! done: quieter
+      LET CRING = -1
+      LET CLIFT = 3
+      LET CGHOST = 0
+      IF ID(I) = SELID THEN
+        LET CRING = UCACCENT
+        LET CTCOL = UCINK
+        IF CARRY = 1 THEN
+          LET CRING = LACC(LN)
+          LET CLIFT = 12
+        END IF
+      END IF
+      IF MODE = 2 AND ID(I) = EDITID THEN LET CRING = UCACCENT
+      IF UICELLS = 1 AND CRING >= 0 THEN        ! (a terminal: no ring, but the card in a colour)
+        LET CFILL = CRING
+        LET CTCOL = UCBG
+        LET CRING = -1
+      END IF
+      IF ID(I) = PRESSID AND DRAGGING = 1 THEN   ! the card being dragged, left behind
+        LET CGHOST = 1
+        LET CRING = -1
+        LET CLIFT = 0
+      END IF
+      GOSUB 9300
+    END IF
+  NEXT I
+  ! the cards below
+  IF DNAT(LN) >= 0 THEN
+    LET HID = LCNT(LN) - TOP(LN) - VISN(LN)
+    IF UIBUTTON(X0 + CINSET, DNAT(LN), CW, MOREH, "▼ " & LTRIM$(STR$(HID)) & " more", "GHOST") THEN
+      LET TOP(LN) = TOP(LN) + MAX(1, VISN(LN) - 1)
+      LET DIRTY = 1
+    END IF
+  END IF
+  ! "+ Add a card", or the new card being typed
+  IF HASMOUSE = 1 THEN
+    IF MODE = 3 AND ADDLN = LN THEN
+      CALL UIBOX(EBX - 2, EBY - 2, EBW + 4, EBH + 4, UIRADIUS + 2, UCACCENT)
+      CALL UIBOX(EBX, EBY, EBW, EBH, UIRADIUS, UCRAISED)
+      CALL UIEDITDRAW(EBX + CPADX, EBY + CPADY + LH / 2, EBW - 2 * CPADX, UIBODY, "SANS", UCINK, LH, "Type the card")
+      IF UICELLS = 0 THEN CALL UITEXT(EBX + CPADX, EBY + EBH - CPADY - METAH / 2 + 2, "Enter adds it · Esc cancels", UISMALL, "SANS", UCFAINT)
+    ELSE
+      IF UIBUTTON(X0 + CINSET, LB - CINSET - ADDH, CW, ADDH, "+ Add a card", "GHOST") THEN
+        LET ADDLN = LN
+        LET MODE = 3
+        CALL UIEDITSTART("")
+        LET CARRY = 0
+        LET DIRTY = 1
+      END IF
+    END IF
+  END IF
+NEXT LN
+
+! --- dragging: mark where it would land, and draw it at the pointer --------
+IF DRAGGING = 1 THEN
+  IF DROPLN > 0 THEN CALL UIBOX(LX(DROPLN) + CINSET, MARKY - 1.5, CW, 3, 1.5, LACC(DROPLN))
+  LET FID = PRESSID
+  GOSUB 8950
+  IF FI > 0 THEN
+    LET I = FI
+    GOSUB 9020
+    LET CXL = MX - GRABDX
+    LET CYT = MY - GRABDY
+    LET CFILL = UCHOVER
+    LET CTCOL = UCINK
+    LET CRING = -1
+    LET CLIFT = 16
+    LET CGHOST = 0
+    GOSUB 9300
+  END IF
+END IF
+
+! --- the status bar: what happened, and what the keys do now ---------------
+IF MODE = 1 THEN
+  LET HINT$ = "Enter runs the command  ·  Esc cancels  ·  H Enter: help"
+ELSEIF MODE = 2 THEN
+  LET HINT$ = "Editing #" & LTRIM$(STR$(EDITID)) & "  ·  Enter saves  ·  Esc cancels"
+ELSEIF MODE = 3 THEN
+  LET HINT$ = "Adding to " & LANENAME$(ADDLN) & "  ·  Enter adds it  ·  Esc cancels"
+ELSEIF DRAGGING = 1 THEN
+  LET HINT$ = "Let go over a lane to move it there"
+ELSEIF CONFIRMID > 0 THEN
+  LET HINT$ = "Delete again deletes it  ·  any other key keeps it"
+ELSEIF CARRY = 1 THEN
+  LET HINT$ = "↑ ↓ ← → move the card  ·  Space or Enter puts it down"
+ELSEIF SELID > 0 THEN
+  LET HINT$ = "Enter edit  ·  Space pick up  ·  Del delete  ·  ↑ ↓ ← → select"
+ELSE
+  LET HINT$ = "Click a card, or ↑ ↓ ← →  ·  or type a command (H: help)"
+END IF
+LET SY = UIH - STATH / 2
+IF HASMOUSE = 0 THEN
+  LET SY = UIH - STATH / 4
+  CALL UILABEL(MX0, UIH - STATH, UIW - 2 * MX0, STATH / 2, "A add  M move  E edit  D delete  N new  S save  L open  H help  Q quit", UISMALL, "SANS", UCMUTED, "LEFT")
+END IF
+IF MODE = 1 THEN
+  CALL UITEXT(MX0, SY, "> ", UIBODY, "MONO BOLD", UCACCENT)
+  CALL UIEDITDRAW(MX0 + UIWIDTH("> ", UIBODY, "MONO BOLD"), SY, UIW, UIBODY, "MONO", UCINK, LH, "")
+ELSE
+  LET MCOL = UCMUTED
+  IF CONFIRMID > 0 THEN LET MCOL = UCDANGER
+  LET MW = MIN(UIWIDTH(MSG$, UISMALL, "SANS"), (UIW - 2 * MX0) * 0.6)
+  CALL UILABEL(MX0, SY - STATH / 4, MW + 1, STATH / 2, MSG$, UISMALL, "SANS", MCOL, "LEFT")
+END IF
+IF HASMOUSE = 1 THEN              ! (the hint has what the message leaves)
+  LET HX = MX0 + 24
+  IF MODE <> 1 THEN LET HX = HX + MW
+  IF MODE = 1 THEN LET HX = HX + UIWIDTH("> " & UITYPED$, UIBODY, "MONO") + UICOL
+  CALL UILABEL(HX, UIH - STATH, UIW - MX0 - HX, STATH, HINT$, UISMALL, "SANS", UCFAINT, "RIGHT")
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 9300  CARD I — at CXL, CYT (its top left), its lines from 9020: a box in
+!        CFILL with a shadow CLIFT high, a ring of CRING (-1: none) around it,
+!        a stripe in its lane's colour down its left, its text in CTCOL and its
+!        number under it; or, being edited, what's typed and the caret. CGHOST:
+!        the place of the card being dragged, faint.
+! ----------------------------------------------------------------------
+9300 REM ---- one card ----
+CALL UISHADOW(CXL, CYT, CW, H, UIRADIUS, CLIFT)
+IF CRING >= 0 THEN CALL UIBOX(CXL - 2, CYT - 2, CW + 4, H + 4, UIRADIUS + 2, CRING)
+IF CGHOST = 1 THEN
+  CALL UIBOX(CXL, CYT, CW, H, UIRADIUS, UCSURFACE)
+  CALL UIRING(CXL, CYT, CW, H, UIRADIUS, UCLINE)
+  LET CTCOL = UCFAINT
+ELSE
+  CALL UIBOX(CXL, CYT, CW, H, UIRADIUS, CFILL)
+  IF UIIN(CXL, CYT, CW, H) = 1 AND DRAGGING = 0 AND CRING < 0 THEN CALL UIBOX(CXL, CYT, CW, H, UIRADIUS, UCLIGHTEN)
+  IF UICELLS = 0 THEN CALL UIBOX(CXL, CYT + UIRADIUS, 3, H - 2 * UIRADIUS, 1.5, LACC(LANE(I)))
+END IF
+LET TX = CXL + CPADX
+LET TY = CYT + CPADY + LH / 2
+IF MODE = 2 AND ID(I) = EDITID AND CGHOST = 0 AND CLIFT < 16 THEN
+  CALL UIEDITDRAW(TX, TY, CTW, UIBODY, "SANS", UCINK, LH, "Card text")
+ELSE
+  FOR WJ = 1 TO NL
+    LET WL$ = WRAP$(WJ)
+    IF WJ = NL AND NL < NWRAP THEN LET WL$ = UIFIT$(MID$(TASK$(I), WRP(WJ)), CTW, UIBODY, "SANS")
+    CALL UITEXT(TX, TY + (WJ - 1) * LH, WL$, UIBODY, "SANS", CTCOL)
+  NEXT WJ
+END IF
+LET CIDS$ = "#" & LTRIM$(STR$(ID(I)))
+IF UICELLS = 1 THEN
+  CALL UILABEL(CXL, CYT, CW - CPADX, LH, CIDS$, UISMALL, "SANS", UCFAINT, "RIGHT")
+ELSE
+  LET MY0 = CYT + H - CPADY - METAH / 2 + 2
+  IF LANE(I) = 3 THEN
+    CALL UITEXT(TX, MY0, "✓ " & CIDS$, UISMALL, "SANS", UCGOOD)
+  ELSE
+    CALL UITEXT(TX, MY0, CIDS$, UISMALL, "SANS", UCFAINT)
+  END IF
+  IF ID(I) = SELID AND CARRY = 1 THEN CALL UILABEL(CXL, MY0 - 10, CW - CPADX, 20, "Picked up", UISMALL, "SANS BOLD", LACC(LANE(I)), "RIGHT")
+END IF
+RETURN
+
+! ======================================================================
+! 9050  HELP — what the mouse, the keys and the commands do: a dialog over
+!        the dimmed board.
+! ======================================================================
+9050 REM ---- help ----
+CALL UISCRIM
+IF UICELLS = 1 THEN
+  LET DW = UIW - 2 * MX0
+  LET DH = UIH - 2 * UIROW
+  LET RH = UIROW
+  LET COL2 = 40 * UICOL
+ELSE
+  LET DW = MIN(UIW - 40, 720)
+  LET DH = MIN(UIH - 40, 500)
+  LET RH = 22
+  LET COL2 = DW / 2
+END IF
+LET DX = (UIW - DW) / 2
+LET DY = (UIH - DH) / 2
+CALL UIPANEL(DX, DY, DW, DH)
+LET PX = DX + 28
+IF UICELLS = 1 THEN LET PX = DX + 2 * UICOL
+LET Y = DY + 34
+IF UICELLS = 1 THEN LET Y = DY + UIROW
+CALL UITEXT(PX, Y, "Kanban help", UITITLE, "SANS BOLD", UCINK)
+LET Y = Y + 1.8 * RH
+IF HASMOUSE = 1 AND (UICELLS = 0 OR UIH >= 23 * UIROW) THEN
+  CALL UITEXT(PX, Y, "MOUSE", UISMALL, "SANS BOLD", LACC(1))
+  CALL UITEXT(PX + COL2, Y, "KEYBOARD", UISMALL, "SANS BOLD", LACC(1))
+  RESTORE 9060
+  FOR HI = 1 TO 5
+    READ HK$, HD$, HK2$, HD2$
+    LET Y = Y + RH
+    GOSUB 9070
+  NEXT HI
+  LET Y = Y + 1.6 * RH
+END IF
+IF HASMOUSE = 1 THEN
+  CALL UITEXT(PX, Y, "COMMANDS — type one on the board; Enter runs it", UISMALL, "SANS BOLD", LACC(2))
+ELSE
+  CALL UITEXT(PX, Y, "COMMANDS", UISMALL, "SANS BOLD", LACC(2))
+END IF
+RESTORE 9065
+FOR HI = 1 TO 7
+  READ HK$, HD$
+  LET HK2$ = ""
+  LET Y = Y + RH
+  GOSUB 9070
+NEXT HI
+LET Y = Y + 1.6 * RH
+CALL UITEXT(PX, Y, UIFIT$("The board saves itself to " & BOARD$ & ".board after every change.", DW - 56, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
+LET Y = Y + RH
+IF HASMOUSE = 1 THEN
+  CALL UITEXT(PX, Y, "Press any key, or click, to go back.", UISMALL, "SANS", UCFAINT)
+ELSE
+  CALL UITEXT(PX, Y, "Press Enter to go back.", UISMALL, "SANS", UCFAINT)
+END IF
+RETURN
+
+9060 DATA "Click a card", "select it", "↑ ↓ ← →", "select a card"
+DATA "Double-click", "edit it", "Enter", "edit it"
+DATA "Drag a card", "move or reorder it", "Space", "pick it up: ↑ ↓ ← → move it"
+DATA "+ Add a card", "add one to a lane", "Delete", "delete it (press it twice)"
+DATA "▲ / ▼ more", "scroll a lane", "Esc", "cancel, or let go"
+9065 DATA "A text", "add a card to To Do"
+DATA "M n lane [place]", "move card n to a lane: 1-3, todo, doing or done (place 1: the top)"
+DATA "E n text", "change card n's text"
+DATA "D n", "delete card n"
+DATA "N name  /  L name", "start a new board  /  open another (name.board)"
+DATA "S [name]", "save now  /  save as name.board, and carry on there"
+DATA "H  /  Q", "this help  /  quit"
+
+! 9070  A row of the help: HK$ (a key or a click, bold) and what it does, HD$ —
+!       and, if HK2$ isn't "", a second pair in the right-hand column.
+9070 REM ---- a row of the help ----
+LET KW = 130
+IF UICELLS = 1 THEN LET KW = 18 * UICOL
+IF HK2$ = "" THEN
+  LET KW = 160
+  IF UICELLS = 1 THEN LET KW = 19 * UICOL
+END IF
+CALL UITEXT(PX, Y, HK$, UISMALL, "SANS BOLD", UCINK)
+LET DWID = COL2 - KW - 16
+IF HK2$ = "" THEN LET DWID = DW - (PX - DX) - KW - 28
+CALL UITEXT(PX + KW, Y, UIFIT$(HD$, DWID, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
+IF HK2$ <> "" THEN
+  LET KW2 = 90
+  IF UICELLS = 1 THEN LET KW2 = 10 * UICOL
+  CALL UITEXT(PX + COL2, Y, HK2$, UISMALL, "SANS BOLD", UCINK)
+  CALL UITEXT(PX + COL2 + KW2, Y, UIFIT$(HD2$, DW - (PX - DX) - COL2 - KW2 - 28, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
+END IF
 RETURN
 
 ! ======================================================================
@@ -1041,420 +1437,22 @@ ELSE
 END IF
 RETURN
 
-! ======================================================================
-! 9000  RENDER — a title bar; three lanes of one-line cards (the selected one
-!       opened up to show all its text), each scrolled by TOP(); then a row of
-!       buttons and hints, and the status (or what's being typed).
-!       One text row per window unit, row 0 at the bottom:
-!         ROWS-1 title   ROWS-2 lane names   ROWS-3 their rule   ROWS-4 .. CBOT cards
-!         2 "+ add a card"   1 buttons and hints   0 status
-! ======================================================================
-9000 REM ---- render ----
-CLEAR
-ASK DEVICE SIZE DEVW, DEVH, DEVU$  ! re-measured every frame: the board follows a resize
-LET ROWS = 24                      ! when the device's size is unknown
-IF DEVH >= 4 THEN LET ROWS = INT(DEVH / 4)
-IF ROWS > 40 THEN LET ROWS = 40    ! a huge surface still gets readable rows
-IF ROWS < 14 THEN LET ROWS = 14
-GOSUB 9060                         ! COLS: one window unit per column
-SET WINDOW 0, COLS, 0, ROWS
-LET COLW = INT((COLS - 4) / 3)     ! three lanes, two columns apart
-FOR LN = 1 TO 3
-  LET LX(LN) = (LN - 1) * (COLW + 2)
-NEXT LN
-LET TITLEY = ROWS - 1
-LET HEADY = ROWS - 2
-LET CTOP = ROWS - 4
-LET CBOT = 3
-IF HASMOUSE = 0 THEN LET CBOT = 2  ! (no "+ add a card" row)
-LET ADDY = 2
-LET HINTY = 1
-LET STATY = 0
-FOR I = 1 TO NT
-  LET CTOPY(I) = -1
-NEXT I
-
-! --- the title bar: the board, and today ---------------------------------
-LET NDONE = 0
-FOR I = 1 TO NT
-  IF LANE(I) = 3 THEN LET NDONE = NDONE + 1
-NEXT I
-SET AREA COLOR CBAR
-GRAPH AREA: 0, TITLEY; COLS, TITLEY; COLS, ROWS; 0, ROWS
-SET TEXT COLOR CTEXT
-GRAPH TEXT, AT 1, TITLEY + 0.25: "KANBAN"
-SET TEXT COLOR CDIM
-GRAPH TEXT, AT 9, TITLEY + 0.25: FIT$(BOARD$ & ".board", COLS - 46)
-LET R$ = DAY$ & "  ·  " & LTRIM$(STR$(NDONE)) & " of " & LTRIM$(STR$(NT)) & " done"
-GRAPH TEXT, AT COLS - 1 - LEN(R$), TITLEY + 0.25: R$
-
-! --- the lanes ------------------------------------------------------------
-FOR LN = 1 TO 3
-  LET X0 = LX(LN)
-  LET X1 = X0 + COLW
-  LET LCNT(LN) = 0
-  FOR I = 1 TO NT
-    IF LANE(I) = LN THEN LET LCNT(LN) = LCNT(LN) + 1
-  NEXT I
-  IF DRAGGING = 1 AND DROPLN = LN THEN
-    SET AREA COLOR CPANEL2
-  ELSE
-    SET AREA COLOR CPANEL
-  END IF
-  ! (from just under its rule, so on a character screen the rule stays a thin line;
-  ! edges just inside whole columns, so a character screen fills whole cells)
-  GRAPH AREA: X0, 1.95; X1 - 0.02, 1.95; X1 - 0.02, HEADY - 1; X0, HEADY - 1
-  ! its name and how many cards it has, over a thin rule in its colour
-  SET TEXT COLOR LACC(LN)
-  GRAPH TEXT, AT X0 + 1, HEADY + 0.25: LNAME$(LN)
-  SET TEXT COLOR CDIM
-  GRAPH TEXT, AT X0 + 2 + LEN(LNAME$(LN)), HEADY + 0.25: LTRIM$(STR$(LCNT(LN)))
-  SET AREA COLOR LACC(LN)
-  GRAPH AREA: X0 + 1, HEADY - 0.32; X1 - 1, HEADY - 0.32; X1 - 1, HEADY - 0.17; X0 + 1, HEADY - 0.17
-  ! its cards, from TOP(LN) on, while they fit
-  LET SKIPN = TOP(LN)
-  IF SKIPN > LCNT(LN) - 1 THEN LET SKIPN = MAX(0, LCNT(LN) - 1)
-  LET TOP(LN) = SKIPN
-  LET UPAT(LN) = -1
-  LET DNAT(LN) = -1
-  LET VISN(LN) = 0
-  LET ROW = CTOP
-  IF SKIPN > 0 THEN
-    SET TEXT COLOR CDIM
-    IF HOVERK = 2 AND HOVERL = LN THEN SET TEXT COLOR CTEXT
-    GRAPH TEXT, AT X0 + 2, ROW + 0.25: "▲ " & LTRIM$(STR$(SKIPN)) & " more"
-    LET UPAT(LN) = ROW
-    LET ROW = ROW - 1
-  END IF
-  LET K = 0
-  LET FULL = 0
-  LET HID = 0
-  FOR I = 1 TO NT
-    IF LANE(I) = LN THEN
-      LET K = K + 1
-      IF K > SKIPN AND FULL = 0 THEN
-        ! its lines: one, or — selected — all of its text; and its number, when it's
-        ! needed (typing commands) or pointed at, else the room goes to the text
-        LET CIDS$ = ""
-        IF HASMOUSE = 0 OR ID(I) = SELID OR ID(I) = HOVERID THEN LET CIDS$ = LTRIM$(STR$(ID(I)))
-        LET TW = COLW - 3
-        IF CIDS$ <> "" THEN LET TW = COLW - 4 - LEN(CIDS$)
-        IF ID(I) = SELID AND DRAGGING = 0 THEN
-          LET WRAPSRC$ = TASK$(I)
-          LET WRAPW = TW
-          GOSUB 9200
-          LET MAXH = CTOP - CBOT - 1
-          IF WRAPN > MAXH THEN
-            LET WRAPN = MAXH
-            LET WRAP$(MAXH) = FIT$(WRAP$(MAXH) & "…", TW)
-          END IF
-          LET H = WRAPN
-        ELSE
-          LET WRAP$(1) = FIT$(TASK$(I), TW)
-          LET H = 1
-        END IF
-        LET NEED = H
-        IF K < LCNT(LN) THEN LET NEED = H + 1   ! (room for "▼ n more" after it)
-        IF NEED > ROW - CBOT + 1 THEN
-          LET FULL = 1
-          LET HID = LCNT(LN) - K + 1
-        ELSE
-          ! draw it
-          LET CXL = X0
-          LET CROW = ROW
-          LET CH = H
-          LET CSTRIPE = LACC(LN)
-          LET CTCOL = CTEXT
-          IF LN = 3 THEN LET CTCOL = CDIM    ! done: quieter
-          LET CFILL = CCARD
-          IF ID(I) = HOVERID THEN LET CFILL = CHOVER
-          IF ID(I) = SELID THEN
-            LET CFILL = CSEL
-            LET CTCOL = CTEXT
-            IF CARRY = 1 THEN LET CSTRIPE = CTEXT
-          END IF
-          IF ID(I) = PRESSID AND DRAGGING = 1 THEN   ! the card being dragged, left behind
-            LET CFILL = CPANEL2
-            LET CTCOL = CDIM
-          END IF
-          GOSUB 9300
-          LET CTOPY(I) = ROW
-          LET CBOTY(I) = ROW - H + 1
-          LET VISN(LN) = VISN(LN) + 1
-          LET ROW = ROW - H
-        END IF
-      END IF
-    END IF
-  NEXT I
-  IF HID > 0 THEN
-    SET TEXT COLOR CDIM
-    IF HOVERK = 3 AND HOVERL = LN THEN SET TEXT COLOR CTEXT
-    GRAPH TEXT, AT X0 + 2, CBOT + 0.25: "▼ " & LTRIM$(STR$(HID)) & " more"
-    LET DNAT(LN) = CBOT
-  END IF
-  IF HASMOUSE = 1 THEN
-    SET TEXT COLOR CDIM
-    IF HOVERK = 4 AND HOVERL = LN THEN SET TEXT COLOR CTEXT
-    IF MODE = 3 AND ADDLN = LN THEN SET TEXT COLOR LACC(LN)
-    GRAPH TEXT, AT X0 + 2, ADDY + 0.25: "+ add a card"
-  END IF
-NEXT LN
-
-! --- dragging: mark where it would land, and draw it at the pointer --------
-IF DRAGGING = 1 THEN
-  IF DROPLN > 0 THEN
-    SET AREA COLOR LACC(DROPLN)
-    GRAPH AREA: LX(DROPLN) + 1, MARKY - 0.07; LX(DROPLN) + COLW - 1, MARKY - 0.07; LX(DROPLN) + COLW - 1, MARKY + 0.07; LX(DROPLN) + 1, MARKY + 0.07
-    SET TEXT COLOR LACC(DROPLN)
-    GRAPH TEXT, AT LX(DROPLN), MARKY - 0.35: "▶"
-  END IF
-  LET FID = PRESSID
-  GOSUB 8950
-  IF FI > 0 THEN
-    LET CIDS$ = LTRIM$(STR$(ID(FI)))
-    LET WRAP$(1) = FIT$(TASK$(FI), COLW - 4 - LEN(CIDS$))
-    LET CXL = MX - GRABDX
-    LET CROW = MY - GRABDY
-    LET CH = 1
-    LET CFILL = CSEL
-    LET CSTRIPE = LACC(LANE(FI))
-    LET CTCOL = CTEXT
-    GOSUB 9300
-  END IF
-END IF
-
-! --- the buttons and hints, then the status (or what's being typed) --------
-IF MODE = 1 THEN
-  LET HINT$ = "Enter runs the command  ·  Esc cancels  ·  H Enter: help"
-ELSEIF MODE = 2 THEN
-  LET HINT$ = "Enter saves  ·  Esc cancels  ·  ← → Home End move the cursor"
-ELSEIF MODE = 3 THEN
-  LET HINT$ = "Type the card, then Enter  ·  Esc cancels"
-ELSEIF CONFIRMID > 0 THEN
-  LET HINT$ = "Delete again deletes it  ·  any other key keeps it"
-ELSEIF CARRY = 1 THEN
-  LET HINT$ = "↑ ↓ ← → move the card  ·  Space or Enter puts it down"
-ELSEIF SELID > 0 THEN
-  LET HINT$ = "Enter edit  ·  Space pick up  ·  Del delete  ·  ↑ ↓ ← → select"
-ELSE
-  LET HINT$ = "Click a card, or ↑ ↓ ← →  ·  or type a command (H: help)"
-END IF
-IF HASMOUSE = 1 THEN
-  LET BADD0 = 0.5
-  LET BADD1 = 6.5
-  LET BHELP0 = 7.5
-  LET BHELP1 = 12.5
-  SET AREA COLOR CCARD
-  IF HOVERK = 5 THEN SET AREA COLOR CHOVER
-  GRAPH AREA: BADD0, HINTY + 0.08; BADD1, HINTY + 0.08; BADD1, HINTY + 0.92; BADD0, HINTY + 0.92
-  SET AREA COLOR CCARD
-  IF HOVERK = 6 THEN SET AREA COLOR CHOVER
-  GRAPH AREA: BHELP0, HINTY + 0.08; BHELP1, HINTY + 0.08; BHELP1, HINTY + 0.92; BHELP0, HINTY + 0.92
-  SET TEXT COLOR CTEXT
-  GRAPH TEXT, AT 1, HINTY + 0.25: "+ Add"
-  GRAPH TEXT, AT 8, HINTY + 0.25: "Help"
-  SET TEXT COLOR CDIM
-  GRAPH TEXT, AT 14, HINTY + 0.25: FIT$(HINT$, COLS - 15)
-ELSE
-  SET TEXT COLOR CDIM
-  GRAPH TEXT, AT 1, HINTY + 0.25: FIT$("A add  M move  E edit  D delete  N new  S save  L open  H help  Q quit", COLS - 2)
-END IF
-IF MODE > 0 THEN
-  IF MODE = 1 THEN
-    LET P$ = "> "
-    SET TEXT COLOR CTEXT
-  ELSEIF MODE = 2 THEN
-    LET P$ = "Edit #" & LTRIM$(STR$(EDITID)) & ": "
-    SET TEXT COLOR LACC(2)
-  ELSE
-    LET P$ = "Add to " & LANENAME$(ADDLN) & ": "
-    SET TEXT COLOR LACC(ADDLN)
-  END IF
-  GRAPH TEXT, AT 1, STATY + 0.25: P$
-  ! the text, with the cursor; scrolled so the cursor shows
-  LET AVAIL = COLS - 2 - LEN(P$)
-  LET LT$ = LEFT$(TYPED$, CURP)
-  LET RT$ = MID$(TYPED$, CURP + 1)
-  LET CUR$ = "|"
-  IF RT$ = "" THEN LET CUR$ = "_"
-  IF LEN(LT$) > AVAIL - 2 AND AVAIL > 3 THEN LET LT$ = "…" & RIGHT$(LT$, AVAIL - 3)
-  SET TEXT COLOR CTEXT
-  GRAPH TEXT, AT 1 + LEN(P$), STATY + 0.25: FIT$(LT$ & CUR$ & RT$, AVAIL)
-ELSE
-  SET TEXT COLOR CDIM
-  IF CONFIRMID > 0 THEN SET TEXT COLOR CWARN
-  GRAPH TEXT, AT 1, STATY + 0.25: FIT$(MSG$, COLS - 2)
-END IF
-RETURN
-
 ! ----------------------------------------------------------------------
-! 9300  CARD — a filled box from column CXL + 1, CH rows down from row CROW,
-!        a stripe in CSTRIPE down its left side, its lines WRAP$(1 .. CH) in
-!        CTCOL, and its number CIDS$ (if any) at the right of the first one, dim.
-! ----------------------------------------------------------------------
-9300 REM ---- one card ----
-LET BX0 = CXL + 1
-LET BX1 = CXL + COLW - 1.02
-LET BYT = CROW + 0.92
-LET BYB = CROW - CH + 1.08
-SET AREA COLOR CFILL
-GRAPH AREA: BX0, BYB; BX1, BYB; BX1, BYT; BX0, BYT
-SET AREA COLOR CSTRIPE
-GRAPH AREA: BX0, BYB; BX0 + 0.35, BYB; BX0 + 0.35, BYT; BX0, BYT
-SET TEXT COLOR CTCOL
-FOR WJ = 1 TO CH
-  GRAPH TEXT, AT BX0 + 1, CROW - WJ + 1.25: WRAP$(WJ)
-NEXT WJ
-IF CIDS$ <> "" THEN
-  SET TEXT COLOR CDIM
-  GRAPH TEXT, AT BX1 - LEN(CIDS$), CROW + 0.25: CIDS$
-END IF
-RETURN
-
-! ======================================================================
-! 9050  HELP — what the mouse, the keys and the commands do.
-! ======================================================================
-9050 REM ---- help screen ----
-CLEAR
-ASK DEVICE SIZE DEVW, DEVH, DEVU$
-LET HROWS = 24
-IF DEVH >= 4 THEN LET HROWS = INT(DEVH / 4)
-IF HROWS > 40 THEN LET HROWS = 40
-IF HROWS < 14 THEN LET HROWS = 14
-GOSUB 9060
-SET WINDOW 0, COLS, 0, HROWS
-SET AREA COLOR CPANEL
-GRAPH AREA: 0, 0; COLS, 0; COLS, HROWS; 0, HROWS
-LET Y = HROWS - 2
-SET TEXT COLOR CTEXT
-GRAPH TEXT, AT 2, Y + 0.25: "KANBAN  ·  HELP"
-LET Y = Y - 2
-IF HASMOUSE = 1 AND HROWS >= 23 THEN
-  SET TEXT COLOR LACC(1)
-  GRAPH TEXT, AT 2, Y + 0.25: "MOUSE"
-  GRAPH TEXT, AT 42, Y + 0.25: "KEYBOARD"
-  SET TEXT COLOR CTEXT
-  GRAPH TEXT, AT 2, Y - 0.75: "Click a card      select it"
-  GRAPH TEXT, AT 2, Y - 1.75: "Double-click      edit it"
-  GRAPH TEXT, AT 2, Y - 2.75: "Drag a card       move or reorder it"
-  GRAPH TEXT, AT 2, Y - 3.75: "+ add a card      add one to a lane"
-  GRAPH TEXT, AT 2, Y - 4.75: "▲ / ▼ more        scroll a lane"
-  GRAPH TEXT, AT 42, Y - 0.75: "↑ ↓ ← →   select a card"
-  GRAPH TEXT, AT 42, Y - 1.75: "Enter     edit it"
-  GRAPH TEXT, AT 42, Y - 2.75: "Space     pick it up: ↑ ↓ ← → move it"
-  GRAPH TEXT, AT 42, Y - 3.75: "Delete    delete it (press it twice)"
-  GRAPH TEXT, AT 42, Y - 4.75: "Esc       cancel, or let go"
-  LET Y = Y - 7
-END IF
-SET TEXT COLOR LACC(2)
-IF HASMOUSE = 1 THEN
-  GRAPH TEXT, AT 2, Y + 0.25: "COMMANDS  (type one on the board; Enter runs it)"
-ELSE
-  GRAPH TEXT, AT 2, Y + 0.25: "COMMANDS"
-END IF
-SET TEXT COLOR CTEXT
-GRAPH TEXT, AT 2, Y - 0.75: "A text             add a card to To Do"
-GRAPH TEXT, AT 2, Y - 1.75: "M n lane [place]   move card n to a lane: 1-3, todo, doing or done"
-GRAPH TEXT, AT 2, Y - 2.75: "                   (place 1: the top of the lane)"
-GRAPH TEXT, AT 2, Y - 3.75: "E n text           change card n's text"
-GRAPH TEXT, AT 2, Y - 4.75: "D n                delete card n"
-GRAPH TEXT, AT 2, Y - 5.75: "N name  /  L name  start a new board  /  open another (name.board)"
-GRAPH TEXT, AT 2, Y - 6.75: "S [name]           save now  /  save as name.board, and carry on there"
-GRAPH TEXT, AT 2, Y - 7.75: "H  /  Q            this help  /  quit"
-SET TEXT COLOR CDIM
-GRAPH TEXT, AT 2, Y - 9.75: FIT$("The board saves itself to " & BOARD$ & ".board after every change.", COLS - 4)
-IF HASMOUSE = 1 THEN
-  GRAPH TEXT, AT 2, Y - 10.75: "Press any key, or click, to go back."
-ELSE
-  GRAPH TEXT, AT 2, Y - 10.75: "Press Enter to go back."
-END IF
-RETURN
-
-! ----------------------------------------------------------------------
-! 9200  WORD-WRAP — break WRAPSRC$ into WRAP$(1..WRAPN), each <= WRAPW cols.
-!                   Splits on spaces; words longer than WRAPW are hard-broken.
-! ----------------------------------------------------------------------
-9200 REM ---- word wrap ----
-LET WRAPN = 0
-LET WLINE$ = ""
-LET WWORD$ = ""
-LET WS$ = WRAPSRC$ & " "           ! trailing space flushes the final word
-FOR WI = 1 TO LEN(WS$)
-  LET WC$ = MID$(WS$, WI, 1)
-  IF WC$ = " " THEN
-    IF WWORD$ <> "" THEN
-      GOSUB 9250                   ! place WWORD$ onto WLINE$ / WRAP$()
-      LET WWORD$ = ""
-    END IF
-  ELSE
-    LET WWORD$ = WWORD$ & WC$
-  END IF
-NEXT WI
-IF WLINE$ <> "" AND WRAPN < 64 THEN
-  LET WRAPN = WRAPN + 1
-  LET WRAP$(WRAPN) = WLINE$
-END IF
-IF WRAPN = 0 THEN
-  LET WRAPN = 1
-  LET WRAP$(1) = ""
-END IF
-RETURN
-
-! ----------------------------------------------------------------------
-! 9250  WRAP-PLACE — add WWORD$ to the current wrapped line, breaking as needed.
-! ----------------------------------------------------------------------
-9250 REM ---- wrap place ----
-DO WHILE LEN(WWORD$) > WRAPW AND WRAPN < 62
-  ! word wider than a whole line: flush, then emit a full-width chunk
-  IF WLINE$ <> "" THEN
-    LET WRAPN = WRAPN + 1
-    LET WRAP$(WRAPN) = WLINE$
-    LET WLINE$ = ""
-  END IF
-  LET WRAPN = WRAPN + 1
-  LET WRAP$(WRAPN) = LEFT$(WWORD$, WRAPW)
-  LET WWORD$ = MID$(WWORD$, WRAPW + 1)
-LOOP
-IF WLINE$ = "" THEN
-  LET WLINE$ = WWORD$
-ELSEIF LEN(WLINE$) + 1 + LEN(WWORD$) <= WRAPW THEN
-  LET WLINE$ = WLINE$ & " " & WWORD$
-ELSEIF WRAPN < 63 THEN
-  LET WRAPN = WRAPN + 1
-  LET WRAP$(WRAPN) = WLINE$
-  LET WLINE$ = WWORD$
-END IF
-RETURN
-
-! ----------------------------------------------------------------------
-! 9700  HIT — what's under the pointer (MX, MY): HITKIND (0 nothing, 1 a card,
-!        2 "▲ more", 3 "▼ more", 4 "+ add a card", 5 the + Add button, 6 Help),
-!        the card's number HITID and the lane HITLN.
+! 9700  HIT — what's under the pointer (MX, MY): HITKIND 1 for a card (its
+!        number HITID), else 0; and the lane it's in (HITLN, 0 for none).
 ! ----------------------------------------------------------------------
 9700 REM ---- what's under the pointer ----
 LET HITKIND = 0
 LET HITID = 0
 LET HITLN = 0
 FOR HI = 1 TO 3
-  IF MX >= LX(HI) AND MX <= LX(HI) + COLW THEN LET HITLN = HI
+  IF MX >= LX(HI) AND MX < LX(HI) + LW THEN LET HITLN = HI
 NEXT HI
-LET HROW = INT(MY)
-IF HROW = HINTY THEN
-  IF MX >= BADD0 AND MX <= BADD1 THEN LET HITKIND = 5
-  IF MX >= BHELP0 AND MX <= BHELP1 THEN LET HITKIND = 6
-  RETURN
-END IF
 IF HITLN = 0 THEN RETURN
-IF HROW = ADDY AND HASMOUSE = 1 THEN
-  LET HITKIND = 4
-ELSEIF HROW = UPAT(HITLN) THEN
-  LET HITKIND = 2
-ELSEIF HROW = DNAT(HITLN) THEN
-  LET HITKIND = 3
-ELSEIF MX >= LX(HITLN) + 1 AND MX <= LX(HITLN) + COLW - 1 THEN
+IF MX >= LX(HITLN) + CINSET AND MX < LX(HITLN) + CINSET + CW THEN
   FOR HI = 1 TO NT
     IF CTOPY(HI) >= 0 AND LANE(HI) = HITLN THEN
-      IF MY >= CBOTY(HI) AND MY < CTOPY(HI) + 1 THEN
+      IF MY >= CTOPY(HI) AND MY < CBOTY(HI) THEN
         LET HITKIND = 1
         LET HITID = ID(HI)
       END IF

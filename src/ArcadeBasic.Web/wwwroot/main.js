@@ -20,7 +20,8 @@ import { createExport } from './export.js';
 
 // .NET starts loading straight away; the editor works meanwhile.
 const loadingNet = (async () => {
-  const { getAssemblyExports, getConfig, runMain } = await dotnet.create();
+  const { getAssemblyExports, getConfig, runMain, setModuleImports } = await dotnet.create();
+  setModuleImports('screen', { measureText: (text, font, height) => screen.measureText(text, font, height) });   // (TEXTWIDTH)
   const exports = await getAssemblyExports(getConfig().mainAssemblyName);
   await runMain();
   return exports.Playground;
@@ -1090,22 +1091,22 @@ async function kanbanSelftest() {
     documents.openExample('kanban.bas');
     start(editor.state.doc.toString());
     await pause();
-    result.mouseMode = screen.texts.some(t => t.text === '+ add a card');
+    result.mouseMode = screen.texts.some(t => t.text === '+ Add a card');
     if (params.has('snapshot')) {                  // hover over card #6 first
       pointer('pointermove', at(card('The board saves')[0]));
       await pause();
       result.hoverSnapshot = canvas.toDataURL('image/png');
     }
-    const done = [screen.texts.find(t => t.text === 'DONE').x + 0.02, 0.5];
+    const done = [screen.texts.find(t => t.text === 'Done').x + 0.02, 0.5];
     pointer('pointerdown', at(card('Select a card')[0])); await pause();
     pointer('pointermove', done); await pause();
     result.copiesWhileDragging = card('Select a card').length;
     if (params.has('snapshot')) result.snapshot = canvas.toDataURL('image/png');   // mid-drag picture
     pointer('pointerup', done); await pause();
     result.status = screen.texts.find(t => t.text.startsWith('Moved #'))?.text;
-    const heads = ['TO DO', 'DOING', 'DONE'].map(name => screen.texts.find(t => t.text === name));
-    result.lanes = heads.map(h => h.text + ' ' +
-      screen.texts.find(t => t.y === h.y && t.x > h.x && /^\d+$/.test(t.text))?.text);
+    const heads = ['To Do', 'Doing', 'Done'].map(name => screen.texts.find(t => t.text === name));
+    result.lanes = heads.map(h => h.text + ' ' +          // (the count's on a badge beside the name)
+      screen.texts.find(t => Math.abs(t.y - h.y) < 0.02 && t.x > h.x && /^\d+$/.test(t.text))?.text);
     programFiles.sync(true);
     result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('Select a card'));
     key('q', 'KeyQ'); await pause();

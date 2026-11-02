@@ -60,7 +60,50 @@ public class AnalyzerTests
                 .Which.Message.Should().EndWith("takes an array: its name, with no subscripts (" + call[..6] + "(A))");
     }
 
+    [Theory]
+    [InlineData("CALL S(X)", "'S' takes an array for B(): its name, with no subscripts")]
+    [InlineData("CALL S(A(1))", "'S' takes an array for B(): its name, with no subscripts")]
+    [InlineData("CALL S(N$)", "'S' takes a numeric array for B()")]
+    [InlineData("PRINT F(5)", "'F' takes an array for C$(): its name, with no subscripts")]
+    [InlineData("CALL T(A)", "'A' is an array; index it with parentheses")]
+    public void AnArrayParameterTakesAnArray(string call, string message)
+    {
+        const string decls = "DIM A(3), N$(2)\nLET X = 1\nSUB S(B())\nEND SUB\nSUB T(Y)\nEND SUB\nFUNCTION F(C$())\nF = 1\nEND FUNCTION\n";
+        Analyze(decls + "CALL S(A)\nCALL S(A())\nPRINT F(N$)").Diagnostics.HasErrors.Should().BeFalse();
+        Analyze(decls + call).Diagnostics.All.Where(d => d.Severity == DiagnosticSeverity.Error).Should().ContainSingle()
+            .Which.Message.Should().Be(message);
+    }
+
+    [Fact]
+    public void AnArrayParameterIsIndexed()
+    {
+        Analyze("SUB S(B(,))\nLET B(1, 2) = B(2, 1)\nEND SUB").Diagnostics.HasErrors.Should().BeFalse();
+        ErrorsFor(Analyze("SUB S(B())\nPRINT B\nEND SUB").Diagnostics, Analyzer.ErrCannotCall).Should().ContainSingle()
+            .Which.Message.Should().Be("'B' is an array; index it with parentheses");
+        ErrorsFor(Analyze("SUB S(B())\nMAT PRINT B\nEND SUB").Diagnostics, Analyzer.ErrInvalidAssignmentTarget).Should().ContainSingle()
+            .Which.Message.Should().Be("MAT doesn't work on an array parameter ('B') yet");
+    }
+
     // -- Graphics: cell arrays ---------------------------------------------
+
+    [Theory]
+    [InlineData("SET TEXT HEIGHT \"big\"", "TEXT HEIGHT")]
+    [InlineData("SET TEXT JUSTIFY \"LEFT\", 2", "TEXT JUSTIFY")]
+    [InlineData("SET TEXT FONT 1", "TEXT FONT")]
+    [InlineData("GRAPH AREA, ROUND \"x\": 0, 0; 1, 0; 1, 1", "ROUND radius")]
+    [InlineData("PRINT TEXTWIDTH(5)", "TEXTWIDTH")]
+    [InlineData("ASK TEXT FONT F", "ASK TEXT FONT variable")]
+    public void TextAttributesAndRoundingTakeTheirTypes(string source, string what) =>
+        ErrorsFor(Analyze(source).Diagnostics, Analyzer.ErrTypeMismatch).Should().ContainSingle()
+            .Which.Message.Should().Contain(what);
+
+    [Theory]
+    [InlineData("GRAPH LINES: 0, 0; 1, 1", true)]
+    [InlineData("SUB S\nGRAPH TEXT, AT 0, 0: \"hi\"\nEND SUB", true)]
+    [InlineData("DIM A(2, 2)\nMAT GRAPH CELLS, IN 0, 0; 1, 1: A", true)]
+    [InlineData("SET WINDOW 0, 1, 0, 1\nPRINT \"hi\"", false)]
+    public void ItKnowsWhetherAProgramDraws(string source, bool draws) =>
+        Analyze(source).Info.Draws.Should().Be(draws);
 
     [Fact]
     public void MatGraphCellsNeedsATwoDimensionalArray()

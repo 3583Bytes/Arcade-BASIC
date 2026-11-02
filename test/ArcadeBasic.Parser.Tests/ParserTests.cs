@@ -209,6 +209,28 @@ public class ParserTests
     }
 
     [Fact]
+    public void GraphLinesAndAreaCanRoundTheirCorners()
+    {
+        // ROUND isn't reserved (it's a function too): it's recognised after GRAPH LINES, / AREA,.
+        SingleStmt<GraphStmt>("GRAPH AREA, ROUND R / 2: 0,0; 1,0; 1,1").Round.Should().BeOfType<BinaryExpr>();
+        SingleStmt<GraphStmt>("GRAPH LINES: 0,0; 1,1").Round.Should().BeNull();
+        Parse("GRAPH AREA, ROUNDED 1: 0,0; 1,0; 1,1").Diagnostics.All.Should().Contain(d => d.Message == "expected ROUND after ','");
+        Parse("GRAPH POINTS, ROUND 1: 0,0").Diagnostics.HasErrors.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetAndAskTextAttributesParse()
+    {
+        SingleStmt<SetTextStmt>("SET TEXT HEIGHT 2 * H").Attribute.Should().Be(GfxTextAttribute.Height);
+        SingleStmt<SetTextStmt>("SET TEXT JUSTIFY \"CENTER\", V$").Values.Should().HaveCount(2);
+        SingleStmt<SetTextStmt>("SET TEXT FONT \"SANS BOLD\"").Attribute.Should().Be(GfxTextAttribute.Font);
+        SingleStmt<SetColorStmt>("SET TEXT COLOR 3").Target.Should().Be(GfxColorKind.Text);
+        SingleStmt<AskGfxStmt>("ASK TEXT JUSTIFY H$, V$").Object.Should().Be(GfxAskObject.TextJustify);
+        SingleStmt<AskGfxStmt>("ASK TEXT HEIGHT H").Object.Should().Be(GfxAskObject.TextHeight);
+        Parse("SET TEXT SIZE 2").Diagnostics.All.Should().Contain(d => d.Message == "expected COLOR, HEIGHT, JUSTIFY or FONT after TEXT");
+    }
+
+    [Fact]
     public void GraphTextWithAtParses()
     {
         var stmt = SingleStmt<GraphTextStmt>("GRAPH TEXT, AT 2, 3: \"hi\"");

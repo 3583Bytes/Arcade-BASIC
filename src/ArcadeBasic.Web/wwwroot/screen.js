@@ -6,9 +6,15 @@
 // snapped to the pixel grid, so every line is crisp and the same weight.
 
 // CanvasGraphicsDevice command codes.
-const COLOR = 2, LINES = 3, AREA = 4, POINTS = 5, TEXT = 6, LINE_STYLE = 7, POINT_STYLE = 8, CELLS = 9, PALETTE = 10;
+const COLOR = 2, LINES = 3, AREA = 4, POINTS = 5, TEXT = 6, LINE_STYLE = 7, POINT_STYLE = 8, CELLS = 9, PALETTE = 10,
+  TEXT_STYLE = 11;
 // SET LINE STYLE 1 solid, 2 dashed, 3 dotted — the SVG backend's dash patterns.
 const DASHES = { 2: [12, 6], 3: [3, 5] };
+
+// SET TEXT FONT's fonts: a TEXT_STYLE's font is 1 for sans-serif (else monospace), + 2 for bold.
+const MONO = 'ui-monospace, Menlo, Consolas, monospace';
+const SANS = 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const fontOf = (font, px) => `${font & 2 ? '600 ' : ''}${px}px ${font & 1 ? SANS : MONO}`;
 
 /** A screen on `canvas`; `glow` says whether to draw with a CRT-style glow. */
 export function createScreen(canvas, { glow = () => false } = {}) {
@@ -20,6 +26,8 @@ export function createScreen(canvas, { glow = () => false } = {}) {
   let paletteSeen = false;
 
   let lastFrame = null;   // [cmds, texts, cells] — redrawn when the canvas is resized or glow toggled
+  const measuring = document.createElement('canvas').getContext('2d');
+  let measured = new Map();   // TEXTWIDTH's answers at this size: font and text → width
   let lastTexts = [];     // the last drawn frame's text: [{ x, y, text }] in unit coordinates
 
   /** Size the canvas's backing store to its on-screen size in device pixels. */
@@ -29,7 +37,30 @@ export function createScreen(canvas, { glow = () => false } = {}) {
     if (canvas.width === w && canvas.height === h) return;
     canvas.width = w;
     canvas.height = h;
+    measured = new Map();
     if (lastFrame) drawFrame(...lastFrame);
+  }
+
+  /** The pixel size drawFrame gives text of `height` (a fraction of the screen's height;
+   *  0, the usual size) — exactly: TEXTWIDTH measures it so, and a rounded one draws wider. */
+  function textPx(height, w, h) {
+    return height > 0 ? Math.max(1, height * h).toFixed(2) : Math.round(w / 80 / 0.6);
+  }
+
+  /** How wide `text` is drawn in `font` (TEXT_STYLE's) at `height`, as a fraction of the
+   *  screen's width: measured at the size it's drawn, since a font can be shaped
+   *  differently small (macOS's is wider). Before the screen shows, as if it were 960 across. */
+  function measureText(text, font, height) {
+    let { w, h } = geometry();
+    if (w < 16 || h < 16) [w, h] = [960, 576];
+    const px = textPx(height, w, h), key = `${font} ${px} ${text}`;
+    let width = measured.get(key);
+    if (width === undefined) {
+      if (measured.size > 8192) measured = new Map();
+      measuring.font = fontOf(font, px);
+      measured.set(key, width = measuring.measureText(text).width);
+    }
+    return width / w;
   }
 
   /** Canvas geometry for the current backing store: the unit square, inset by half a
@@ -65,8 +96,8 @@ export function createScreen(canvas, { glow = () => false } = {}) {
     ctx.lineJoin = 'miter';
     ctx.lineCap = 'square';
     // An 80 x 24-cell screen, like the terminal's: a monospace glyph is ~0.6 em wide,
-    // so size the font to fit 80 columns.
-    ctx.font = `${Math.round(w / 80 / 0.6)}px ui-monospace, Menlo, monospace`;
+    // so the usual font fits 80 columns. SET TEXT HEIGHT gives a size of the screen's height.
+    let textHeight = 0, textFont = 0, fontSet = '';
     ctx.textBaseline = 'alphabetic';
     const paint = index => {
       const c = palette[index] ?? palette[1];
@@ -92,10 +123,13 @@ export function createScreen(canvas, { glow = () => false } = {}) {
         if (cut) ctx.restore();
         continue;
       }
+      if (op === TEXT_STYLE) { textHeight = cmds[i]; textFont = cmds[i + 1]; i += 2; continue; }
       if (op === LINE_STYLE) { lineStyle = cmds[i++]; continue; }
       if (op === POINT_STYLE) { pointStyle = cmds[i++]; continue; }
       if (op === TEXT) {
-        paint(colors[2]);                             // the point is the text's baseline (ECMA-116 LEFT, BASE)
+        paint(colors[2]);                             // the point is the text's baseline (GraphicsState justifies it)
+        const font = fontOf(textFont, textPx(textHeight, w, h));
+        if (font !== fontSet) ctx.font = fontSet = font;
         ctx.fillText(texts[cmds[i + 2]], X(cmds[i]), Y(cmds[i + 1]));
         lastTexts.push({ x: cmds[i], y: cmds[i + 1], text: texts[cmds[i + 2]] });
         i += 3;
@@ -107,10 +141,20 @@ export function createScreen(canvas, { glow = () => false } = {}) {
       paint(colors[op === POINTS ? 0 : op === LINES ? 1 : 3]);
       ctx.setLineDash(op === LINES ? (DASHES[lineStyle] ?? []).map(d => d * dpr) : []);
       ctx.beginPath();
+      const at = i;
+      const near = (k, d) => {                        // is the edge from point k to its neighbour (d = -1, +1) across or down?
+        const j = op === AREA ? (k + d + n) % n : k + d;
+        return j >= 0 && j < n && j !== k
+          && (Math.abs(cmds[at + 2 * j] - cmds[at + 2 * k]) < 1e-9 || Math.abs(cmds[at + 2 * j + 1] - cmds[at + 2 * k + 1]) < 1e-9);
+      };
       for (let k = 0; k < n; k++, i += 2) {
         let x = X(cmds[i]), y = Y(cmds[i + 1]);
-        if (op === LINES) { x = snap(x); y = snap(y); }
-        else if (op === AREA) { x = Math.round(x); y = Math.round(y); }
+        // A straight line, a box: on the pixel grid, crisp. A curve (GRAPH AREA, ROUND's corners)
+        // is left where it is, so it's smooth.
+        if (op !== POINTS && (n <= 4 || near(k, -1) || near(k, 1))) {
+          if (op === LINES) { x = snap(x); y = snap(y); }
+          else { x = Math.round(x); y = Math.round(y); }
+        }
         if (op === POINTS) marker(x, y, pointStyle, dpr);
         else if (k === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
@@ -126,9 +170,9 @@ export function createScreen(canvas, { glow = () => false } = {}) {
     paletteSeen = true;
     palette = [];
     for (let k = 0; k < 256; k++) {
-      const c = cmds[at + k] >>> 0, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-      palette.push(`rgb(${r},${g},${b})`);
-      paletteAbgr[k] = (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
+      const c = cmds[at + k] >>> 0, a = c >>> 24, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+      palette.push(a === 255 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`);   // (SET COLOR MIX's opacity)
+      paletteAbgr[k] = ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
     }
   }
 
@@ -167,13 +211,15 @@ export function createScreen(canvas, { glow = () => false } = {}) {
   return {
     /** Draw a frame (TakeFrame, FrameText, FrameCells); whether it drew anything. */
     draw: drawFrame,
+    /** TEXTWIDTH, for CanvasGraphicsDevice (the page gives it to .NET with setModuleImports). */
+    measureText,
     /** Draw the last frame again (the glow changed). */
     redraw() { if (lastFrame) drawFrame(...lastFrame); },
     /** A new program: its colours aren't known until it draws. */
     newRun() { paletteSeen = false; },
     /** The program's colours ('#rrggbb' × 256) once it has drawn, else null. */
     colours: () => paletteSeen
-      ? palette.map(c => '#' + c.match(/\d+/g).map(v => (+v).toString(16).padStart(2, '0')).join(''))
+      ? palette.map(c => '#' + c.match(/\d+/g).slice(0, 3).map(v => (+v).toString(16).padStart(2, '0')).join(''))
       : null,
     /** The last frame's text: [{ x, y, text }] in unit coordinates. */
     get texts() { return lastTexts; },

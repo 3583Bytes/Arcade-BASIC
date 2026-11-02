@@ -285,4 +285,11 @@ public enum Opcode : byte
     // -- The end of a USE body (appended so the values above stay stable) --
     EndUse,                // operand: none — the handler body is done (fell off its end, or EXIT WHEN / EXIT HANDLER): EXTYPE,
                            // EXLINE and EXTEXT$ go back to the exception an enclosing USE body is handling, if any
+
+    // -- Text attributes, rounded corners, opacity (appended so the values above stay stable) --
+    GfxSetText,            // operand: u32 attribute (matches Parser.Ast.GfxTextAttribute: 0 height, 1 justify, 2 font) — stack:
+                           // the height; the horizontal then vertical justification; the font
+    GfxDrawRound,          // operand: u32 geometry (1=lines, 2=area), u32 count — stack: x0,y0, … (2*count), then the radius
+    GfxSetColorMixOpacity, // stack (top last): index, red, green, blue, opacity; SET COLOR MIX with an opacity
+    RestoreAt,             // operand: u32 pool, u32 item — RESTORE line: READ goes on from that item of the pool
 }

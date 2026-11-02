@@ -127,7 +127,7 @@ Cross-section jumps (e.g. into an `END IF` label from inside an `ELSE` arm) are 
 |---|---|---|
 | `^` | numeric ^ numeric | Integer exponents are exact under `DECIMAL` (a negative one is a reciprocal rounded like `/`); non-integer exponents go through `double`. A negative base with a non-integer exponent raises 3002, zero to a negative power 3003 |
 | `*` `/` | numeric only | `*` capped at 40 significant digits, `/` at 30 (see Numeric representation) |
-| `MOD` `REMAINDER` | numeric, as operators (the 2-arg function form doesn't parse yet) | `MOD` follows mathematical modulo (result has sign of divisor); `REMAINDER` has sign of dividend, per spec |
+| `MOD` `REMAINDER` | numeric, as operators and as the functions `MOD(x, y)`, `REMAINDER(x, y)` | `MOD` follows mathematical modulo (result has sign of divisor); `REMAINDER` has sign of dividend, per spec |
 | `+` `-` | numeric only | **`+` is rejected for strings** (see DEVIATION above) |
 | `&` | string only | The only string concat operator |
 | `=` `<>` `<` `<=` `>` `>=` | numeric or string | String comparison is `string.CompareOrdinal` |
@@ -148,24 +148,24 @@ Numeric → numeric:   ABS SGN INT TRUNCATE CEIL ROUND
                      SIN COS TAN ATN ASIN ACOS SEC CSC COT
                      RND  (0 or 1 arg; argument ignored)
 Variadic numeric:    MAX MIN
-Binary numeric:      MOD REMAINDER  (operator forms only: see below)
+Binary numeric:      MOD REMAINDER  (and as operators)
 String → numeric:    LEN VAL ORD POS
 Numeric → string:    STR$ CHR$ REPEAT$
 String → string:     LCASE$ UCASE$ UPRC$ LTRIM$ RTRIM$
                      MID$ LEFT$ RIGHT$
 System:              DATE$ TIME$
-Array introspection: LBOUND UBOUND  (registered, not callable yet: see below)
+Array introspection: LBOUND UBOUND  (LBOUND(A), UBOUND(M, 2))
 Exception accessors: EXTYPE EXLINE EXTEXT$
 Constants:           PI EPS INF MAXNUM
 
 Extensions (non-ISO): INKEY$   ← Microsoft BASIC (see "Extensions" below)
 ```
 
-**Known gaps:** `LBOUND(A)` and `UBOUND(A)` are registered but can't be called — the
-analyzer rejects an array name passed as an argument ("'A' is an array; index it with
-parentheses"). `MOD` and `REMAINDER` work as operators (`7 MOD 3`) but the standard's
-function form `MOD(7, 3)` doesn't parse, since both are reserved words. And `DATA`
-takes numbers and quoted strings only, not the standard's unquoted strings.
+**Arrays as arguments.** `LBOUND(A)`, `UBOUND(A)` and a `SUB`'s or `FUNCTION`'s array
+parameter (`SUB S(B())`, `M(,)` for two dimensions) take an array by its name, `A` or
+`A()`. **IMPLEMENTATION-DEFINED:** an array is passed by reference to a `FUNCTION` as well
+as a `SUB` (True BASIC's rule), so a function can change its argument's elements; scalar
+arguments are passed by value. **Not yet:** `MAT` statements on an array parameter.
 
 `STR$(x)` is the string `PRINT` shows for `x` without its leading and trailing spaces (§6.4), so it rounds to the same 9 significant digits: `STR$(1/3)` is `"0.33333333"`.
 
@@ -255,7 +255,8 @@ Implicit exceptions (division by zero, INPUT type mismatch when the stream is ex
 
 Errors and the debugger say which file a line is in: a runtime error in a library reads `… at line 8 in greet.bas: …`.
 
-**Not implemented:** `EXTERNAL SUB`/`EXTERNAL FUNCTION` written after a main program's `END` (and `DECLARE EXTERNAL`) — put external procedures in a library file; `DECLARE` forms other than `DECLARE PUBLIC`; `PRIVATE` as a statement listing routines (the `PRIVATE` prefix is accepted and is the default); `RESTORE` to a line number (it rewinds the unit's `DATA`).
+**Not implemented:** `EXTERNAL SUB`/`EXTERNAL FUNCTION` written after a main program's `END` (and `DECLARE EXTERNAL`) — put external procedures in a library file; `DECLARE` forms other than `DECLARE PUBLIC`; `PRIVATE` as a statement listing routines (the `PRIVATE` prefix is accepted and is the default). `RESTORE` to a line number goes to the first `DATA` at or after that line, in the
+`RESTORE`'s own program-unit (a line in another is an error).
 
 **DEVIATION:** No on-disk compiled module format. Modules are recompiled from source on each invocation.
 
@@ -301,8 +302,24 @@ The coordinate-systems, attributes, and graphic-output sections are implemented:
 `SET WINDOW/VIEWPORT/DEVICE WINDOW/DEVICE VIEWPORT/CLIP`, `ASK …` (with optional
 `STATUS`), `CLEAR`, `SET {POINT|LINE} STYLE`, `SET {POINT|LINE|TEXT|AREA} COLOR`,
 `SET`/`ASK COLOR MIX`, `GRAPH POINTS|LINES|AREA` / `GRAPH TEXT`, and the cell array
-`MAT GRAPH CELLS, IN x1, y1; x2, y2: A` (ANSI X3.113 §13.3.4.4). **Not yet:**
-`MAT GRAPH POINTS|LINES|AREA`, the text attributes (`TEXT HEIGHT/JUSTIFY/ANGLE`).
+`MAT GRAPH CELLS, IN x1, y1; x2, y2: A` (ANSI X3.113 §13.3.4.4), and the text attributes
+`SET`/`ASK TEXT HEIGHT` and `TEXT JUSTIFY` (§13.2.4). **Not yet:**
+`MAT GRAPH POINTS|LINES|AREA`, `TEXT ANGLE`.
+
+**Text.** **IMPLEMENTATION-DEFINED:** a text height is the font's size (a capital letter
+is about 0.7 of it); a height of zero or less is the device's usual size (80 monospace
+columns across the browser's screen, one cell in a terminal). A justification that isn't
+one of the standard's words leaves that one as it was. A terminal draws one character a
+cell whatever the height. **EXTENSIONS:** `SET`/`ASK TEXT FONT` (`"MONO"` or `"SANS"`, either
+`"BOLD"`) and `TEXTWIDTH(s$)` — the width `GRAPH TEXT` would draw `s$` at, in window units,
+measured by the device (the browser's canvas measures its own font; elsewhere it's
+estimated from Helvetica's widths, or a monospace character 0.6 of the height).
+
+**Rounded corners and opacity.** **EXTENSIONS:** `GRAPH LINES|AREA, ROUND r:` rounds each
+corner to radius `r` (window units, measured up; round in device units, and no more than
+half of either edge allows), drawn as a polygon, so every device shows it. A fourth value in
+`SET COLOR MIX` is the colour's opacity, 0–1 (1 when it's left out), and `ASK COLOR MIX`
+takes a fourth variable for it; a terminal leaves a colour under 0.5 undrawn.
 
 **Colours and cell arrays.** `MAT GRAPH CELLS` takes a two-dimensional numeric array
 (the analyzer rejects any other declared rank; a run-time rank change raises

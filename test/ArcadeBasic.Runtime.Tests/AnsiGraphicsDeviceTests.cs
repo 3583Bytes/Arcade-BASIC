@@ -18,6 +18,21 @@ public class AnsiGraphicsDeviceTests
     }
 
     [Fact]
+    public void TextIsACellACharacterAndSeeThroughColoursArentDrawn()
+    {
+        var d = Device(new StringWriter(), cols: 40, rows: 11);
+        Assert.Equal(0.1, d.TextWidth("abcd", new GfxTextStyle(0.5, Sans: true, Bold: true)), 9);   // 4 of 40 columns, whatever the style
+        Assert.Equal(0.1, d.UsualTextHeight, 9);                                                    // one of the 10 rows above the input line
+        d.SetColorMix(20, 0, 0, 0, 0.3);
+        d.SetColor(GfxColorTarget.Area, 20);
+        d.FillArea([new GfxPoint(0, 0), new GfxPoint(1, 0), new GfxPoint(1, 1)]);
+        Assert.False(d.Active);
+        d.SetColorMix(20, 0, 0, 0, 0.6);
+        d.FillArea([new GfxPoint(0, 0), new GfxPoint(1, 0), new GfxPoint(1, 1)]);
+        Assert.True(d.Active);
+    }
+
+    [Fact]
     public void InertUntilSomethingIsDrawn()
     {
         var w = new StringWriter();
@@ -73,7 +88,7 @@ public class AnsiGraphicsDeviceTests
     {
         var w = new StringWriter();
         var d = Device(w, cols: 10, rows: 4);
-        d.SetColorMix(40, 1, 0, 0);                        // pure red: xterm 196
+        d.SetColorMix(40, 1, 0, 0, 1);                     // pure red: xterm 196
         d.DrawCells(new GfxRect(0, 0.5, 0, 1), 1, 1, [40], new GfxRect(0, 0.5, 0, 1));
         d.SetColor(GfxColorTarget.Area, 9);                // a standard colour: the terminal's own
         d.FillArea([new GfxPoint(0.5, 0), new GfxPoint(1, 0), new GfxPoint(1, 1), new GfxPoint(0.5, 1)]);
