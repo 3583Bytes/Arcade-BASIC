@@ -109,11 +109,9 @@ internal static partial class Playground
     [JSExport]
     internal static void PointerMove(double x, double y) => Screen.PointerMove(x, y);
 
+    /// <summary>The buttons held (PointerEvent.buttons: 1 primary, 2 secondary, 4 middle).</summary>
     [JSExport]
-    internal static void PointerDown(double x, double y) => Screen.PointerDown(x, y);
-
-    [JSExport]
-    internal static void PointerUp(double x, double y) => Screen.PointerUp(x, y);
+    internal static void PointerButtons(double x, double y, int buttons) => Screen.PointerButtons(x, y, buttons);
 
     [JSExport]
     internal static void PointerCancel() => Screen.PointerCancel();

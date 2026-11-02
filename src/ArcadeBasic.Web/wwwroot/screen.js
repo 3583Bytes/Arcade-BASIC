@@ -264,18 +264,31 @@ export function connectInput(screen, canvas, { keys = canvas, program, audio, wa
   keys.addEventListener('keyup', e => program()?.KeyUp(e.code));
   keys.addEventListener('blur', () => program()?.ReleaseKeys());
 
-  // Capturing the pointer keeps a drag's moves and release coming even if it leaves the canvas.
-  canvas.addEventListener('pointermove', e => program()?.PointerMove(...screen.unitPoint(e)));
+  // The buttons go to the program as e.buttons has them: 1 the primary, 2 the secondary, 4
+  // the middle (e.button numbers them 0, 2, 1). The first press is a pointerdown, another
+  // while it's held a pointermove with e.button set (and a button still down: letting go of
+  // the last is a pointerup). A Mac's Ctrl+click is a secondary click; the canvas has no
+  // menu of its own. Capturing the pointer keeps a drag's moves and release coming even if
+  // it leaves the canvas.
+  const bit = [1, 4, 2];
+  const mac = /Mac/.test(navigator.platform);
+  canvas.addEventListener('pointermove', e => {
+    if (!program()) return;
+    program().PointerMove(...screen.unitPoint(e));
+    if (e.button >= 0 && e.buttons) program().PointerButtons(...screen.unitPoint(e), e.buttons & 7);
+  });
   canvas.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || !program()) return;
+    if (!program() || bit[e.button] === undefined) return;
     audio.unlock();
     try { canvas.setPointerCapture(e.pointerId); } catch { /* not a live pointer (synthetic) */ }
     canvas.focus();
-    program().PointerDown(...screen.unitPoint(e));
+    const buttons = mac && e.ctrlKey && e.button === 0 ? 2 : (e.buttons & 7) | bit[e.button];
+    program().PointerButtons(...screen.unitPoint(e), buttons);
     e.preventDefault();
-    onPress();
+    if (buttons & 1) onPress();
   });
-  canvas.addEventListener('pointerup', e => { if (e.button === 0) program()?.PointerUp(...screen.unitPoint(e)); });
+  canvas.addEventListener('pointerup', e => program()?.PointerButtons(...screen.unitPoint(e), 0));
   canvas.addEventListener('pointercancel', () => program()?.PointerCancel());
   canvas.addEventListener('lostpointercapture', () => program()?.PointerCancel());
+  canvas.addEventListener('contextmenu', e => { if (program()) e.preventDefault(); });
 }

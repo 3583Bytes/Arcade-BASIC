@@ -1,15 +1,17 @@
 ! kanban.bas — a Kanban board for your own tasks (To Do, Doing, Done), made with the     @category Graphics
 ! components in ui.bas (LIBRARY "ui.bas"): rounded lanes and cards with shadows, text in
-! sizes and weights, wrapped to fit, buttons, and a dialog over the dimmed board. It keeps
-! itself in a file, kanban.board, saving after every change and opening it again next
-! time — so it can track real work. (In the browser IDE the file stays in the browser:
-! File → Program files.)
+! sizes and weights, wrapped to fit, buttons, menus, and dialogs over the dimmed board. It
+! keeps itself in a file, kanban.board, saving after every change and opening it again
+! next time — so it can track real work. (In the browser IDE the file stays in the
+! browser: File → Program files.)
 !
-! With a mouse click a card to select it (it opens up to show all its text), double-click
-! it to edit it where it is, and drag it to another lane or up and down; "+ Add a card"
-! adds one. The keyboard works too: the arrow keys select, Enter edits, Space picks the
-! card up (then the arrows move it), Delete deletes, and typing a letter starts a command.
-! GET MOUSE and INKEY$ are an Arcade BASIC and a Microsoft BASIC extension (see
+! It's worked with the mouse, as an application is: click a card to select it (it opens up
+! to show all its text), double-click it to edit it where it is, drag it to another lane or
+! up and down, and right-click it — on a Mac, Ctrl+click, or click its ⋯ — for its menu:
+! edit it, move it, delete it (Undo puts it back). "+ Add a card" adds one, and the board's
+! name, at the top, starts another board, opens one or saves this one as another. A few
+! keys are shortcuts: the arrows select, Enter edits, Delete deletes, Esc cancels. GET
+! MOUSE and INKEY$ are an Arcade BASIC and a Microsoft BASIC extension (see
 ! docs/conformance.md).
 !
 ! Without a mouse — piped input, or a terminal that doesn't report one — type one command
@@ -26,7 +28,7 @@
 
 OPTION BASE 1
 LIBRARY "ui.bas"
-DECLARE PUBLIC UIW, UIH, UIMX, UIMY, UIMS, UIDOUBLE, UICHANGED, UICELLS, UIROW, UICOL
+DECLARE PUBLIC UIW, UIH, UIMX, UIMY, UIMS, UIRIGHT, UIDOUBLE, UICHANGED, UICELLS, UIROW, UICOL
 DECLARE PUBLIC UCBG, UCSURFACE, UCRAISED, UCHOVER, UCLINE, UCINK, UCMUTED, UCFAINT
 DECLARE PUBLIC UCACCENT, UCGOOD, UCDANGER, UCLIGHTEN, UISMALL, UIBODY, UITITLE, UIRADIUS
 DECLARE PUBLIC UITYPED$
@@ -131,8 +133,6 @@ LET QUIT = 0
 LET DIRTY = 1           ! the screen needs drawing again
 LET SELID = 0           ! the selected card's number, or 0
 LET KEEPSEL = 0         ! scroll so the selected card shows, next time it's drawn
-LET CARRY = 0           ! 1 while the selected card is picked up (Space)
-LET CONFIRMID = 0       ! the card Delete was pressed on once
 LET PRESSID = 0         ! the card pressed on, and where
 LET PRESSX = 0
 LET PRESSY = 0
@@ -143,9 +143,22 @@ LET DROPLN = 0          ! where it would land: the lane, the card it would go be
 LET DROPBEFORE = 0
 LET MARKY = 0
 LET LASTID = 0          ! the last card clicked (for a double-click)
-LET MODE = 0            ! typing (ui.bas's UITYPED$): 1 a command, 2 a card's new text, 3 a new card
+LET MENU = 0            ! the menu that's open: 1 a card's (MENUID), 2 a lane's (MENULN), 3 the board's
+LET MENUID = 0
+LET MENULN = 0
+LET MENUX = 0           ! where it opens
+LET MENUY = 0
+LET DIALOG = 0          ! the dialog that's up, for a board's name: 1 a new board, 2 open one, 3 save as
+LET DLGMSG$ = ""        ! why the name typed in it won't do
+LET UNDOOK = 0          ! 1 just after a card's deleted, until the next change: Undo puts it back —
+LET UNDOT$ = ""         ! its text, its lane, its number and its place
+LET UNDOLN = 0
+LET UNDOID = 0
+LET UNDOAT = 0
+LET MODE = 0            ! typing (ui.bas's UITYPED$): 2 a card's new text, 3 a new card, 4 a board's name
 LET EDITID = 0
 LET ADDLN = 1
+LET KEEPADDING = 0      ! 1 when Enter finished a new card: the next one's typed in the same place
 LET NOSAVE = 0          ! 1 when the file there couldn't be read: don't save over it
 LET SAVEOK = 0
 LET LOADOK = 0
@@ -161,6 +174,7 @@ LET FI = 0              ! 8950's answer: a card's index
 LET LV = 0              ! 9140's: a lane
 LET NAMEOK = 0          ! 9130's and 9120's: a board's name is fine, and there's one by that name
 LET EXISTS = 0
+LET BOK = 0             ! 9160-9180's: the board was started, opened or saved
 LET MX = 0              ! the pointer, as ui.bas found it this frame
 LET MY = 0
 LET MS = -1
@@ -179,13 +193,19 @@ LET EBY = 0
 LET EBW = 0
 LET EBH = 0
 
+CALL UIBEGIN                       ! the screen, and whether there's a mouse
+IF UIMS >= 0 THEN LET HASMOUSE = 1
 GOSUB 9990              ! today's date, for the title bar
 GOSUB 9900              ! open kanban.board, if it's there
 IF LOADOK = 1 THEN
   LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
 ELSEIF LOADBAD = 1 THEN
   LET NOSAVE = 1
-  LET MSG$ = FILE$ & " isn't a board this can read, so it won't save over it (S name saves elsewhere)"
+  IF HASMOUSE = 1 THEN
+    LET MSG$ = FILE$ & " isn't a board this can read, so it won't save over it (Save as… saves it elsewhere)"
+  ELSE
+    LET MSG$ = FILE$ & " isn't a board this can read, so it won't save over it (S name saves elsewhere)"
+  END IF
 ELSE
   ! A first run: a few cards that show how it works.
   DO
@@ -203,16 +223,15 @@ END IF
 
 DATA "Click a card to select it, double-click to edit it", 1
 DATA "Drag cards to another lane, or up and down", 1
-DATA "Add one with + Add a card, or type A Buy milk", 1
-DATA "Select a card and press Delete (twice) to remove it", 1
-DATA "Arrow keys select; Space picks a card up, arrows move it", 2
+DATA "Add one with + Add a card, at the bottom of a lane", 1
+DATA "Right-click a card for its menu: move it, delete it", 1
+DATA "The board's name, at the top, opens or starts another", 2
 DATA "The board saves itself as you go", 3
-DATA "Press H for help", 3
+DATA "Help, at the top right, says the rest", 3
 DATA "*", 0
 
 ! --- main loop ----------------------------------------------------------
-CALL UIBEGIN
-IF UIMS < 0 THEN
+IF HASMOUSE = 0 THEN
   ! No pointing device: one typed command per line.
   DO
     GOSUB 9010                     ! draw the board (or the help)
@@ -223,7 +242,6 @@ IF UIMS < 0 THEN
   LOOP
 ELSE
   ! A mouse, and keys one at a time.
-  LET HASMOUSE = 1
   GOSUB 9010                       ! the board is up before the first key or click
   LET DIRTY = 0
   DO
@@ -242,10 +260,11 @@ ELSE
     LET MS = UIMS
     GOSUB 8500
     ! drawing it all again, when anything's changed (the pointer moving lights up what's
-    ! under it; the buttons are clicked as they're drawn)
+    ! under it; the buttons and a menu's choices are clicked as they're drawn, which may
+    ! change it again)
     IF DIRTY = 1 OR UICHANGED = 1 THEN
-      GOSUB 9010
       LET DIRTY = 0
+      GOSUB 9010
     END IF
     SLEEP 0.03                     ! ~30 frames/second (also presents the frame)
   LOOP
@@ -253,64 +272,32 @@ END IF
 END
 
 ! ======================================================================
-! 8000  A KEY (K$), with a mouse: typing, or the selected card.
+! 8000  A KEY (K$), with a mouse: typing, or a shortcut for the selected card.
 ! ======================================================================
 8000 REM ---- a key ----
 IF HELP = 1 THEN
   LET HELP = 0                     ! any key leaves the help
   RETURN
 END IF
-IF CONFIRMID > 0 THEN              ! Delete was pressed once: again deletes
-  IF K$ = KDEL$ OR K$ = KBS$ OR K$ = KBS2$ THEN
-    LET DELID = CONFIRMID
-    LET CONFIRMID = 0
-    GOSUB 8900
-    RETURN
-  END IF
-  LET CONFIRMID = 0
-  LET MSG$ = "Kept it"
-  IF K$ = KESC$ THEN RETURN
-END IF
 IF MODE > 0 THEN
-  GOSUB 8100                       ! the text being typed
+  GOSUB 8100                       ! what's being typed: a card, or a board's name
+  RETURN
+END IF
+IF MENU > 0 THEN
+  IF K$ = KESC$ THEN LET MENU = 0  ! Esc closes a menu (and the other keys wait for it)
   RETURN
 END IF
 IF K$ = KENTER$ OR K$ = CHR$(10) THEN
-  IF CARRY = 1 THEN
-    LET CARRY = 0
-    LET MSG$ = "Put it down"
-  ELSE
-    GOSUB 8050                     ! edit the selected card
-  END IF
-ELSEIF K$ = " " THEN
-  IF SELID > 0 THEN
-    LET CARRY = 1 - CARRY
-    IF CARRY = 1 THEN
-      LET MSG$ = "Picked up #" & LTRIM$(STR$(SELID)) & ": the arrow keys move it"
-    ELSE
-      LET MSG$ = "Put it down"
-    END IF
-  END IF
+  GOSUB 8050                       ! edit the selected card
 ELSEIF K$ = KESC$ THEN
-  IF CARRY = 1 THEN
-    LET CARRY = 0
-  ELSE
-    LET SELID = 0
-  END IF
+  LET SELID = 0
 ELSEIF K$ = KDEL$ OR K$ = KBS$ OR K$ = KBS2$ THEN
   IF SELID > 0 THEN
-    LET FID = SELID
-    GOSUB 8950
-    LET CONFIRMID = SELID
-    LET CARRY = 0
-    LET MSG$ = "Delete #" & LTRIM$(STR$(SELID)) & " """ & FIT$(TASK$(FI), 28) & """? Press Delete again"
+    LET DELID = SELID
+    GOSUB 8900
   END IF
 ELSEIF K$ = KUP$ OR K$ = KDN$ OR K$ = KLT$ OR K$ = KRT$ THEN
-  GOSUB 8200                       ! select, or move the card picked up
-ELSEIF LEN(K$) = 1 AND K$ >= " " AND K$ <> KBS2$ THEN
-  LET MODE = 1                     ! the start of a command
-  CALL UIEDITSTART(K$)
-  LET CARRY = 0
+  GOSUB 8200                       ! select the card above, below or beside
 END IF
 RETURN
 
@@ -332,7 +319,6 @@ END IF
 LET MODE = 2
 LET EDITID = SELID
 CALL UIEDITSTART(TASK$(FI))
-LET CARRY = 0
 LET KEEPSEL = 1
 RETURN
 
@@ -343,44 +329,52 @@ RETURN
 8100 REM ---- typing ----
 LET TYPEDKEY = UIEDITKEY(K$)
 IF TYPEDKEY = 1 THEN
+  LET KEEPADDING = 1               ! (a new card: the next one's typed after it)
   GOSUB 8150
 ELSEIF TYPEDKEY = -1 THEN
   IF MODE = 2 THEN
     LET MSG$ = "Left #" & LTRIM$(STR$(EDITID)) & " as it was"
-  ELSE
-    LET MSG$ = "Cancelled"
+  ELSEIF MODE = 3 AND LTRIM$(UITYPED$) <> "" THEN
+    LET MSG$ = "Didn't add it"
   END IF
   LET MODE = 0
-ELSEIF MODE = 1 AND UITYPED$ = "" THEN
-  LET MODE = 0                     ! a command rubbed out
+  LET DIALOG = 0
 END IF
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8150  FINISH TYPING — run the command, change the card, or add the new one.
+! 8150  FINISH TYPING — change the card, add the new one, or do what the
+!        dialog's for with the name typed in it.
 ! ----------------------------------------------------------------------
 8150 REM ---- finish typing ----
 LET TXT$ = LTRIM$(RTRIM$(UITYPED$))
 LET WASMODE = MODE
 LET MODE = 0
-IF WASMODE = 1 THEN
-  LET RAW$ = TXT$
-  GOSUB 9150
-ELSEIF WASMODE = 2 THEN
+IF WASMODE = 2 THEN
   LET EI = EDITID
   LET ET$ = TXT$
   GOSUB 9450
-ELSEIF TXT$ = "" THEN
-  LET MSG$ = "Nothing to add"
-ELSE
-  LET AT$ = TXT$
-  LET AL = ADDLN
-  GOSUB 9400
+ELSEIF WASMODE = 3 THEN
+  IF TXT$ <> "" THEN
+    LET AT$ = TXT$
+    LET AL = ADDLN
+    GOSUB 9400
+  END IF
+  IF KEEPADDING = 1 THEN
+    LET MODE = 3
+    CALL UIEDITSTART("")
+  END IF
+ELSEIF WASMODE = 4 THEN
+  LET BNAME$ = TXT$
+  GOSUB 9260
+  IF DIALOG > 0 THEN LET MODE = 4  ! (the name won't do: the dialog stays, to change it)
 END IF
+LET KEEPADDING = 0
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8200  ARROWS — select the card above, below or beside; or, picked up, move it.
+! 8200  ARROWS — select the card above or below, or the one in the same
+!        place in the next lane that has cards (or its last).
 ! ----------------------------------------------------------------------
 8200 REM ---- arrow keys ----
 IF SELID = 0 THEN                  ! nothing selected: the first card there is
@@ -400,107 +394,84 @@ LET SL = LANE(FI)
 LET SK = 1
 LET PREVI = 0
 LET NEXTI = 0
-LET NEXT2I = 0
 FOR AI = 1 TO NT
   IF LANE(AI) = SL THEN
     IF AI < FI THEN
       LET SK = SK + 1
       LET PREVI = AI
-    ELSEIF AI > FI THEN
-      IF NEXTI = 0 THEN
-        LET NEXTI = AI
-      ELSEIF NEXT2I = 0 THEN
-        LET NEXT2I = AI
-      END IF
+    ELSEIF AI > FI AND NEXTI = 0 THEN
+      LET NEXTI = AI
     END IF
   END IF
 NEXT AI
-IF K$ = KUP$ OR K$ = KDN$ THEN
-  IF CARRY = 1 THEN
-    IF K$ = KUP$ AND PREVI > 0 THEN
-      LET SRC = FI
-      LET NL = SL
-      LET BEFORE = PREVI
-      GOSUB 8800
-      LET MSG$ = "Moved #" & LTRIM$(STR$(SELID)) & " up"
-      GOSUB 9790
-    ELSEIF K$ = KDN$ AND NEXTI > 0 THEN
-      LET SRC = FI
-      LET NL = SL
-      LET BEFORE = NEXT2I          ! (0: to the end of the lane)
-      GOSUB 8800
-      LET MSG$ = "Moved #" & LTRIM$(STR$(SELID)) & " down"
-      GOSUB 9790
-    END IF
-  ELSE
-    IF K$ = KUP$ AND PREVI > 0 THEN LET SELID = ID(PREVI)
-    IF K$ = KDN$ AND NEXTI > 0 THEN LET SELID = ID(NEXTI)
-  END IF
-ELSE
-  ! left or right: the lane next door (just selecting, the next one with cards)
+IF K$ = KUP$ AND PREVI > 0 THEN LET SELID = ID(PREVI)
+IF K$ = KDN$ AND NEXTI > 0 THEN LET SELID = ID(NEXTI)
+IF K$ = KLT$ OR K$ = KRT$ THEN
   LET STEPD = 1
   IF K$ = KLT$ THEN LET STEPD = -1
   LET TL2 = SL + STEPD
-  IF CARRY = 0 THEN
-    DO WHILE TL2 >= 1 AND TL2 <= 3
-      LET TC = 0
-      FOR AI = 1 TO NT
-        IF LANE(AI) = TL2 THEN LET TC = TC + 1
-      NEXT AI
-      IF TC > 0 THEN EXIT DO
-      LET TL2 = TL2 + STEPD
-    LOOP
-  END IF
-  IF TL2 >= 1 AND TL2 <= 3 THEN
-    ! the card in the same place there (TGT), or its last (TLAST)
+  DO WHILE TL2 >= 1 AND TL2 <= 3
     LET TK = 0
     LET TGT = 0
-    LET TLAST = 0
     FOR AI = 1 TO NT
-      IF LANE(AI) = TL2 AND AI <> FI THEN
+      IF LANE(AI) = TL2 THEN
         LET TK = TK + 1
-        IF TK = SK THEN LET TGT = AI
-        LET TLAST = AI
+        IF TK <= SK THEN LET TGT = AI
       END IF
     NEXT AI
-    IF CARRY = 1 THEN
-      LET SRC = FI
-      LET NL = TL2
-      LET BEFORE = TGT
-      GOSUB 8800
-      LET MSG$ = "Moved #" & LTRIM$(STR$(SELID)) & " to " & LANENAME$(TL2)
-      GOSUB 9790
-    ELSE
-      IF TGT = 0 THEN LET TGT = TLAST
-      IF TGT > 0 THEN LET SELID = ID(TGT)
+    IF TGT > 0 THEN
+      LET SELID = ID(TGT)
+      EXIT DO
     END IF
-  END IF
+    LET TL2 = TL2 + STEPD
+  LOOP
 END IF
 LET KEEPSEL = 1
 RETURN
 
 ! ======================================================================
-! 8500  THE MOUSE (MX, MY, MS): select, double-click, drag and drop. (The
-!        buttons — "+ Add a card", "▲ more", Help — click themselves as the board's
-!        drawn, 9030.)
+! 8500  THE MOUSE (MX, MY, MS; UIRIGHT): select, double-click, drag and drop,
+!        and a right-click's menu. (The buttons — "+ Add a card", "▲ more",
+!        Help, a menu's choices — click themselves as they're drawn, 9030.)
 ! ======================================================================
 8500 REM ---- the mouse ----
 IF HELP = 1 THEN
-  IF MS = 2 THEN
+  IF MS = 2 OR UIRIGHT = 1 THEN
     LET HELP = 0                   ! a click leaves the help ...
     CALL UIFORGETPRESS             ! ... and clicks nothing beneath it
     LET DIRTY = 1
   END IF
   RETURN
 END IF
+IF DIALOG > 0 THEN RETURN          ! (its buttons click themselves, 9250)
+IF MENU > 0 THEN
+  IF UIINMENU() = 1 THEN RETURN    ! (its choices click themselves, 9200)
+  IF MS <> 2 AND UIRIGHT = 0 THEN RETURN
+  LET MENU = 0                     ! pressed off it: it closes, and the press does nothing more ...
+  CALL UIFORGETPRESS
+  LET DIRTY = 1
+  IF UIRIGHT = 0 THEN RETURN       ! ... unless it's a right-click, for another menu
+END IF
+IF UIRIGHT = 1 AND DRAGGING = 0 THEN
+  GOSUB 9700                       ! what's under the pointer: a card's menu, or its lane's
+  IF MODE >= 2 THEN GOSUB 8150     ! (keeping what was typed)
+  IF HITKIND = 1 THEN
+    LET SELID = HITID
+    LET MENU = 1
+    LET MENUID = HITID
+  ELSEIF HITLN > 0 AND MY >= LT AND MY <= LB THEN
+    LET MENU = 2
+    LET MENULN = HITLN
+  END IF
+  LET MENUX = MX
+  LET MENUY = MY
+  LET DIRTY = 1
+  RETURN
+END IF
 IF MS = 2 THEN
   IF UIONCONTROL() = 1 THEN RETURN ! a button's
   IF MODE >= 2 AND UIIN(EBX, EBY, EBW, EBH) = 1 THEN RETURN   ! in what's being typed
   GOSUB 9700                       ! what's under the pointer
-  IF CONFIRMID > 0 THEN
-    LET CONFIRMID = 0
-    LET MSG$ = "Kept it"
-  END IF
   IF MODE >= 2 THEN GOSUB 8150     ! clicking away keeps what was typed
   IF HITKIND = 1 THEN
     IF HITID = LASTID AND UIDOUBLE = 1 THEN
@@ -509,7 +480,6 @@ IF MS = 2 THEN
       LET LASTID = 0
     ELSE
       LET SELID = HITID
-      LET CARRY = 0
       LET PRESSID = HITID          ! it may be the start of a drag
       LET PRESSX = MX
       LET PRESSY = MY
@@ -518,7 +488,6 @@ IF MS = 2 THEN
     END IF
   ELSE
     LET SELID = 0                  ! a click on nothing
-    LET CARRY = 0
   END IF
   LET DIRTY = 1
 ELSEIF MS = 1 THEN
@@ -636,7 +605,8 @@ LET NT = NT + 1
 RETURN
 
 ! ----------------------------------------------------------------------
-! 8900  DELETE card number DELID (the selection moves to its neighbour).
+! 8900  DELETE card number DELID (the selection moves to its neighbour),
+!        keeping what Undo (8920) needs to put it back.
 ! ----------------------------------------------------------------------
 8900 REM ---- delete a card ----
 LET FID = DELID
@@ -647,6 +617,10 @@ IF FI = 0 THEN
 END IF
 LET DT$ = TASK$(FI)
 LET DL = LANE(FI)
+LET UNDOT$ = DT$
+LET UNDOLN = DL
+LET UNDOID = DELID
+LET UNDOAT = FI
 LET NEXTSEL = 0
 FOR DI = NT TO FI + 1 STEP -1      ! the next card in its lane ...
   IF LANE(DI) = DL THEN LET NEXTSEL = ID(DI)
@@ -667,6 +641,28 @@ IF HASMOUSE = 0 THEN LET SELID = 0
 LET KEEPSEL = 1
 LET MSG$ = "Deleted #" & LTRIM$(STR$(DELID)) & " " & FIT$(DT$, 40)
 GOSUB 9790
+LET UNDOOK = 1                     ! (until the next change)
+RETURN
+
+! ----------------------------------------------------------------------
+! 8920  UNDO the delete: the card back where it was, with its number.
+! ----------------------------------------------------------------------
+8920 REM ---- undo a delete ----
+IF UNDOOK = 0 OR NT >= MAXT THEN RETURN
+LET POSN = MIN(UNDOAT, NT + 1)
+FOR MI = NT TO POSN STEP -1
+  LET TASK$(MI + 1) = TASK$(MI)
+  LET LANE(MI + 1) = LANE(MI)
+  LET ID(MI + 1) = ID(MI)
+NEXT MI
+LET TASK$(POSN) = UNDOT$
+LET LANE(POSN) = UNDOLN
+LET ID(POSN) = UNDOID
+LET NT = NT + 1
+LET SELID = UNDOID
+LET KEEPSEL = 1
+LET MSG$ = "Put #" & LTRIM$(STR$(UNDOID)) & " back"
+GOSUB 9790                         ! (which leaves nothing to undo)
 RETURN
 
 ! ----------------------------------------------------------------------
@@ -681,7 +677,7 @@ RETURN
 
 ! ======================================================================
 ! 9010  DRAW — the board, scrolled (KEEPSEL) so the selected card shows; and
-!        the help over it, if it's up.
+!        over it, a menu, a dialog or the help, if one's up.
 ! ======================================================================
 9010 REM ---- draw ----
 IF KEEPSEL = 1 AND SELID > 0 THEN
@@ -704,6 +700,9 @@ END IF
 LET KEEPSEL = 0
 GOSUB 9000                         ! where everything goes
 GOSUB 9030                         ! and drawing it there
+CALL UILOCK(0)                     ! (what's over the board answers the pointer)
+IF MENU > 0 THEN GOSUB 9200
+IF DIALOG > 0 THEN GOSUB 9250
 IF HELP = 1 THEN GOSUB 9050
 RETURN
 
@@ -843,10 +842,12 @@ RETURN
 ! ======================================================================
 ! 9030  PAINT — the title bar, the lanes and their cards, a card being
 !        dragged, and the status bar. The buttons are clicked here, as they're
-!        drawn (ui.bas's UIBUTTON).
+!        drawn (ui.bas's UIBUTTON). Under a menu, a dialog or the help, none of
+!        it answers the pointer.
 ! ======================================================================
 9030 REM ---- paint ----
 CALL UICLEAR(UCBG)
+IF MENU > 0 OR DIALOG > 0 OR HELP = 1 THEN CALL UILOCK(1)
 ! --- the title bar: the board's name, how it's going, and today ------------
 LET NDONE = 0
 FOR I = 1 TO NT
@@ -856,20 +857,35 @@ LET TY = TOPH / 2
 CALL UITEXT(MX0, TY, "Kanban", UITITLE, "SANS BOLD", UCINK)
 LET X = MX0 + UIWIDTH("Kanban", UITITLE, "SANS BOLD") + 12
 IF UICELLS = 1 THEN LET X = MX0 + 8 * UICOL
-LET PW = UIPILL(X, TY, FILE$, UISMALL, UCSURFACE, UCMUTED)
+IF HASMOUSE = 1 THEN               ! the board's name: its menu (another board, save as, quit)
+  LET BL$ = FILE$ & " ▾"
+  LET PW = UIWIDTH(BL$, UIBODY - 1, "SANS BOLD") + 28
+  IF UICELLS = 1 THEN LET PW = (LEN(BL$) + 2) * UICOL
+  LET BH = MIN(30, TOPH)
+  IF UIBUTTON(X, TY - BH / 2, PW, BH, BL$, "") THEN
+    IF MODE >= 2 THEN GOSUB 8150   ! (keeping what was typed)
+    LET MENU = 3
+    LET MENUX = X
+    LET MENUY = TY + BH / 2 + 4
+    IF UICELLS = 1 THEN LET MENUY = TOPH
+    LET DIRTY = 1
+  END IF
+ELSE
+  LET PW = UIPILL(X, TY, FILE$, UISMALL, UCSURFACE, UCMUTED)
+END IF
 LET RX = UIW - MX0                 ! the right of the bar, going left
 IF HASMOUSE = 1 THEN
   LET BW = 120
   IF UICELLS = 1 THEN LET BW = 12 * UICOL
   LET BH = MIN(34, TOPH)
   IF UIBUTTON(RX - BW, TY - BH / 2, BW, BH, "+ New card", "PRIMARY") THEN
+    IF MODE >= 2 THEN GOSUB 8150   ! (keeping what was typed)
     LET ADDLN = 1                  ! (to the selected card's lane)
     LET FID = SELID
     GOSUB 8950
     IF FI > 0 THEN LET ADDLN = LANE(FI)
     LET MODE = 3
     CALL UIEDITSTART("")
-    LET CARRY = 0
     LET DIRTY = 1
   END IF
   LET RX = RX - BW - 8
@@ -934,10 +950,6 @@ FOR LN = 1 TO 3
       IF ID(I) = SELID THEN
         LET CRING = UCACCENT
         LET CTCOL = UCINK
-        IF CARRY = 1 THEN
-          LET CRING = LACC(LN)
-          LET CLIFT = 12
-        END IF
       END IF
       IF MODE = 2 AND ID(I) = EDITID THEN LET CRING = UCACCENT
       IF UICELLS = 1 AND CRING >= 0 THEN        ! (a terminal: no ring, but the card in a colour)
@@ -967,13 +979,13 @@ FOR LN = 1 TO 3
       CALL UIBOX(EBX - 2, EBY - 2, EBW + 4, EBH + 4, UIRADIUS + 2, UCACCENT)
       CALL UIBOX(EBX, EBY, EBW, EBH, UIRADIUS, UCRAISED)
       CALL UIEDITDRAW(EBX + CPADX, EBY + CPADY + LH / 2, EBW - 2 * CPADX, UIBODY, "SANS", UCINK, LH, "Type the card")
-      IF UICELLS = 0 THEN CALL UITEXT(EBX + CPADX, EBY + EBH - CPADY - METAH / 2 + 2, "Enter adds it · Esc cancels", UISMALL, "SANS", UCFAINT)
+      IF UICELLS = 0 THEN CALL UITEXT(EBX + CPADX, EBY + EBH - CPADY - METAH / 2 + 2, "Enter adds it · Esc stops", UISMALL, "SANS", UCFAINT)
     ELSE
       IF UIBUTTON(X0 + CINSET, LB - CINSET - ADDH, CW, ADDH, "+ Add a card", "GHOST") THEN
+        IF MODE >= 2 THEN GOSUB 8150 ! (keeping what was typed)
         LET ADDLN = LN
         LET MODE = 3
         CALL UIEDITSTART("")
-        LET CARRY = 0
         LET DIRTY = 1
       END IF
     END IF
@@ -999,42 +1011,39 @@ IF DRAGGING = 1 THEN
   END IF
 END IF
 
-! --- the status bar: what happened, and what the keys do now ---------------
-IF MODE = 1 THEN
-  LET HINT$ = "Enter runs the command  ·  Esc cancels  ·  H Enter: help"
-ELSEIF MODE = 2 THEN
+! --- the status bar: what happened (and Undo, after a delete), and what the mouse does now
+IF MODE = 2 THEN
   LET HINT$ = "Editing #" & LTRIM$(STR$(EDITID)) & "  ·  Enter saves  ·  Esc cancels"
 ELSEIF MODE = 3 THEN
-  LET HINT$ = "Adding to " & LANENAME$(ADDLN) & "  ·  Enter adds it  ·  Esc cancels"
+  LET HINT$ = "Adding to " & LANENAME$(ADDLN) & "  ·  Enter adds it, and then the next  ·  Esc stops"
 ELSEIF DRAGGING = 1 THEN
   LET HINT$ = "Let go over a lane to move it there"
-ELSEIF CONFIRMID > 0 THEN
-  LET HINT$ = "Delete again deletes it  ·  any other key keeps it"
-ELSEIF CARRY = 1 THEN
-  LET HINT$ = "↑ ↓ ← → move the card  ·  Space or Enter puts it down"
+ELSEIF MENU > 0 THEN
+  LET HINT$ = "Choose, or click away  ·  Esc closes it"
 ELSEIF SELID > 0 THEN
-  LET HINT$ = "Enter edit  ·  Space pick up  ·  Del delete  ·  ↑ ↓ ← → select"
+  LET HINT$ = "Double-click to edit  ·  drag to move  ·  right-click for more"
 ELSE
-  LET HINT$ = "Click a card, or ↑ ↓ ← →  ·  or type a command (H: help)"
+  LET HINT$ = "Click a card to select it  ·  right-click it for its menu"
 END IF
 LET SY = UIH - STATH / 2
 IF HASMOUSE = 0 THEN
   LET SY = UIH - STATH / 4
   CALL UILABEL(MX0, UIH - STATH, UIW - 2 * MX0, STATH / 2, "A add  M move  E edit  D delete  N new  S save  L open  H help  Q quit", UISMALL, "SANS", UCMUTED, "LEFT")
 END IF
-IF MODE = 1 THEN
-  CALL UITEXT(MX0, SY, "> ", UIBODY, "MONO BOLD", UCACCENT)
-  CALL UIEDITDRAW(MX0 + UIWIDTH("> ", UIBODY, "MONO BOLD"), SY, UIW, UIBODY, "MONO", UCINK, LH, "")
-ELSE
-  LET MCOL = UCMUTED
-  IF CONFIRMID > 0 THEN LET MCOL = UCDANGER
-  LET MW = MIN(UIWIDTH(MSG$, UISMALL, "SANS"), (UIW - 2 * MX0) * 0.6)
-  CALL UILABEL(MX0, SY - STATH / 4, MW + 1, STATH / 2, MSG$, UISMALL, "SANS", MCOL, "LEFT")
-END IF
-IF HASMOUSE = 1 THEN              ! (the hint has what the message leaves)
-  LET HX = MX0 + 24
-  IF MODE <> 1 THEN LET HX = HX + MW
-  IF MODE = 1 THEN LET HX = HX + UIWIDTH("> " & UITYPED$, UIBODY, "MONO") + UICOL
+LET MW = MIN(UIWIDTH(MSG$, UISMALL, "SANS"), (UIW - 2 * MX0) * 0.6)
+CALL UILABEL(MX0, SY - STATH / 4, MW + 1, STATH / 2, MSG$, UISMALL, "SANS", UCMUTED, "LEFT")
+IF HASMOUSE = 1 THEN               ! (the hint has what the message and Undo leave)
+  LET HX = MX0 + MW + 24
+  IF UNDOOK = 1 THEN
+    LET UBW = 64
+    IF UICELLS = 1 THEN LET UBW = 6 * UICOL
+    LET UBH = MIN(26, STATH)
+    IF UIBUTTON(MX0 + MW + 12, SY - UBH / 2, UBW, UBH, "Undo", "") THEN
+      GOSUB 8920
+      LET DIRTY = 1
+    END IF
+    LET HX = HX + UBW + 12
+  END IF
   CALL UILABEL(HX, UIH - STATH, UIW - MX0 - HX, STATH, HINT$, UISMALL, "SANS", UCFAINT, "RIGHT")
 END IF
 RETURN
@@ -1044,7 +1053,8 @@ RETURN
 !        CFILL with a shadow CLIFT high, a ring of CRING (-1: none) around it,
 !        a stripe in its lane's colour down its left, its text in CTCOL and its
 !        number under it; or, being edited, what's typed and the caret. CGHOST:
-!        the place of the card being dragged, faint.
+!        the place of the card being dragged, faint. Selected or under the
+!        pointer, it has a ⋯ to click for its menu.
 ! ----------------------------------------------------------------------
 9300 REM ---- one card ----
 CALL UISHADOW(CXL, CYT, CW, H, UIRADIUS, CLIFT)
@@ -1070,8 +1080,16 @@ ELSE
   NEXT WJ
 END IF
 LET CIDS$ = "#" & LTRIM$(STR$(ID(I)))
+LET DOTS = 0                       ! its ⋯ — not on the copy being dragged, nor while it's typed in
+IF HASMOUSE = 1 AND CGHOST = 0 AND DRAGGING = 0 AND (MODE <> 2 OR ID(I) <> EDITID) THEN
+  IF ID(I) = SELID OR UIIN(CXL, CYT, CW, H) = 1 THEN LET DOTS = 1
+END IF
 IF UICELLS = 1 THEN
-  CALL UILABEL(CXL, CYT, CW - CPADX, LH, CIDS$, UISMALL, "SANS", UCFAINT, "RIGHT")
+  LET DBW = 3 * UICOL              ! (on a terminal, in place of its number)
+  LET DBH = LH
+  LET DBX = CXL + CW - DBW
+  LET DBY = CYT
+  IF DOTS = 0 THEN CALL UILABEL(CXL, CYT, CW - CPADX, LH, CIDS$, UISMALL, "SANS", UCFAINT, "RIGHT")
 ELSE
   LET MY0 = CYT + H - CPADY - METAH / 2 + 2
   IF LANE(I) = 3 THEN
@@ -1079,26 +1097,239 @@ ELSE
   ELSE
     CALL UITEXT(TX, MY0, CIDS$, UISMALL, "SANS", UCFAINT)
   END IF
-  IF ID(I) = SELID AND CARRY = 1 THEN CALL UILABEL(CXL, MY0 - 10, CW - CPADX, 20, "Picked up", UISMALL, "SANS BOLD", LACC(LANE(I)), "RIGHT")
+  LET DBW = 32
+  LET DBH = 22
+  LET DBX = CXL + CW - 8 - DBW
+  LET DBY = MY0 - DBH / 2
+END IF
+IF DOTS = 1 THEN
+  IF UIBUTTON(DBX, DBY, DBW, DBH, "⋯", "GHOST") THEN
+    LET SELID = ID(I)
+    LET MENU = 1
+    LET MENUID = ID(I)
+    LET MENUX = DBX
+    LET MENUY = DBY + DBH + 2
+    LET DIRTY = 1
+  END IF
+END IF
+RETURN
+
+
+! ======================================================================
+! 9200  A MENU at MENUX, MENUY: a card's (MENU 1, card MENUID), a lane's (2,
+!        lane MENULN) or the board's (3). A choice does what it says and
+!        closes it.
+! ======================================================================
+9200 REM ---- a menu ----
+LET MNW = 230
+IF UICELLS = 1 THEN LET MNW = 24 * UICOL
+LET MCH = 0                        ! the choice clicked
+IF MENU = 1 THEN
+  LET FID = MENUID
+  GOSUB 8950
+  IF FI = 0 THEN
+    LET MENU = 0
+    RETURN
+  END IF
+  LET ML = LANE(FI)
+  LET MFIRST = 1                   ! is it first in its lane, or last?
+  LET MLAST = 1
+  FOR MI = 1 TO NT
+    IF LANE(MI) = ML AND MI < FI THEN LET MFIRST = 0
+    IF LANE(MI) = ML AND MI > FI THEN LET MLAST = 0
+  NEXT MI
+  CALL UIMENU(MENUX, MENUY, MNW, 6, 2)
+  IF UIMENUITEM("Edit", "Enter", "") THEN LET MCH = 1
+  CALL UIMENURULE
+  FOR MLN = 1 TO 3
+    IF MLN <> ML THEN
+      IF UIMENUITEM("Move to " & LANENAME$(MLN), "", "") THEN LET MCH = 10 + MLN
+    END IF
+  NEXT MLN
+  LET MK$ = ""
+  IF MFIRST = 1 THEN LET MK$ = "OFF"
+  IF UIMENUITEM("Move to the top", "", MK$) THEN LET MCH = 2
+  LET MK$ = ""
+  IF MLAST = 1 THEN LET MK$ = "OFF"
+  IF UIMENUITEM("Move to the bottom", "", MK$) THEN LET MCH = 3
+  CALL UIMENURULE
+  IF UIMENUITEM("Delete", "Del", "DANGER") THEN LET MCH = 4
+  IF MCH > 0 THEN
+    LET MENU = 0
+    LET DIRTY = 1
+    LET SRC = FI
+    LET NL = ML
+    LET BEFORE = 0                 ! (the end of the lane)
+    IF MCH = 1 THEN
+      GOSUB 8050
+    ELSEIF MCH = 4 THEN
+      LET DELID = MENUID
+      GOSUB 8900
+    ELSE
+      LET MSG$ = "Moved #" & LTRIM$(STR$(MENUID)) & " to the bottom"
+      IF MCH = 2 THEN
+        FOR MI = NT TO 1 STEP -1   ! before the first card in its lane
+          IF LANE(MI) = ML THEN LET BEFORE = MI
+        NEXT MI
+        LET MSG$ = "Moved #" & LTRIM$(STR$(MENUID)) & " to the top"
+      ELSEIF MCH > 10 THEN
+        LET NL = MCH - 10
+        LET MSG$ = "Moved #" & LTRIM$(STR$(MENUID)) & " to " & LANENAME$(NL)
+      END IF
+      GOSUB 8800
+      LET KEEPSEL = 1
+      GOSUB 9790
+    END IF
+  END IF
+ELSEIF MENU = 2 THEN
+  CALL UIMENU(MENUX, MENUY, MNW, 1, 0)
+  IF UIMENUITEM("Add a card to " & LANENAME$(MENULN), "", "") THEN
+    LET MENU = 0
+    LET ADDLN = MENULN
+    LET MODE = 3
+    CALL UIEDITSTART("")
+    LET DIRTY = 1
+  END IF
+ELSE
+  CALL UIMENU(MENUX, MENUY, MNW, 4, 1)
+  IF UIMENUITEM("New board…", "", "") THEN LET MCH = 1
+  IF UIMENUITEM("Open a board…", "", "") THEN LET MCH = 2
+  IF UIMENUITEM("Save as…", "", "") THEN LET MCH = 3
+  CALL UIMENURULE
+  IF UIMENUITEM("Quit", "", "") THEN LET QUIT = 1
+  IF MCH > 0 THEN
+    LET MENU = 0
+    LET DIALOG = MCH
+    LET DLGMSG$ = ""
+    LET MODE = 4
+    IF MCH = 3 THEN
+      CALL UIEDITSTART(BOARD$)
+    ELSE
+      CALL UIEDITSTART("")
+    END IF
+    LET DIRTY = 1
+  END IF
 END IF
 RETURN
 
 ! ======================================================================
-! 9050  HELP — what the mouse, the keys and the commands do: a dialog over
-!        the dimmed board.
+! 9250  THE DIALOG for a board's name, over the dimmed board: a new board
+!        (DIALOG 1), another opened (2), or this one saved as (3). The name's
+!        typed (MODE 4); Enter is its button, Esc cancels.
+! ======================================================================
+9250 REM ---- a board's name ----
+CALL UISCRIM
+IF UICELLS = 1 THEN                ! (on a terminal: rows of text)
+  LET DW = MIN(UIW - 2 * UICOL, 48 * UICOL)
+  LET DH = 9 * UIROW
+  LET DX = INT((UIW - DW) / 2 / UICOL) * UICOL
+  LET DY = INT((UIH - DH) / 2 / UIROW) * UIROW
+  LET PX = DX + 2 * UICOL
+  LET TY1 = DY + 1.5 * UIROW       ! the title's middle, the hint's, the field's top, why not's middle
+  LET TY2 = DY + 3.5 * UIROW
+  LET FY = DY + 4 * UIROW
+  LET FH = UIROW
+  LET WY = DY + 5.5 * UIROW
+  LET BTNY = DY + 7 * UIROW          ! the buttons' top, their width and height
+  LET BW = 10 * UICOL
+  LET BH = UIROW
+ELSE
+  LET DW = MIN(UIW - 40, 480)
+  LET DH = 232
+  LET DX = (UIW - DW) / 2
+  LET DY = (UIH - DH) / 2
+  LET PX = DX + 24
+  LET TY1 = DY + 36
+  LET TY2 = DY + 70
+  LET FY = DY + 88
+  LET FH = 40
+  LET WY = DY + 146
+  LET BTNY = DY + DH - 24 - 34
+  LET BW = 96
+  LET BH = 34
+END IF
+LET FW = DW - 2 * (PX - DX)
+CALL UIPANEL(DX, DY, DW, DH)
+IF DIALOG = 1 THEN
+  LET DTITLE$ = "New board"
+  LET DOK$ = "Create"
+ELSEIF DIALOG = 2 THEN
+  LET DTITLE$ = "Open a board"
+  LET DOK$ = "Open"
+ELSE
+  LET DTITLE$ = "Save as"
+  LET DOK$ = "Save"
+END IF
+CALL UITEXT(PX, TY1, DTITLE$, UITITLE, "SANS BOLD", UCINK)
+CALL UITEXT(PX, TY2, "Its name: letters, digits, - and _", UISMALL, "SANS", UCMUTED)
+LET SUFW = UIWIDTH(".board", UIBODY, "SANS")
+IF UICELLS = 0 THEN
+  CALL UIBOX(PX - 2, FY - 2, FW + 4, FH + 4, UIRADIUS + 2, UCACCENT)
+  CALL UIBOX(PX, FY, FW, FH, UIRADIUS, UCSURFACE)
+  CALL UIEDITDRAW(PX + 12, FY + FH / 2, FW - 36 - SUFW, UIBODY, "SANS", UCINK, LH, "work")
+  CALL UILABEL(PX, FY, FW - 12, FH, ".board", UIBODY, "SANS", UCFAINT, "RIGHT")
+ELSE
+  CALL UIEDITDRAW(PX + UICOL, FY + FH / 2, FW - 2 * UICOL - SUFW, UIBODY, "SANS", UCINK, LH, "")
+  CALL UILABEL(PX, FY, FW - UICOL, FH, ".board", UIBODY, "SANS", UCFAINT, "RIGHT")
+END IF
+IF DLGMSG$ <> "" THEN CALL UILABEL(PX, WY - 11, FW, 22, DLGMSG$, UISMALL, "SANS", UCDANGER, "LEFT")
+IF UIBUTTON(DX + DW - (PX - DX) - BW, BTNY, BW, BH, DOK$, "PRIMARY") THEN
+  LET BNAME$ = LTRIM$(RTRIM$(UITYPED$))
+  GOSUB 9260
+  IF DIALOG = 0 THEN LET MODE = 0
+  LET DIRTY = 1
+END IF
+IF UIBUTTON(DX + DW - (PX - DX) - 2 * BW - 8, BTNY, BW, BH, "Cancel", "") THEN
+  LET DIALOG = 0
+  LET MODE = 0
+  LET DIRTY = 1
+END IF
+RETURN
+
+! ----------------------------------------------------------------------
+! 9260  THE DIALOG's button, for the name BNAME$: a new board by that name,
+!        the board by that name opened, or this one saved as it. Done, the
+!        dialog closes; if not, it stays, DLGMSG$ saying why.
+! ----------------------------------------------------------------------
+9260 REM ---- a board's name, given ----
+LET OLDMSG$ = MSG$
+LET BOK = 0
+GOSUB 9130
+IF NAMEOK = 1 THEN
+  IF DIALOG = 1 THEN
+    GOSUB 9160
+  ELSEIF DIALOG = 2 THEN
+    GOSUB 9170
+  ELSE
+    GOSUB 9180
+  END IF
+END IF
+IF BOK = 1 THEN
+  LET DIALOG = 0
+  LET DLGMSG$ = ""
+ELSE
+  LET DLGMSG$ = MSG$
+  LET MSG$ = OLDMSG$
+END IF
+RETURN
+! ======================================================================
+! 9050  HELP — what the mouse and the keys do (without a mouse, the
+!        commands): a dialog over the dimmed board.
 ! ======================================================================
 9050 REM ---- help ----
 CALL UISCRIM
+LET HROWS = 11.4                   ! (as tall as its rows: one more with a mouse)
+IF HASMOUSE = 1 THEN LET HROWS = 12.4
 IF UICELLS = 1 THEN
-  LET DW = UIW - 2 * MX0
-  LET DH = UIH - 2 * UIROW
   LET RH = UIROW
-  LET COL2 = 40 * UICOL
+  LET DW = UIW - 2 * MX0
+  LET DH = MIN(UIH - 2 * UIROW, (HROWS + 2.6) * RH)
+  LET COL2 = 42 * UICOL
 ELSE
-  LET DW = MIN(UIW - 40, 720)
-  LET DH = MIN(UIH - 40, 500)
   LET RH = 22
-  LET COL2 = DW / 2
+  LET DW = MIN(UIW - 40, 760)
+  LET DH = MIN(UIH - 40, 64 + HROWS * RH)
+  LET COL2 = DW * 0.55
 END IF
 LET DX = (UIW - DW) / 2
 LET DY = (UIH - DH) / 2
@@ -1109,44 +1340,47 @@ LET Y = DY + 34
 IF UICELLS = 1 THEN LET Y = DY + UIROW
 CALL UITEXT(PX, Y, "Kanban help", UITITLE, "SANS BOLD", UCINK)
 LET Y = Y + 1.8 * RH
-IF HASMOUSE = 1 AND (UICELLS = 0 OR UIH >= 23 * UIROW) THEN
+IF HASMOUSE = 1 THEN
   CALL UITEXT(PX, Y, "MOUSE", UISMALL, "SANS BOLD", LACC(1))
-  CALL UITEXT(PX + COL2, Y, "KEYBOARD", UISMALL, "SANS BOLD", LACC(1))
+  CALL UITEXT(PX + COL2, Y, "KEYS", UISMALL, "SANS BOLD", LACC(1))
+  LET WIDE = 0
   RESTORE 9060
-  FOR HI = 1 TO 5
+  FOR HI = 1 TO 7
     READ HK$, HD$, HK2$, HD2$
     LET Y = Y + RH
     GOSUB 9070
   NEXT HI
   LET Y = Y + 1.6 * RH
-END IF
-IF HASMOUSE = 1 THEN
-  CALL UITEXT(PX, Y, "COMMANDS — type one on the board; Enter runs it", UISMALL, "SANS BOLD", LACC(2))
+  CALL UITEXT(PX, Y, UIFIT$("On a Mac, Ctrl+click is a right-click; and a card's ⋯ opens its menu too.", DW - 56, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
+  LET Y = Y + RH
 ELSE
   CALL UITEXT(PX, Y, "COMMANDS", UISMALL, "SANS BOLD", LACC(2))
-END IF
-RESTORE 9065
-FOR HI = 1 TO 7
-  READ HK$, HD$
+  LET WIDE = 1
   LET HK2$ = ""
-  LET Y = Y + RH
-  GOSUB 9070
-NEXT HI
-LET Y = Y + 1.6 * RH
+  RESTORE 9065
+  FOR HI = 1 TO 7
+    READ HK$, HD$
+    LET Y = Y + RH
+    GOSUB 9070
+  NEXT HI
+  LET Y = Y + 1.6 * RH
+END IF
 CALL UITEXT(PX, Y, UIFIT$("The board saves itself to " & BOARD$ & ".board after every change.", DW - 56, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
 LET Y = Y + RH
 IF HASMOUSE = 1 THEN
-  CALL UITEXT(PX, Y, "Press any key, or click, to go back.", UISMALL, "SANS", UCFAINT)
+  CALL UITEXT(PX, Y, "Click, or press any key, to go back.", UISMALL, "SANS", UCFAINT)
 ELSE
   CALL UITEXT(PX, Y, "Press Enter to go back.", UISMALL, "SANS", UCFAINT)
 END IF
 RETURN
 
 9060 DATA "Click a card", "select it", "↑ ↓ ← →", "select a card"
-DATA "Double-click", "edit it", "Enter", "edit it"
-DATA "Drag a card", "move or reorder it", "Space", "pick it up: ↑ ↓ ← → move it"
-DATA "+ Add a card", "add one to a lane", "Delete", "delete it (press it twice)"
-DATA "▲ / ▼ more", "scroll a lane", "Esc", "cancel, or let go"
+DATA "Double-click", "edit it, where it is", "Enter", "edit it"
+DATA "Drag a card", "move it, or reorder", "Delete", "delete it (Undo: back)"
+DATA "Right-click", "its menu: move, delete", "Esc", "cancel, close a menu"
+DATA "+ Add a card", "add cards to a lane", "", ""
+DATA "▲ / ▼ more", "scroll a lane", "", ""
+DATA "The board's name", "new, open, save as", "", ""
 9065 DATA "A text", "add a card to To Do"
 DATA "M n lane [place]", "move card n to a lane: 1-3, todo, doing or done (place 1: the top)"
 DATA "E n text", "change card n's text"
@@ -1155,29 +1389,30 @@ DATA "N name  /  L name", "start a new board  /  open another (name.board)"
 DATA "S [name]", "save now  /  save as name.board, and carry on there"
 DATA "H  /  Q", "this help  /  quit"
 
-! 9070  A row of the help: HK$ (a key or a click, bold) and what it does, HD$ —
-!       and, if HK2$ isn't "", a second pair in the right-hand column.
+! 9070  A row of the help: HK$ (a click or a key, bold) and what it does, HD$ —
+!       and, if HK2$ isn't "", a second pair in the right-hand column. WIDE: one
+!       pair across the whole dialog (a command).
 9070 REM ---- a row of the help ----
-LET KW = 130
+LET KW = 140
 IF UICELLS = 1 THEN LET KW = 18 * UICOL
-IF HK2$ = "" THEN
+IF WIDE = 1 THEN
   LET KW = 160
   IF UICELLS = 1 THEN LET KW = 19 * UICOL
 END IF
 CALL UITEXT(PX, Y, HK$, UISMALL, "SANS BOLD", UCINK)
 LET DWID = COL2 - KW - 16
-IF HK2$ = "" THEN LET DWID = DW - (PX - DX) - KW - 28
+IF WIDE = 1 THEN LET DWID = DW - (PX - DX) - KW - 28
 CALL UITEXT(PX + KW, Y, UIFIT$(HD$, DWID, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
 IF HK2$ <> "" THEN
   LET KW2 = 90
-  IF UICELLS = 1 THEN LET KW2 = 10 * UICOL
+  IF UICELLS = 1 THEN LET KW2 = 9 * UICOL
   CALL UITEXT(PX + COL2, Y, HK2$, UISMALL, "SANS BOLD", UCINK)
   CALL UITEXT(PX + COL2 + KW2, Y, UIFIT$(HD2$, DW - (PX - DX) - COL2 - KW2 - 28, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
 END IF
 RETURN
 
 ! ======================================================================
-! 9150  COMMAND — run the one in RAW$ (typed on the board, or one per line).
+! 9150  COMMAND — run the one in RAW$, typed a line at a time (without a mouse).
 ! ======================================================================
 9150 REM ---- a command ----
 GOSUB 9100                         ! RAW$ → TOK$(1 .. NTOK)
@@ -1231,15 +1466,11 @@ ELSEIF CMD$ = "M" OR CMD$ = "MOVE" THEN
       LET NL = LV
       GOSUB 8800
       LET MSG$ = "Moved #" & LTRIM$(STR$(MVNUM)) & " to " & LANENAME$(LV)
-      IF HASMOUSE = 1 THEN
-        LET SELID = MVNUM
-        LET KEEPSEL = 1
-      END IF
       GOSUB 9790
     END IF
   END IF
 ELSEIF CMD$ = "E" OR CMD$ = "EDIT" THEN
-  ! E n text (E n alone, with a mouse: edit it on the typing line)
+  ! E n text
   LET EI = -1
   IF NTOK >= 2 THEN LET EI = TONUM(TOK$(2))
   LET ET$ = ""
@@ -1250,11 +1481,7 @@ ELSEIF CMD$ = "E" OR CMD$ = "EDIT" THEN
       LET ET$ = ET$ & " " & TOK$(CI)
     END IF
   NEXT CI
-  IF NTOK = 2 AND HASMOUSE = 1 AND EI > 0 THEN
-    LET SELID = EI
-    LET KEEPSEL = 1
-    GOSUB 8050
-  ELSEIF NTOK < 3 THEN
+  IF NTOK < 3 THEN
     LET MSG$ = "E needs a card and its new text, e.g. E 4 Buy oat milk"
   ELSE
     GOSUB 9450
@@ -1272,63 +1499,20 @@ ELSEIF CMD$ = "N" OR CMD$ = "NEW" THEN
   ELSE
     LET BNAME$ = TOK$(2)
     GOSUB 9130
-    IF NAMEOK = 1 THEN
-      GOSUB 9120
-      IF EXISTS = 1 THEN
-        LET MSG$ = "There's already a " & BNAME$ & ".board: L " & BNAME$ & " opens it"
-      ELSE
-        LET BOARD$ = BNAME$
-        LET NT = 0
-        LET NEXTID = 1
-        LET SELID = 0
-        LET NOSAVE = 0
-        FOR CI = 1 TO 3
-          LET TOP(CI) = 0
-        NEXT CI
-        LET MSG$ = "A new board, " & BOARD$ & ".board"
-        GOSUB 9790
-      END IF
-    END IF
+    IF NAMEOK = 1 THEN GOSUB 9160
   END IF
 ELSEIF CMD$ = "S" OR CMD$ = "SAVE" THEN
-  LET NAMEOK = 1
-  IF NTOK >= 2 THEN
-    LET BNAME$ = TOK$(2)
-    GOSUB 9130
-    IF NAMEOK = 1 THEN LET BOARD$ = BNAME$
-  END IF
-  IF NAMEOK = 1 THEN
-    GOSUB 9800
-    IF SAVEOK = 1 THEN
-      LET NOSAVE = 0
-      LET MSG$ = "Saved " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
-    ELSE
-      LET MSG$ = "Couldn't save " & FILE$
-    END IF
-  END IF
+  LET BNAME$ = BOARD$
+  IF NTOK >= 2 THEN LET BNAME$ = TOK$(2)
+  GOSUB 9130
+  IF NAMEOK = 1 THEN GOSUB 9180
 ELSEIF CMD$ = "L" OR CMD$ = "LOAD" OR CMD$ = "OPEN" THEN
   IF NTOK < 2 THEN
     LET MSG$ = "L needs the board's name, e.g. L work (for work.board)"
   ELSE
     LET BNAME$ = TOK$(2)
     GOSUB 9130
-    IF NAMEOK = 1 THEN
-      LET OLDBOARD$ = BOARD$
-      LET BOARD$ = BNAME$
-      GOSUB 9900
-      IF LOADOK = 1 THEN
-        LET NOSAVE = 0
-        LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
-      ELSE
-        IF LOADBAD = 1 THEN
-          LET MSG$ = FILE$ & " isn't a board this can read"
-        ELSE
-          LET MSG$ = "There's no " & FILE$ & " (N " & BNAME$ & " starts one)"
-        END IF
-        LET BOARD$ = OLDBOARD$
-        LET FILE$ = BOARD$ & ".board"
-      END IF
-    END IF
+    IF NAMEOK = 1 THEN GOSUB 9170
   END IF
 ELSEIF CMD$ = "H" OR CMD$ = "HELP" OR CMD$ = "?" THEN
   LET HELP = 1
@@ -1337,6 +1521,77 @@ ELSE
 END IF
 RETURN
 
+
+! ----------------------------------------------------------------------
+! 9160  NEW — start a new board, BNAME$ (a name 9130 has passed).
+! 9170  OPEN — open the board BNAME$ in place of this one.
+! 9180  SAVE AS — save this board as BNAME$ (its own name: where it is), and
+!        carry on there.
+!        Each says what happened in MSG$; BOK = 1 if it did it.
+! ----------------------------------------------------------------------
+9160 REM ---- a new board ----
+LET BOK = 0
+GOSUB 9120
+IF EXISTS = 1 THEN
+  LET MSG$ = "There's already a " & BNAME$ & ".board"
+  IF HASMOUSE = 0 THEN LET MSG$ = MSG$ & ": L " & BNAME$ & " opens it"
+ELSE
+  LET BOARD$ = BNAME$
+  LET NT = 0
+  LET NEXTID = 1
+  LET SELID = 0
+  LET NOSAVE = 0
+  FOR CI = 1 TO 3
+    LET TOP(CI) = 0
+  NEXT CI
+  LET MSG$ = "A new board, " & BOARD$ & ".board"
+  GOSUB 9790
+  LET BOK = 1
+END IF
+RETURN
+
+9170 REM ---- open a board ----
+LET BOK = 0
+LET OLDBOARD$ = BOARD$
+LET BOARD$ = BNAME$
+GOSUB 9900
+IF LOADOK = 1 THEN
+  LET NOSAVE = 0
+  LET MSG$ = "Opened " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+  LET BOK = 1
+ELSE
+  IF LOADBAD = 1 THEN
+    LET MSG$ = FILE$ & " isn't a board this can read"
+  ELSE
+    LET MSG$ = "There's no " & FILE$
+    IF HASMOUSE = 0 THEN LET MSG$ = MSG$ & " (N " & BNAME$ & " starts one)"
+  END IF
+  LET BOARD$ = OLDBOARD$
+  LET FILE$ = BOARD$ & ".board"
+END IF
+RETURN
+
+9180 REM ---- save as ----
+LET BOK = 0
+LET EXISTS = 0
+IF UCASE$(BNAME$) <> UCASE$(BOARD$) THEN GOSUB 9120
+IF EXISTS = 1 THEN                 ! (another board's: not over it)
+  LET MSG$ = "There's already a " & BNAME$ & ".board"
+  RETURN
+END IF
+LET OLDBOARD$ = BOARD$
+LET BOARD$ = BNAME$
+GOSUB 9800
+IF SAVEOK = 1 THEN
+  LET NOSAVE = 0
+  LET MSG$ = "Saved " & FILE$ & " · " & LTRIM$(STR$(NT)) & " cards"
+  LET BOK = 1
+ELSE
+  LET MSG$ = "Couldn't save " & FILE$
+  LET BOARD$ = OLDBOARD$
+  LET FILE$ = BOARD$ & ".board"
+END IF
+RETURN
 ! ----------------------------------------------------------------------
 ! 9100  TOKENIZE — split RAW$ into TOK$(1..NTOK) on runs of spaces.
 ! ----------------------------------------------------------------------
@@ -1428,6 +1683,7 @@ IF FI = 0 THEN
   LET MSG$ = "There's no card #" & LTRIM$(STR$(EI))
 ELSEIF ET$ = "" THEN
   LET MSG$ = "A card needs some text (D " & LTRIM$(STR$(EI)) & " deletes it)"
+  IF HASMOUSE = 1 THEN LET MSG$ = "A card needs some text (Delete deletes it)"
 ELSEIF ET$ = TASK$(FI) THEN
   LET MSG$ = "Left #" & LTRIM$(STR$(EI)) & " as it was"
 ELSE
@@ -1469,6 +1725,7 @@ RETURN
 !        line per card, "<lane> <number> <text>".
 ! ======================================================================
 9790 REM ---- changed ----
+LET UNDOOK = 0                     ! (a delete is undone only straight after it)
 IF NOSAVE = 1 THEN
   LET MSG$ = MSG$ & " (not saved: S name saves it)"
   RETURN
@@ -1565,7 +1822,7 @@ IF LOADOK = 1 THEN
   NEXT LI
   LET NEXTID = MAX(TNEXT, MAXID + 1)
   LET SELID = 0
-  LET CARRY = 0
+  LET UNDOOK = 0
   FOR LI = 1 TO 3
     LET TOP(LI) = 0
   NEXT LI

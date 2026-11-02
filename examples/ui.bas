@@ -1,8 +1,8 @@
 ! ui.bas — the parts an application's screen is made of, for a program that draws    @library
 ! (LIBRARY "ui.bas"): a theme of colours and text sizes; rounded boxes, outlines and
 ! shadows; text that's measured, cut to fit and wrapped; buttons, badges and a progress
-! bar; a text field's typing; and a dialog over a dimmed screen. ui-gallery.bas shows every
-! part, and kanban.bas is made with it.
+! bar; a text field's typing; a menu that pops up; and a dialog over a dimmed screen.
+! ui-gallery.bas shows every part, and kanban.bas is made with it.
 !
 ! It's "immediate mode": each frame the program calls UIBEGIN (the screen and the
 ! pointer), then UICLEAR and draws everything — a button is drawn by the call that says
@@ -28,6 +28,7 @@ MODULE UI
   ! ---- the screen and the pointer, as UIBEGIN finds them ------------------------------
   PUBLIC UIW, UIH                  ! the screen, in points
   PUBLIC UIMX, UIMY, UIMS          ! the pointer: where, and 0 up, 1 held, 2 just pressed, 3 just let go (-1: no mouse)
+  PUBLIC UIRIGHT                   ! 1 when the right button (a Mac's Ctrl+click) was just pressed: for a menu
   PUBLIC UIDOUBLE                  ! 1 when this press is the second of a double-click
   PUBLIC UICHANGED                 ! 1 when the pointer or the screen's size changed since the last frame
   PUBLIC UICELLS, UIROW, UICOL     ! 1 on a screen of character cells; a row of text's height; a cell's width
@@ -44,7 +45,12 @@ MODULE UI
   PUBLIC UITYPED$, UICARET         ! the text being typed, and the caret: after this many characters
   PUBLIC UIMAXTYPED
 
-  SHARE UIPX, UIPY                 ! where the pointer was pressed
+  SHARE UIPX, UIPY, UIPF           ! where the pointer was pressed, and in which frame
+  SHARE UIPAINTS                   ! frames drawn (UICLEARs) so far
+  SHARE UILEFT                     ! 1 while the left button's held
+  SHARE UIMNX, UIMNY, UIMNW, UIMNH, UIMNROW        ! the menu drawn (UIMENU), and where its next choice goes
+  SHARE UIMNPAD, UIMNIH, UIMNRH                    ! its padding, a choice's height, a rule's
+  SHARE UIMNPAINT, UIMNSINCE                       ! the frame drawn with it last, and the frame it opened in
   SHARE UILOCKED                   ! 1 while what's drawn doesn't answer the pointer (UILOCK)
   SHARE UILASTF, UILASTX, UILASTY  ! the press before: its frame and place, for a double-click
   SHARE UIOX, UIOY, UIOS, UIDW, UIDH
@@ -147,8 +153,18 @@ MODULE UI
       ASK TEXT HEIGHT UIROW
       LET UICOL = TEXTWIDTH("M")
     END IF
-    GET MOUSE UIMX, UIMY, UIMS
-    IF UIMX <> UIOX OR UIMY <> UIOY OR UIMS <> UIOS THEN LET UICHANGED = 1
+    ! UIMS is the left button's (the primary's); pressing the right one is UIRIGHT
+    GET MOUSE UIMX, UIMY, S, B
+    LET UIRIGHT = 0
+    IF B = 1 OR S <= 0 THEN
+      LET UIMS = S
+    ELSE
+      IF S = 2 AND B = 2 THEN LET UIRIGHT = 1
+      LET UIMS = UILEFT                ! (another button's: the left's up, or still held)
+    END IF
+    LET UILEFT = 0
+    IF UIMS = 1 OR UIMS = 2 THEN LET UILEFT = 1
+    IF UIMX <> UIOX OR UIMY <> UIOY OR UIMS <> UIOS OR UIRIGHT = 1 THEN LET UICHANGED = 1
     LET UIOX = UIMX
     LET UIOY = UIMY
     LET UIOS = UIMS
@@ -156,6 +172,7 @@ MODULE UI
     IF UIMS = 2 THEN
       LET UIPX = UIMX
       LET UIPY = UIMY
+      LET UIPF = UIFRAME
       IF UIFRAME - UILASTF <= 12 AND ABS(UIMX - UILASTX) < 8 AND ABS(UIMY - UILASTY) < 8 THEN
         LET UIDOUBLE = 1
         LET UILASTF = -100
@@ -170,9 +187,11 @@ MODULE UI
   ! UICLEAR(C): start drawing a frame — the screen cleared to colour C.
   PUBLIC SUB UICLEAR(C)
     CLEAR
+    LET UIPAINTS = UIPAINTS + 1
     LET UILOCKED = 0
     CALL UIBOX(0, 0, UIW, UIH, 0, C)
     LET UINC = 0
+    LET UIMNW = 0
   END SUB
 
   ! ---- shapes ---------------------------------------------------------------------------
@@ -182,7 +201,10 @@ MODULE UI
   PUBLIC SUB UIBOX(X, Y, W, H, R, C)
     IF W > 0 AND H > 0 THEN
       SET AREA COLOR C
-      IF R > 0 AND UICELLS = 0 THEN
+      IF UICELLS = 1 THEN
+        ! (a hair inside its right edge: a cell's edge would light half the cell after it)
+        GRAPH AREA: X, Y; X + W - 0.01, Y; X + W - 0.01, Y + H; X, Y + H
+      ELSEIF R > 0 THEN
         GRAPH AREA, ROUND R: X, Y; X + W, Y; X + W, Y + H; X, Y + H
       ELSE
         GRAPH AREA: X, Y; X + W, Y; X + W, Y + H; X, Y + H
@@ -396,13 +418,7 @@ MODULE UI
   ! (just its label until the pointer's on it), "DANGER", or "" (raised); lighter under the
   ! pointer, darker while pressed. 1 when it's clicked: pressed, and let go, on it.
   PUBLIC FUNCTION UIBUTTON(X, Y, W, H, LABEL$, KIND$)
-    IF UINC < 64 THEN
-      LET UINC = UINC + 1
-      LET UICX(UINC) = X
-      LET UICY(UINC) = Y
-      LET UICW(UINC) = W
-      LET UICH(UINC) = H
-    END IF
+    CALL UICONTROL(X, Y, W, H)
     LET OVER = UIIN(X, Y, W, H)
     LET K$ = UCASE$(KIND$)
     LET INK = UCINK
@@ -436,6 +452,17 @@ MODULE UI
     IF UIMS = 3 AND OVER = 1 AND UIPRESSEDIN(X, Y, W, H) = 1 THEN UIBUTTON = 1
   END FUNCTION
 
+  ! A control drawn at X, Y, W, H, for UIONCONTROL.
+  SUB UICONTROL(X, Y, W, H)
+    IF UINC < 64 THEN
+      LET UINC = UINC + 1
+      LET UICX(UINC) = X
+      LET UICY(UINC) = Y
+      LET UICW(UINC) = W
+      LET UICH(UINC) = H
+    END IF
+  END SUB
+
   ! A badge: S$ on a pill of colour BG, from X with its middle at Y, in colour FG. How wide
   ! it is.
   PUBLIC FUNCTION UIPILL(X, Y, S$, SZ, BG, FG)
@@ -448,6 +475,95 @@ MODULE UI
     CALL UIBOX(X, Y - H / 2, W, H, H / 2, BG)
     CALL UILABEL(X, Y - H / 2, W, H, S$, SZ, "SANS BOLD", FG, "CENTER")
     UIPILL = W
+  END FUNCTION
+
+  ! ---- menus ----------------------------------------------------------------------------
+  ! A menu pops up where the right button was pressed (UIRIGHT), say, or under a button.
+  ! The program keeps whether it's open and, each frame, draws it last: UIMENU, then
+  ! UIMENUITEM for each choice — 1 when it's clicked — and UIMENURULE between groups. Lock
+  ! what's behind it while it's open (UILOCK), and close it when a choice is clicked, when
+  ! the pointer's pressed off it (UIINMENU says), or on Esc.
+
+  ! A menu W across, ITEMS choices and RULES rules long, from X, Y — or to the left of X
+  ! and above Y, where there's no room for it to the right and below.
+  PUBLIC SUB UIMENU(X, Y, W, ITEMS, RULES)
+    IF UICELLS = 1 THEN                ! (on a terminal: a row a choice, no rules)
+      LET UIMNPAD = 0
+      LET UIMNIH = UIROW
+      LET UIMNRH = 0
+    ELSE
+      LET UIMNPAD = 6
+      LET UIMNIH = 30
+      LET UIMNRH = 9
+    END IF
+    LET H = 2 * UIMNPAD + ITEMS * UIMNIH + RULES * UIMNRH
+    LET UIMNW = W
+    IF UICELLS = 1 THEN LET UIMNW = ROUND(W / UICOL) * UICOL
+    LET UIMNX = X
+    LET UIMNY = Y
+    IF X + UIMNW > UIW - 4 THEN LET UIMNX = MAX(4, X - UIMNW)
+    IF Y + H > UIH - 4 THEN LET UIMNY = MAX(4, Y - H)
+    IF UICELLS = 1 THEN                ! (on a terminal, in whole cells)
+      LET UIMNX = ROUND(UIMNX / UICOL) * UICOL
+      LET UIMNY = ROUND(UIMNY / UIROW) * UIROW
+    END IF
+    LET UIMNH = H
+    LET UIMNROW = UIMNY + UIMNPAD
+    ! (just opened — not on the screen drawn before — its choices wait for a press of their
+    ! own: letting go of the one that opened it, a button's say, doesn't choose one)
+    IF UIMNPAINT <> UIPAINTS - 1 THEN LET UIMNSINCE = UIFRAME
+    LET UIMNPAINT = UIPAINTS
+    CALL UISHADOW(UIMNX, UIMNY, UIMNW, H, 10, 10)
+    CALL UIBOX(UIMNX, UIMNY, UIMNW, H, 10, UCRAISED)
+    IF UICELLS = 0 THEN CALL UIRING(UIMNX, UIMNY, UIMNW, H, 10, UCLINE)
+  END SUB
+
+  ! A choice on the menu: LABEL$, and KEY$ at the right (a shortcut that does the same, or
+  ! ""). KIND$ is "" , "DANGER" (red: deleting, say) or "OFF" (greyed: not now). 1 when
+  ! it's clicked.
+  PUBLIC FUNCTION UIMENUITEM(LABEL$, KEY$, KIND$)
+    LET X = UIMNX + UIMNPAD
+    LET Y = UIMNROW
+    LET W = UIMNW - 2 * UIMNPAD
+    LET IH = UIMNIH
+    LET UIMNROW = UIMNROW + IH
+    CALL UICONTROL(X, Y, W, IH)
+    LET K$ = UCASE$(KIND$)
+    LET OVER = UIIN(X, Y, W, IH)
+    IF K$ = "OFF" THEN LET OVER = 0
+    LET INK = UCINK
+    IF K$ = "DANGER" THEN LET INK = UCDANGER
+    IF K$ = "OFF" THEN LET INK = UCFAINT
+    LET KINK = UCFAINT
+    IF OVER = 1 THEN
+      LET FILL = UCACCENT
+      IF K$ = "DANGER" THEN LET FILL = UCDANGER
+      CALL UIBOX(X, Y, W, IH, 6, FILL)
+      LET INK = UCONACCENT
+      LET KINK = UCONACCENT
+    END IF
+    LET PADX = 10
+    IF UICELLS = 1 THEN LET PADX = UICOL
+    LET KW = 0
+    IF KEY$ <> "" THEN
+      LET KW = UIWIDTH(KEY$, UISMALL, "SANS") + PADX
+      CALL UILABEL(X, Y, W - PADX, IH, KEY$, UISMALL, "SANS", KINK, "RIGHT")
+    END IF
+    CALL UILABEL(X + PADX, Y, W - 2 * PADX - KW, IH, LABEL$, UIBODY - 1, "SANS", INK, "LEFT")
+    UIMENUITEM = 0
+    IF OVER = 1 AND UIMS = 3 AND UIPF > UIMNSINCE AND UIPRESSEDIN(X, Y, W, IH) = 1 THEN UIMENUITEM = 1
+  END FUNCTION
+
+  ! A line across the menu, between two groups of choices.
+  PUBLIC SUB UIMENURULE
+    IF UIMNRH > 0 THEN CALL UIBOX(UIMNX + 12, UIMNROW + (UIMNRH - 1) / 2, UIMNW - 24, 1, 0, UCLINE)
+    LET UIMNROW = UIMNROW + UIMNRH
+  END SUB
+
+  ! Is the pointer on the menu drawn last time?
+  PUBLIC FUNCTION UIINMENU
+    UIINMENU = 0
+    IF UIMNW > 0 AND UIMX >= UIMNX AND UIMX < UIMNX + UIMNW AND UIMY >= UIMNY AND UIMY < UIMNY + UIMNH THEN UIINMENU = 1
   END FUNCTION
 
   ! ---- typing ---------------------------------------------------------------------------

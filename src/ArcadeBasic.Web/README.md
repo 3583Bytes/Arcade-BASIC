@@ -156,8 +156,9 @@ at the interpreter's speed.
 that accepts them; a plain static server just ignores the request): compute
 loops, then ten seconds each of `invaders`, `breakout` and `maze3d` for their
 frame rate and VM time per frame. Add `&snapshot` to include each game's last
-frame as a PNG. `?selftest=kanban` drags a card with real pointer events and
-reports the board, and what it saved; `?selftest=page` reports which program the address opened and
+frame as a PNG. `?selftest=kanban` drags a card with real pointer events,
+right-clicks one and deletes it from its menu, quits from the board's menu, and reports
+the board, and what it saved; `?selftest=page` reports which program the address opened and
 the tabs; `?selftest=ide` (`wwwroot/selftest.js`) uses the editor as a person
 would — colours, themes, problems, runtime errors, completion, go-to-definition,
 tabs, Save (catching the download), line endings, links, play links, sound timing and Web

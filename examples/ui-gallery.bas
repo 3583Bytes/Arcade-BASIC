@@ -1,7 +1,8 @@
 ! ui-gallery.bas — every part of ui.bas, the components library, on one screen: the    @category Graphics
 ! theme (dark or light), text in its sizes and fonts, buttons of each kind, badges and a
 ! progress bar, text wrapped and cut to fit, a text field to type in, boxes and their
-! shadows, and a dialog over the dimmed screen. Click about; Q quits.
+! shadows, a menu (right-click anywhere) and a dialog over the dimmed screen. Click about;
+! Q quits.
 !
 ! Each panel ends with a line of the BASIC that draws it, to copy into a program of your
 ! own. Such a program starts LIBRARY "ui.bas" and DECLAREs the variables it uses; then
@@ -12,7 +13,7 @@
 
 OPTION BASE 1
 LIBRARY "ui.bas"
-DECLARE PUBLIC UIW, UIH, UIMS, UICHANGED
+DECLARE PUBLIC UIW, UIH, UIMX, UIMY, UIMS, UIRIGHT, UICHANGED
 DECLARE PUBLIC UCBG, UCSURFACE, UCRAISED, UCLINE, UCINK, UCMUTED, UCFAINT
 DECLARE PUBLIC UCACCENT, UCONACCENT, UCGOOD, UCWARN, UCDANGER
 DECLARE PUBLIC UISMALL, UIBODY, UITITLE, UITYPED$, UIMAXTYPED
@@ -27,6 +28,9 @@ LET NAME$ = ""             ! the text field's text, and 1 while it's being typed
 LET TYPING = 0
 LET SAID$ = "Click the field, type, then Enter"
 LET DIALOG = 0             ! 1 while the dialog is up
+LET MENU = 0               ! 1 while the menu is, and where it was opened
+LET MENUX = 0
+LET MENUY = 0
 LET DIRTY = 1              ! the screen needs drawing again
 LET QUIT = 0
 LET K$ = ""
@@ -53,6 +57,11 @@ DO
   LOOP
   IF QUIT = 1 THEN EXIT DO
   CALL UIBEGIN
+  IF UIRIGHT = 1 AND DIALOG = 0 THEN   ! a right-click: the menu, there
+    LET MENU = 1
+    LET MENUX = UIMX
+    LET MENUY = UIMY
+  END IF
   IF DIRTY = 1 OR UICHANGED = 1 THEN
     LET DIRTY = 0
     GOSUB 1000                     ! (which may make it DIRTY again: a click changes what shows)
@@ -62,8 +71,8 @@ LOOP
 END
 
 ! ----------------------------------------------------------------------
-! 500  A KEY (K$): for the text field while it's typed in, the dialog while
-!      it's up; else Q quits.
+! 500  A KEY (K$): for the text field while it's typed in, the dialog or the
+!      menu while it's up (Esc closes it); else Q quits.
 ! ----------------------------------------------------------------------
 500 REM ---- a key ----
 IF TYPING = 1 THEN
@@ -78,18 +87,21 @@ IF TYPING = 1 THEN
   END IF
 ELSEIF DIALOG = 1 THEN
   IF K$ = CHR$(27) OR K$ = CHR$(13) THEN LET DIALOG = 0
+ELSEIF MENU = 1 AND K$ = CHR$(27) THEN
+  LET MENU = 0
 ELSEIF UCASE$(K$) = "Q" THEN
   LET QUIT = 1
 END IF
 RETURN
 
 ! ======================================================================
-! 1000  THE GALLERY — a title bar, six panels, a button for the dialog, and
-!       the dialog. Behind the dialog nothing answers the pointer (UILOCK).
+! 1000  THE GALLERY — a title bar, six panels, buttons for the menu and the
+!       dialog, and the menu or the dialog. Behind them nothing answers the
+!       pointer (UILOCK).
 ! ======================================================================
 1000 REM ---- the gallery ----
 CALL UICLEAR(UCBG)
-CALL UILOCK(DIALOG)
+CALL UILOCK(MAX(DIALOG, MENU))
 CALL UITEXT(20, 30, "ui.bas gallery", UITITLE, "SANS BOLD", UCINK)
 LET W = UIPILL(20 + UIWIDTH("ui.bas gallery", UITITLE, "SANS BOLD") + 12, 30, "LIBRARY ""ui.bas""", UISMALL, UCSURFACE, UCMUTED)
 LET K1$ = "GHOST"
@@ -211,7 +223,7 @@ ELSE
 END IF
 LET FH = 20 + MIN(NL, 3) * 20
 ! a click in it starts typing; a click elsewhere keeps what's typed
-IF UIMS = 2 AND DIALOG = 0 THEN
+IF UIMS = 2 AND DIALOG = 0 AND MENU = 0 THEN
   IF UIIN(FX, FY, FW, FH) = 1 AND TYPING = 0 THEN
     LET TYPING = 1
     CALL UIEDITSTART(NAME$)
@@ -264,13 +276,55 @@ CALL UILABEL(X, PY + 160, BW, 20, "square", UISMALL, "SANS", UCFAINT, "CENTER")
 CALL UILABEL(X + BW + 16, PY + 160, BW, 20, "an outline", UISMALL, "SANS", UCFAINT, "CENTER")
 CALL UILABEL(X + 2 * (BW + 16), PY + 160, BW, 20, "a pill", UISMALL, "SANS", UCFAINT, "CENTER")
 
-! --- the dialog -----------------------------------------------------------
+! --- the menu and the dialog ----------------------------------------------
 IF UIBUTTON(20, UIH - 46, 150, 34, "Open a dialog", "PRIMARY") THEN
   LET DIALOG = 1
   LET DIRTY = 1
 END IF
-CALL UILABEL(190, UIH - 46, UIW - 210, 34, "Q quits  ·  every part is in examples/ui.bas", UISMALL, "SANS", UCFAINT, "RIGHT")
+IF UIBUTTON(182, UIH - 46, 110, 34, "A menu ▾", "") THEN
+  LET MENU = 1
+  LET MENUX = 182
+  LET MENUY = UIH - 46 + 38        ! (under the button — or, with no room there, above it)
+  LET DIRTY = 1
+END IF
+CALL UILABEL(310, UIH - 46, UIW - 330, 34, "Right-click anywhere for the menu  ·  Q quits  ·  every part is in examples/ui.bas", UISMALL, "SANS", UCFAINT, "RIGHT")
 CALL UILOCK(0)
+IF MENU = 1 THEN
+  CALL UIMENU(MENUX, MENUY, 210, 5, 2)
+  LET MK$ = ""
+  IF THEME$ = "DARK" THEN LET MK$ = "OFF"
+  IF UIMENUITEM("Dark theme", "", MK$) THEN
+    LET THEME$ = "DARK"
+    CALL UITHEME(THEME$)
+    LET MENU = 0
+  END IF
+  LET MK$ = ""
+  IF THEME$ = "LIGHT" THEN LET MK$ = "OFF"
+  IF UIMENUITEM("Light theme", "", MK$) THEN
+    LET THEME$ = "LIGHT"
+    CALL UITHEME(THEME$)
+    LET MENU = 0
+  END IF
+  CALL UIMENURULE
+  IF UIMENUITEM("Count a click", "", "") THEN
+    LET LAST$ = "the menu"
+    GOSUB 1200
+    LET MENU = 0
+  END IF
+  LET MK$ = ""
+  IF CLICKS = 0 THEN LET MK$ = "OFF"
+  IF UIMENUITEM("Reset the clicks", "", MK$) THEN
+    LET CLICKS = 0
+    LET MENU = 0
+  END IF
+  CALL UIMENURULE
+  IF UIMENUITEM("Quit", "Q", "DANGER") THEN LET QUIT = 1
+  IF UIMS = 2 AND UIINMENU() = 0 THEN   ! pressed off it: it closes, and the press does nothing else
+    LET MENU = 0
+    CALL UIFORGETPRESS
+  END IF
+  IF MENU = 0 THEN LET DIRTY = 1
+END IF
 IF DIALOG = 1 THEN
   CALL UISCRIM
   LET DW = 440

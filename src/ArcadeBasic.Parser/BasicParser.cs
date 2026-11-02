@@ -188,7 +188,7 @@ public sealed partial class BasicParser
 
     private static bool IsWord(string text, string word) => string.Equals(text, word, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary><c>LOCATE|GET POINT [(device)] [, AT x, y] : x, y</c> or <c>GET MOUSE [:] x, y, s</c>.</summary>
+    /// <summary><c>LOCATE|GET POINT [(device)] [, AT x, y] : x, y</c> or <c>GET MOUSE [:] x, y, s [, b]</c>.</summary>
     private Stmt? ParseGraphicInput()
     {
         var start = Advance(); // LOCATE / GET
@@ -201,7 +201,9 @@ public sealed partial class BasicParser
             var my = ParseAssignmentTarget(); if (my is null) return null;
             if (!ExpectKind(TokenKind.Comma, "','")) return null;
             var ms = ParseAssignmentTarget(); if (ms is null) return null;
-            return new GetMouseStmt(SpanFrom(start, ms.Span), mx, my, ms);
+            if (!Match(TokenKind.Comma)) return new GetMouseStmt(SpanFrom(start, ms.Span), mx, my, ms);
+            var mb = ParseAssignmentTarget(); if (mb is null) return null;   // which button (an Arcade BASIC addition)
+            return new GetMouseStmt(SpanFrom(start, mb.Span), mx, my, ms, mb);
         }
 
         Advance(); // POINT

@@ -599,6 +599,17 @@ public sealed class BasicVm
                             stack, frame, programFrame);
                         break;
                     }
+                case Opcode.GetMouseButton:
+                    {
+                        var descs = ReadTargetDescs(code, ref pc, 4);
+                        var state = _pointer.Sample(out var at, out var button);
+                        var point = state == PointerState.NoPointer ? default : _gfx.ToProblem(at);
+                        AssignTargets(descs,
+                            [GraphicsState.Coordinate(point.X, _native), GraphicsState.Coordinate(point.Y, _native),
+                             NumericValue.From(state, _native), NumericValue.From(button, _native)],
+                            stack, frame, programFrame);
+                        break;
+                    }
                 case Opcode.Randomize:
                     if (ReadU32(code, ref pc) == 0) _random.Randomize();
                     else _random.Randomize(((NumericValue)stack.Pop()).D);   // RANDOMIZE n: an extension

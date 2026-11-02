@@ -587,6 +587,7 @@ public sealed class Analyzer
                 break;
             case GetMouseStmt gm:
                 AnalyzeNumericTargets(scope, "GET MOUSE", gm.X, gm.Y, gm.State);
+                if (gm.Button is not null) AnalyzeNumericTargets(scope, "GET MOUSE", gm.Button);
                 break;
             case SoundStmt snd:
                 ExpectType(snd.Frequency, AnalyzeExpr(snd.Frequency, scope), BasicType.Numeric, "SOUND frequency");

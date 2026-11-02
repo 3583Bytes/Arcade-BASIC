@@ -35,13 +35,20 @@ the last one. Releases before 2.0.0 are on the
   `SET TEXT FONT "SANS BOLD"` picks a font, and `TEXTWIDTH(s$)` says how wide text
   draws; `GRAPH AREA, ROUND r:` (and `LINES`) rounds corners; and a fourth value in `SET
   COLOR MIX` makes a colour see-through, for shadows and highlights.
-- **The Kanban board looks like an application**: rounded lanes and cards with shadows,
-  text in sizes and weights, wrapped to fit, a progress bar, buttons, editing a card
-  where it is, and help in a dialog over the dimmed board. It's made with
-  **`examples/ui.bas`**, a library of components any program can use (`LIBRARY
-  "ui.bas"`): a theme, boxes, text that fits, buttons, badges, typing and dialogs.
-  **`examples/ui-gallery.bas`** shows every part, each with the line of BASIC that
-  draws it.
+- **Right-clicks**: `GET MOUSE x, y, s, b` says which button — 1 the left, 2 the right
+  (or a Mac's Ctrl+click), 3 the middle — in the browser, the desktop player and a
+  terminal. Without the fourth value `GET MOUSE` is about the left button, as before.
+- **The Kanban board looks and works like an application**: rounded lanes and cards with
+  shadows, text in sizes and weights, wrapped to fit, a progress bar, buttons, and help
+  in a dialog over the dimmed board. It's worked with the mouse, not typed commands:
+  right-click a card (or click its ⋯) for its menu — edit, move it to another lane or to
+  the top or bottom, delete it, with Undo after; "+ Add a card" adds one after another;
+  and the board's name opens a menu to start a new board, open one or save as, each
+  with a dialog for the name. (Without a mouse it still takes typed commands.) It's
+  made with **`examples/ui.bas`**, a library of components any program can use
+  (`LIBRARY "ui.bas"`): a theme, boxes, text that fits, buttons, badges, typing, menus
+  that pop up, and dialogs. **`examples/ui-gallery.bas`** shows every part, each with
+  the line of BASIC that draws it.
 - **The language**, closer to the standard:
   - `DATA` takes unquoted strings, `DATA red, big apple, 3 apples`, as old listings
     write them (the editor colours them as strings).

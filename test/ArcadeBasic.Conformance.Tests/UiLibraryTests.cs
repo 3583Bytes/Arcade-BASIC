@@ -106,17 +106,17 @@ public class UiLibraryTests
         public bool Shows(string text) => Frame.Any(t => t.Text == text);
 
         /// <summary>Press and let go on the text (a button's label, say).</summary>
-        public void Click(string text)
+        public void Click(string text, int button = PointerState.Primary)
         {
             var at = Frame.First(t => t.Text == text).At;
             Pointer = new GfxPoint(at.X + 0.005, at.Y + 0.01);
-            Events.Enqueue(new PointerEvent(true, Pointer));
-            Events.Enqueue(new PointerEvent(false, Pointer));
+            Events.Enqueue(new PointerEvent(true, Pointer, button));
+            Events.Enqueue(new PointerEvent(false, Pointer, button));
         }
     }
 
     [Fact]
-    public void TheGalleryClicksTypesAndKeepsWhatsBehindItsDialogStill()
+    public void TheGalleryClicksTypesAndKeepsWhatsBehindItsDialogAndMenuStill()
     {
         var screen = new Screen();
         var path = Path.Combine(ExamplesDir(), "ui-gallery.bas");
@@ -152,6 +152,20 @@ public class UiLibraryTests
         screen.Click("Close");
         Frames(3);
         Assert.False(screen.Shows("A dialog"));
+
+        screen.Click("A title", PointerState.Secondary);               // a right-click: the menu, there
+        Frames(3);
+        Assert.True(screen.Shows("Reset the clicks"));
+        screen.Click("Open");                                          // a press off it closes it, and clicks nothing
+        Frames(3);
+        Assert.False(screen.Shows("Reset the clicks"));
+        Assert.True(screen.Shows("Clicked Save  ·  1 click(s) so far"));
+        screen.Click("A menu ▾");                                      // the button opens it too
+        Frames(3);
+        screen.Click("Reset the clicks");
+        Frames(3);
+        Assert.False(screen.Shows("Reset the clicks"));
+        Assert.True(screen.Shows("Primary, raised, ghost and danger"));
 
         screen.Click("Click here, and type");                          // the text field
         Frames(2);

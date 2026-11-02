@@ -138,9 +138,20 @@ public class AnsiGraphicsDeviceTests
         Assert.Equal(0.5 / 80, at.X, 9);
         Assert.Equal(PointerState.Released, pointer.Sample(out at));
         Assert.Equal(1.5 / 80, at.X, 9);
-        d.MouseReport(64, 2, 1, released: false);        // the wheel, and the right button: no clicks
-        d.MouseReport(2, 2, 1, released: false);
+        d.MouseReport(64, 2, 1, released: false);        // the wheel: no click
+        d.MouseReport(2, 2, 1, released: false);         // the right button: unseen, unless asked which
+        d.MouseReport(2, 2, 1, released: true);
+        d.MouseReport(16, 3, 1, released: false);        // Ctrl+click: a right-click too,
+        d.MouseReport(0, 3, 1, released: true);          // however Ctrl is when it's let go
         Assert.Equal(PointerState.Up, pointer.Sample(out _));
+        d.MouseReport(2, 2, 1, released: false);
+        d.MouseReport(2, 2, 1, released: true);
+        d.MouseReport(16, 3, 1, released: false);
+        d.MouseReport(0, 3, 1, released: true);
+        d.MouseReport(1, 4, 1, released: false);         // the middle
+        var buttons = new List<(int, int)>();
+        for (var i = 0; i < 5; i++) buttons.Add((pointer.Sample(out _, out var b), b));
+        Assert.Equal([(2, 2), (3, 2), (2, 2), (3, 2), (2, 3)], buttons);
 
         d.EndSession();
         Assert.Contains("\x1b[?1000l", w.ToString());   // stopped

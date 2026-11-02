@@ -91,6 +91,21 @@ public class PointerTests
     }
 
     [Fact]
+    public void AFourthValueSaysWhichButton()
+    {
+        var output = Run(
+            "SET WINDOW 0, 100, 0, 50\nFOR I = 1 TO 4\nGET MOUSE X, Y, S, B\nPRINT S; B; X\nNEXT I\n",
+            () => new ScriptedPointer(new GfxPoint(0.1, 0.1),
+                new PointerEvent(true, new GfxPoint(0.5, 0.5), PointerState.Secondary),
+                new PointerEvent(false, new GfxPoint(0.6, 0.6), PointerState.Secondary)));
+        Assert.Equal(
+            " 0  0  10 \n" +     // up: no button
+            " 2  2  50 \n" +     // the right button pressed
+            " 1  2  10 \n" +     // held
+            " 3  2  60 \n", output);
+    }
+
+    [Fact]
     public void WithoutAPointerLocateReadsTypedCoordinatesAndGetMouseSaysSo()
     {
         var output = Run(

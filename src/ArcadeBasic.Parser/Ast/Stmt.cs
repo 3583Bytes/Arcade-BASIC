@@ -96,7 +96,7 @@ public sealed record class LocatePointStmt(SourceSpan Span, Expr? Device, Expr? 
 
 /// <summary><c>GET MOUSE x, y, s</c> — sample the pointer without waiting: its position in
 /// problem coordinates and the button's state (True BASIC-style extension).</summary>
-public sealed record class GetMouseStmt(SourceSpan Span, Expr X, Expr Y, Expr State) : Stmt(Span);
+public sealed record class GetMouseStmt(SourceSpan Span, Expr X, Expr Y, Expr State, Expr? Button = null) : Stmt(Span);
 
 /// <summary>SOUND frequency, duration — emit a tone (Microsoft BASIC / GW-BASIC extension).
 /// Frequency in Hz (37..32767); duration in clock ticks (18.2/sec). Both are required, per GW-BASIC.</summary>

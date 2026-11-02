@@ -14,8 +14,8 @@ public class PointerStateTests
         public readonly Queue<PointerEvent> Events = new();
         public GfxPoint? Position;
 
-        public void Press(double x, double y) => Events.Enqueue(new PointerEvent(true, new GfxPoint(x, y)));
-        public void Release(double x, double y) => Events.Enqueue(new PointerEvent(false, new GfxPoint(x, y)));
+        public void Press(double x, double y, int button = PointerState.Primary) => Events.Enqueue(new PointerEvent(true, new GfxPoint(x, y), button));
+        public void Release(double x, double y, int button = PointerState.Primary) => Events.Enqueue(new PointerEvent(false, new GfxPoint(x, y), button));
 
         public bool TryGetPosition(out GfxPoint position)
         {
@@ -83,6 +83,35 @@ public class PointerStateTests
     }
 
     [Fact]
+    public void OnlyAskingWhichButtonSeesTheOthers()
+    {
+        var surface = new Surface { Position = new GfxPoint(0.1, 0.1) };
+        var pointer = new PointerState(surface);
+        surface.Press(0.2, 0.2, PointerState.Secondary);            // a right-click: unseen
+        surface.Release(0.2, 0.2, PointerState.Secondary);
+        surface.Press(0.3, 0.3);
+        Assert.Equal(PointerState.Pressed, pointer.Sample(out var at));
+        Assert.Equal(new GfxPoint(0.3, 0.3), at);
+
+        surface.Press(0.4, 0.4, PointerState.Secondary);            // the right too, while the left's held
+        Assert.Equal(PointerState.Pressed, pointer.Sample(out at, out var button));
+        Assert.Equal((PointerState.Secondary, new GfxPoint(0.4, 0.4)), (button, at));
+        Assert.Equal(PointerState.Held, pointer.Sample(out _, out button));
+        Assert.Equal(PointerState.Primary, button);                 // (held: the primary, when it's one of them)
+        surface.Release(0.5, 0.5);
+        Assert.Equal(PointerState.Released, pointer.Sample(out _, out button));
+        Assert.Equal(PointerState.Primary, button);
+        Assert.Equal(PointerState.Held, pointer.Sample(out _, out button));
+        Assert.Equal(PointerState.Secondary, button);
+        Assert.Equal(PointerState.Up, pointer.Sample(out _));       // (the primary's up)
+        surface.Release(0.5, 0.5, PointerState.Secondary);
+        Assert.Equal(PointerState.Released, pointer.Sample(out _, out button));
+        Assert.Equal(PointerState.Secondary, button);
+        Assert.Equal(PointerState.Up, pointer.Sample(out _, out button));
+        Assert.Equal(0, button);
+    }
+
+    [Fact]
     public void LocateIgnoresEarlierClicksAndPointsItDoesNotAccept()
     {
         var surface = new Surface();
@@ -93,6 +122,8 @@ public class PointerStateTests
 
         surface.Press(0.9, 0.1);                                   // outside what's accepted
         surface.Release(0.9, 0.1);
+        surface.Press(0.1, 0.1, PointerState.Secondary);           // not the primary button
+        surface.Release(0.1, 0.1, PointerState.Secondary);
         surface.Press(0.2, 0.2);
         Assert.True(pointer.TryLocate(p => p.X < 0.5, out var at));
         Assert.Equal(new GfxPoint(0.2, 0.2), at);

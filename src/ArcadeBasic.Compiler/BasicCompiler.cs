@@ -372,7 +372,8 @@ public sealed class BasicCompiler
             case DimStmt d: CompileDim(d); break;
             case InputStmt input: CompileInput(input); break;
             case LocatePointStmt lp: CompileLocatePoint(lp); break;
-            case GetMouseStmt gm: EmitTargetsOp(Opcode.GetMouse, [gm.X, gm.Y, gm.State]); break;
+            case GetMouseStmt { Button: null } gm: EmitTargetsOp(Opcode.GetMouse, [gm.X, gm.Y, gm.State]); break;
+            case GetMouseStmt gm: EmitTargetsOp(Opcode.GetMouseButton, [gm.X, gm.Y, gm.State, gm.Button]); break;
             case LineInputStmt lin: CompileLineInput(lin); break;
             case MatAssignStmt ma: CompileMatAssign(ma); break;
             case MatRedimStmt mr: CompileMatRedim(mr); break;

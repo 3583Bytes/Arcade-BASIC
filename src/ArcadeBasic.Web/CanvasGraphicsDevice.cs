@@ -57,7 +57,7 @@ internal sealed partial class CanvasGraphicsDevice : IGraphicsDevice, IPointer, 
     private const int MaxPointerEvents = 256;
     private readonly Queue<PointerEvent> _pointerEvents = new();
     private GfxPoint? _pointer;
-    private bool _buttonDown;
+    private int _buttonsDown;                       // as the page's PointerEvent.buttons has them
 
     public int MaxColor => GfxPalette.Count - 1;
     public int MaxLineStyle => 3;
@@ -93,35 +93,33 @@ internal sealed partial class CanvasGraphicsDevice : IGraphicsDevice, IPointer, 
         _everFlushed = false;
         _changed = true;
         _pointerEvents.Clear();
-        _buttonDown = false;
+        _buttonsDown = 0;
     }
 
     // -- Pointer (fed by the page) -------------------------------------------
 
     public void PointerMove(double x, double y) => _pointer = new GfxPoint(x, y);
 
-    public void PointerDown(double x, double y)
+    /// <summary>The buttons held now, at x, y — as the page's PointerEvent.buttons counts them
+    /// (1 the primary, 2 the secondary, 4 the middle): a press or release for each that changed.</summary>
+    public void PointerButtons(double x, double y, int buttons)
     {
         _pointer = new GfxPoint(x, y);
-        if (_buttonDown) return;
-        _buttonDown = true;
-        AddPointerEvent(new PointerEvent(true, _pointer.Value));
-    }
-
-    public void PointerUp(double x, double y)
-    {
-        _pointer = new GfxPoint(x, y);
-        if (!_buttonDown) return;
-        _buttonDown = false;
-        AddPointerEvent(new PointerEvent(false, _pointer.Value));
+        Buttons(buttons & 7);
     }
 
     /// <summary>The page lost the pointer mid-press (focus, capture): release where it was last seen.</summary>
-    public void PointerCancel()
+    public void PointerCancel() => Buttons(0);
+
+    private void Buttons(int buttons)
     {
-        if (!_buttonDown) return;
-        _buttonDown = false;
-        AddPointerEvent(new PointerEvent(false, _pointer ?? default));
+        for (var button = PointerState.Primary; button <= PointerState.Middle; button++)
+        {
+            var bit = 1 << (button - 1);      // (the secondary's bit is 2 and the middle's 4, as the page's are)
+            if (((buttons ^ _buttonsDown) & bit) != 0)
+                AddPointerEvent(new PointerEvent((buttons & bit) != 0, _pointer ?? default, button));
+        }
+        _buttonsDown = buttons;
     }
 
     public bool TryGetPosition(out GfxPoint position)

@@ -44,6 +44,7 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
 
     private readonly Queue<PointerEvent> _clicks = new();
     private GfxPoint _mouseAt;
+    private int _leftAs = PointerState.Primary;   // the left button's last press: a Ctrl+click is a secondary one
     private bool _mouseOn;             // the terminal has been asked to report the mouse
     private bool _mouseSeen;           // and it has
 
@@ -162,8 +163,9 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
 
     /// <summary>A mouse report from the terminal: <c>ESC [ &lt; button ; column ; row M</c>
     /// (<c>m</c> for a release), column and row counted from 1. The pointer is in the middle
-    /// of that cell; only the primary button's presses and releases are events — a move
-    /// (button + 32), the wheel (64 on) and the other buttons just move it.</summary>
+    /// of that cell. The button's low bits are 0 for the left, 1 the middle and 2 the right,
+    /// and 16 is Ctrl held — a Ctrl+click is a right-click, as on a Mac; a move (button + 32)
+    /// and the wheel (64 on) just move the pointer.</summary>
     public void MouseReport(int button, int column, int row, bool released)
     {
         EnsureSized();
@@ -171,8 +173,15 @@ public sealed class AnsiGraphicsDevice : IGraphicsDevice, ICellArrayDevice, ICol
         var y = Math.Min(Math.Max(1 - (row - 0.5) / CanvasRows, 0), 1);
         _mouseAt = new GfxPoint(x, y);
         _mouseSeen = true;
-        if ((button & (32 | 64)) != 0 || (button & 3) != 0) return;
-        _clicks.Enqueue(new PointerEvent(!released, _mouseAt));
+        if ((button & (32 | 64)) != 0) return;
+        var which = (button & 3) switch { 0 => PointerState.Primary, 1 => PointerState.Middle, 2 => PointerState.Secondary, _ => 0 };
+        if (which == 0) return;
+        if (which == PointerState.Primary)
+        {
+            if (!released) _leftAs = (button & 16) != 0 ? PointerState.Secondary : PointerState.Primary;
+            which = _leftAs;   // (its release is the same button's, whether Ctrl's still held or not)
+        }
+        _clicks.Enqueue(new PointerEvent(!released, _mouseAt, which));
     }
 
     // -- presentation -----------------------------------------------------

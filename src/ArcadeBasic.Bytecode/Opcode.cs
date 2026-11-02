@@ -292,4 +292,5 @@ public enum Opcode : byte
     GfxDrawRound,          // operand: u32 geometry (1=lines, 2=area), u32 count — stack: x0,y0, … (2*count), then the radius
     GfxSetColorMixOpacity, // stack (top last): index, red, green, blue, opacity; SET COLOR MIX with an opacity
     RestoreAt,             // operand: u32 pool, u32 item — RESTORE line: READ goes on from that item of the pool
+    GetMouseButton,        // operand: 4 target groups (x, y, state, button) — stack: their subscripts; GET MOUSE x, y, s, b
 }

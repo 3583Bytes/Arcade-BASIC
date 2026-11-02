@@ -26,7 +26,7 @@ public static class BytecodeSerializer
     private const uint Magic = 0x46424358u; // 'FBCX'
     private const uint Version = 10;  // 5: Opcode.Randomize; 6: graphic input opcodes; 7: cell arrays, colour mixes;
                                       // 8: DATA per program-unit, source files (LineNote's file number); 9: Opcode.ForNext, Opcode.EndUse;
-                                      // 10: text attributes, rounded corners, opacity, RESTORE line
+                                      // 10: text attributes, rounded corners, opacity, RESTORE line, GET MOUSE's button
 
     public static byte[] Serialize(Program program)
     {

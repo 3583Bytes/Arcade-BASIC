@@ -35,9 +35,9 @@ const helpers = `
   const key = (type, code, k) => canvas.dispatchEvent(new KeyboardEvent(type, { key: k, code, bubbles: true }));
   const hold = async (code, k, ms) => { key('keydown', code, k); await sleep(ms); key('keyup', code, k); };
   const tap = (code, k) => hold(code, k, 60);
-  const point = (kind, col, row) => { const r = canvas.getBoundingClientRect();     // (an 80 x 24 screen)
+  const point = (kind, col, row, button = 0) => { const r = canvas.getBoundingClientRect();     // (an 80 x 24 screen; button 2: the right)
     canvas.dispatchEvent(new PointerEvent(kind, { clientX: r.left + col / 80 * r.width, clientY: r.top + (row + 0.5) / 24 * r.height,
-                                                  button: 0, pointerId: 1, bubbles: true })); };
+                                                  button, pointerId: 1, bubbles: true })); };
   const click = async (col, row) => { point('pointermove', col, row); point('pointerdown', col, row); await sleep(80); point('pointerup', col, row); await sleep(80); };
   const theme = name => { $('theme').value = name; $('theme').dispatchEvent(new Event('change')); };
   const show = name => document.querySelector('#views [data-view="' + name + '"]').click();
@@ -108,7 +108,10 @@ const shots = [
          }
          await sleep(1200);
          return rect(canvas);` },
-  { name: 'kanban', open: 'kanban', size: game, js: `await run(2500); return rect(canvas);` },
+  { name: 'kanban', open: 'kanban', size: game, js: `await run(2500);
+      point('pointermove', 35, 5); point('pointerdown', 35, 5, 2); await sleep(80); point('pointerup', 35, 5, 2);   // Doing's card: its menu,
+      await sleep(300); point('pointermove', 40, 9.2); await sleep(400);                                               // over "Move to Done"
+      return rect(canvas);` },
   { name: 'readyedit', open: 'readyedit', size: game, js: `await run(2500); await click(4, 0); await sleep(300); return rect(canvas);` },
   { name: 'maze3d-walk', open: 'maze3d', size: game, gif: 2.8,
     // (down the first corridor, east, and right at its end into the turning south:
@@ -140,6 +143,7 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 // ---- headless Firefox, over WebDriver BiDi ---------------------------------------------
 const firefox = process.env.FIREFOX ?? (process.platform === 'darwin' ? '/Applications/Firefox.app/Contents/MacOS/firefox' : 'firefox');
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'arcade-basic-firefox-'));
+fs.writeFileSync(path.join(profile, 'user.js'), 'user_pref("media.volume_scale", "0.0");\n');   // (silent: a game's sound isn't wanted while its picture's taken)
 const port = 9300 + Math.floor(Math.random() * 600);
 const browser = spawn(firefox, ['--headless', '--no-remote', '-profile', profile, '--remote-debugging-port', String(port), '-remote-allow-system-access'],
                       { stdio: 'ignore' });

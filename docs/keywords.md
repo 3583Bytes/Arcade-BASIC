@@ -388,8 +388,8 @@ browser IDE, among the open tabs (and the bundled examples). True BASIC's
 statement; see [conformance](conformance.md#modules).
 
 [`examples/ui.bas`](../examples/ui.bas) is one to use: the parts an application's
-screen is made of — a theme, rounded boxes and shadows, text that fits, buttons, typing
-and dialogs — which [`examples/ui-gallery.bas`](../examples/ui-gallery.bas) shows, part by
+screen is made of — a theme, rounded boxes and shadows, text that fits, buttons, typing,
+menus and dialogs — which [`examples/ui-gallery.bas`](../examples/ui-gallery.bas) shows, part by
 part, and [`examples/kanban.bas`](../examples/kanban.bas) is made with.
 
 ### `HANDLER`
@@ -1464,12 +1464,19 @@ DO                              ! drag and drop: sample the pointer every frame
   IF S = 2 THEN ...             ! (-1 if there's no mouse at all)
   SLEEP 0.03
 LOOP
+
+GET MOUSE X, Y, S, B            ! B: which button — 1 the left, 2 the right, 3 the middle
+IF S = 2 AND B = 2 THEN ...     ! a right-click (on a Mac, Ctrl+click too): a menu, say
 ```
 
 `LOCATE POINT` is ANSI Full BASIC graphic input (§13.4): it waits like `INPUT`,
 ignores clicks outside the window, and with no mouse asks for typed `x, y`
 instead. `GET MOUSE` is an extension in the style of True BASIC's; it never waits.
-See [`examples/kanban.bas`](../examples/kanban.bas) — drag cards between lanes.
+With three values it's about the left button and doesn't see the others; a fourth
+says which button each press and release is (and, while one's held, which — 0 when
+none is), so right-clicks come through too. `LOCATE POINT` answers only the left.
+See [`examples/kanban.bas`](../examples/kanban.bas) — drag cards between lanes, and
+right-click one for its menu.
 `LOCATE`, `GET` and `MOUSE` aren't reserved words.
 
 ---

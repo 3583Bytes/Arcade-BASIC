@@ -1068,21 +1068,22 @@ if (params.get('selftest') === 'page')
     firstLine: editor.state.doc.line(1).text, examples: P.Examples().length, tabs: documents.all.map(d => d.name) }) });
 
 // ?selftest=kanban: drag card #4 onto Done with real DOM pointer events, check the board
-// saved itself, type Q, report.
+// saved itself, right-click card #2 and delete it from its menu, quit from the board's
+// menu, report.
 async function kanbanSelftest() {
   const pause = () => new Promise(r => setTimeout(r, 300));
   const at = t => t && [t.x + 0.02, t.y + 0.01];
-  const pointer = (type, [x, y]) => {
+  const pointer = (type, [x, y], button = 0) => {
     const r = canvas.getBoundingClientRect(), { inset, w, h } = screen.geometry();
     const toClient = (px, size, offset, client) => offset + client + px * size;
     canvas.dispatchEvent(new PointerEvent(type, {
       clientX: toClient(inset + x * w, canvas.clientWidth / canvas.width, r.left, canvas.clientLeft),
       clientY: toClient(inset + (1 - y) * h, canvas.clientHeight / canvas.height, r.top, canvas.clientTop),
-      button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, bubbles: true }));
+      button, buttons: type === 'pointerup' ? 0 : button === 2 ? 2 : 1, pointerId: 1, bubbles: true }));
   };
-  const key = (k, code) => {
-    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: k, code, bubbles: true }));
-    canvas.dispatchEvent(new KeyboardEvent('keyup', { key: k, code, bubbles: true }));
+  const click = async (where, button = 0) => {
+    pointer('pointerdown', where, button); await pause();
+    pointer('pointerup', where, button); await pause();
   };
   const card = prefix => screen.texts.filter(t => t.text.startsWith(prefix));
   const result = {};
@@ -1098,9 +1099,9 @@ async function kanbanSelftest() {
       result.hoverSnapshot = canvas.toDataURL('image/png');
     }
     const done = [screen.texts.find(t => t.text === 'Done').x + 0.02, 0.5];
-    pointer('pointerdown', at(card('Select a card')[0])); await pause();
+    pointer('pointerdown', at(card('Right-click a card')[0])); await pause();
     pointer('pointermove', done); await pause();
-    result.copiesWhileDragging = card('Select a card').length;
+    result.copiesWhileDragging = card('Right-click a card').length;
     if (params.has('snapshot')) result.snapshot = canvas.toDataURL('image/png');   // mid-drag picture
     pointer('pointerup', done); await pause();
     result.status = screen.texts.find(t => t.text.startsWith('Moved #'))?.text;
@@ -1108,10 +1109,13 @@ async function kanbanSelftest() {
     result.lanes = heads.map(h => h.text + ' ' +          // (the count's on a badge beside the name)
       screen.texts.find(t => Math.abs(t.y - h.y) < 0.02 && t.x > h.x && /^\d+$/.test(t.text))?.text);
     programFiles.sync(true);
-    result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('Select a card'));
-    key('q', 'KeyQ'); await pause();
-    result.typed = screen.texts.find(t => t.text.startsWith('q'))?.text;
-    key('Enter', 'Enter'); await pause();
+    result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('Right-click a card'));
+    await click(at(card('Drag cards')[0]), 2);
+    result.menu = ['Edit', 'Move to Doing', 'Delete'].every(c => screen.texts.some(t => t.text === c));
+    await click(at(card('Delete')[0]));
+    result.deleted = screen.texts.find(t => t.text.startsWith('Deleted #'))?.text;
+    await click(at(card('kanban.board ▾')[0]));
+    await click(at(card('Quit')[0]));
     result.stillRunning = run !== null;
   } catch (e) {
     result.error = String(e);
