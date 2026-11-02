@@ -3,8 +3,8 @@ namespace ArcadeBasic.Runtime;
 /// <summary>
 /// How wide text is, for a device that can't measure it (SVG, tests, no device): in ems —
 /// multiples of the text's height. A monospace character is 0.6 of an em; a sans-serif one
-/// is as wide as Helvetica's (its widths, in thousandths of an em, for printable ASCII),
-/// which is close to every common sans-serif. Bold is a little wider.
+/// is as wide as Helvetica's (its widths, in thousandths of an em, for printable ASCII,
+/// and the bullet), which is close to every common sans-serif. Bold is a little wider.
 /// </summary>
 public static class GfxTextMetrics
 {
@@ -26,7 +26,7 @@ public static class GfxTextMetrics
     {
         if (!sans) return text.Length * MonospaceEm;
         var thousandths = 0;
-        foreach (var c in text) thousandths += c is >= ' ' and <= '~' ? s_sans[c - ' '] : 556;
+        foreach (var c in text) thousandths += c is >= ' ' and <= '~' ? s_sans[c - ' '] : c == '•' ? 350 : 556;
         return thousandths / 1000.0 * (bold ? 1.06 : 1);
     }
 }

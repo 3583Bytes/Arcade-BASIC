@@ -7,7 +7,7 @@
 !
 ! It's worked with the mouse, as an application is: click a card to select it (it opens up
 ! to show all its text), double-click it to edit it where it is, drag it to another lane or
-! up and down, and right-click it — on a Mac, Ctrl+click, or click its ⋯ — for its menu:
+! up and down, and click its ••• — or right-click it (on a Mac, Ctrl+click) — for its menu:
 ! edit it, move it, delete it (Undo puts it back). "+ Add a card" adds one, and the board's
 ! name, at the top, starts another board, opens one or saves this one as another. A few
 ! keys are shortcuts: the arrows select, Enter edits, Delete deletes, Esc cancels. GET
@@ -224,7 +224,7 @@ END IF
 DATA "Click a card to select it, double-click to edit it", 1
 DATA "Drag cards to another lane, or up and down", 1
 DATA "Add one with + Add a card, at the bottom of a lane", 1
-DATA "Right-click a card for its menu: move it, delete it", 1
+DATA "A card's menu: click its •••, or right-click it", 1
 DATA "The board's name, at the top, opens or starts another", 2
 DATA "The board saves itself as you go", 3
 DATA "Help, at the top right, says the rest", 3
@@ -1021,9 +1021,9 @@ ELSEIF DRAGGING = 1 THEN
 ELSEIF MENU > 0 THEN
   LET HINT$ = "Choose, or click away  ·  Esc closes it"
 ELSEIF SELID > 0 THEN
-  LET HINT$ = "Double-click to edit  ·  drag to move  ·  right-click for more"
+  LET HINT$ = "Double-click to edit  ·  drag to move  ·  ••• or a right-click for more"
 ELSE
-  LET HINT$ = "Click a card to select it  ·  right-click it for its menu"
+  LET HINT$ = "Click a card to select it  ·  its ••• (or a right-click) for its menu"
 END IF
 LET SY = UIH - STATH / 2
 IF HASMOUSE = 0 THEN
@@ -1053,8 +1053,8 @@ RETURN
 !        CFILL with a shadow CLIFT high, a ring of CRING (-1: none) around it,
 !        a stripe in its lane's colour down its left, its text in CTCOL and its
 !        number under it; or, being edited, what's typed and the caret. CGHOST:
-!        the place of the card being dragged, faint. Selected or under the
-!        pointer, it has a ⋯ to click for its menu.
+!        the place of the card being dragged, faint. It has a ••• to click
+!        for its menu (on a terminal, when it's selected or under the pointer).
 ! ----------------------------------------------------------------------
 9300 REM ---- one card ----
 CALL UISHADOW(CXL, CYT, CW, H, UIRADIUS, CLIFT)
@@ -1080,9 +1080,10 @@ ELSE
   NEXT WJ
 END IF
 LET CIDS$ = "#" & LTRIM$(STR$(ID(I)))
-LET DOTS = 0                       ! its ⋯ — not on the copy being dragged, nor while it's typed in
-IF HASMOUSE = 1 AND CGHOST = 0 AND DRAGGING = 0 AND (MODE <> 2 OR ID(I) <> EDITID) THEN
-  IF ID(I) = SELID OR UIIN(CXL, CYT, CW, H) = 1 THEN LET DOTS = 1
+LET DOTS = 0                       ! its ••• — not on the copies of the one being dragged, nor while it's typed in
+IF HASMOUSE = 1 AND CGHOST = 0 AND (DRAGGING = 0 OR ID(I) <> PRESSID) AND (MODE <> 2 OR ID(I) <> EDITID) THEN
+  LET DOTS = 1
+  IF UICELLS = 1 AND ID(I) <> SELID AND UIIN(CXL, CYT, CW, H) = 0 THEN LET DOTS = 0
 END IF
 IF UICELLS = 1 THEN
   LET DBW = 3 * UICOL              ! (on a terminal, in place of its number)
@@ -1103,7 +1104,8 @@ ELSE
   LET DBY = MY0 - DBH / 2
 END IF
 IF DOTS = 1 THEN
-  IF UIBUTTON(DBX, DBY, DBW, DBH, "⋯", "GHOST") THEN
+  IF DRAGGING = 1 THEN CALL UILOCK(1)  ! (another card's being dragged over it: it's just drawn)
+  IF UIBUTTON(DBX, DBY, DBW, DBH, "•••", "GHOST") THEN
     LET SELID = ID(I)
     LET MENU = 1
     LET MENUID = ID(I)
@@ -1111,6 +1113,7 @@ IF DOTS = 1 THEN
     LET MENUY = DBY + DBH + 2
     LET DIRTY = 1
   END IF
+  IF DRAGGING = 1 THEN CALL UILOCK(0)
 END IF
 RETURN
 
@@ -1351,7 +1354,7 @@ IF HASMOUSE = 1 THEN
     GOSUB 9070
   NEXT HI
   LET Y = Y + 1.6 * RH
-  CALL UITEXT(PX, Y, UIFIT$("On a Mac, Ctrl+click is a right-click; and a card's ⋯ opens its menu too.", DW - 56, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
+  CALL UITEXT(PX, Y, UIFIT$("A right-click on a card opens its menu too (on a Mac, Ctrl+click).", DW - 56, UISMALL, "SANS"), UISMALL, "SANS", UCMUTED)
   LET Y = Y + RH
 ELSE
   CALL UITEXT(PX, Y, "COMMANDS", UISMALL, "SANS BOLD", LACC(2))
@@ -1377,7 +1380,7 @@ RETURN
 9060 DATA "Click a card", "select it", "↑ ↓ ← →", "select a card"
 DATA "Double-click", "edit it, where it is", "Enter", "edit it"
 DATA "Drag a card", "move it, or reorder", "Delete", "delete it (Undo: back)"
-DATA "Right-click", "its menu: move, delete", "Esc", "cancel, close a menu"
+DATA "A card's •••", "its menu: move, delete", "Esc", "cancel, close a menu"
 DATA "+ Add a card", "add cards to a lane", "", ""
 DATA "▲ / ▼ more", "scroll a lane", "", ""
 DATA "The board's name", "new, open, save as", "", ""

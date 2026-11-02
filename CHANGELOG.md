@@ -41,7 +41,7 @@ the last one. Releases before 2.0.0 are on the
 - **The Kanban board looks and works like an application**: rounded lanes and cards with
   shadows, text in sizes and weights, wrapped to fit, a progress bar, buttons, and help
   in a dialog over the dimmed board. It's worked with the mouse, not typed commands:
-  right-click a card (or click its ⋯) for its menu — edit, move it to another lane or to
+  click a card's ••• (or right-click it) for its menu — edit, move it to another lane or to
   the top or bottom, delete it, with Undo after; "+ Add a card" adds one after another;
   and the board's name opens a menu to start a new board, open one or save as, each
   with a dialog for the name. (Without a mouse it still takes typed commands.) It's

@@ -139,7 +139,7 @@ public sealed class KanbanDragTests : IDisposable
 
         // Card #4 starts in To Do; press on it, drag it over Done: it follows the pointer
         // (drawn twice — greyed in place, and floating).
-        var card = screen.TextStarting("Right-click a card");
+        var card = screen.TextStarting("A card's menu");
         var grab = new GfxPoint(card.X + 0.02, card.Y + 0.01);
         screen.Pointer = grab;
         screen.Events.Enqueue(new PointerEvent(true, grab));
@@ -147,8 +147,9 @@ public sealed class KanbanDragTests : IDisposable
         var done = new GfxPoint(screen.TextStarting("Done").X + 0.02, 0.5);
         screen.Pointer = done;
         NextFrame(vm);
-        Assert.Equal(2, screen.Frame.Count(t => t.Text.StartsWith("Right-click a card", StringComparison.Ordinal)));
+        Assert.Equal(2, screen.Frame.Count(t => t.Text.StartsWith("A card's menu", StringComparison.Ordinal)));
         Assert.Contains(screen.Frame, t => t.Text.StartsWith("Moving #4", StringComparison.Ordinal));
+        Assert.Equal(6, screen.Frame.Count(t => t.Text == "•••"));     // (the others keep their •••)
 
         // Drop it: it moves, and the board's saved.
         screen.Events.Enqueue(new PointerEvent(false, done));
@@ -156,7 +157,7 @@ public sealed class KanbanDragTests : IDisposable
         Assert.Contains(screen.Frame, t => t.Text == "Moved #4 to Done");
         Assert.Equal("3", screen.Count("To Do"));                       // 4 → 3
         Assert.Equal("3", screen.Count("Done"));                        // 2 → 3
-        Assert.Contains("3 4 Right-click a card for its menu: move it, delete it", SavedCards());
+        Assert.Contains("3 4 A card's menu: click its •••, or right-click it", SavedCards());
 
         // Typing doesn't start a command; the board's menu quits.
         screen.Type("q");
@@ -167,6 +168,23 @@ public sealed class KanbanDragTests : IDisposable
         Assert.True(screen.Shows("Open a board…"));
         screen.Click("Quit");
         Assert.Equal(StepStatus.Halted, Frames(vm));
+    }
+
+    [Fact]
+    public void EachCardsDotsOpenItsMenu()
+    {
+        var screen = new Screen();
+        var vm = Start(screen);
+        Assert.Equal(7, screen.Frame.Count(t => t.Text == "•••"));     // one on every card
+        screen.Click("•••");                                           // card #1's
+        Frames(vm);
+        Assert.True(screen.Shows("Edit"));
+        Assert.False(screen.Shows("Move to To Do"));                   // (it's there already)
+        screen.Click("Move to Doing");
+        Frames(vm);
+        Assert.Contains(screen.Frame, t => t.Text == "Moved #1 to Doing");
+        Assert.False(screen.Shows("Edit"));
+        Assert.StartsWith("2 1 ", SavedCards().Single(l => l.Contains("double-click to edit")));
     }
 
     [Fact]

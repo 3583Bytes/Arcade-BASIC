@@ -1099,9 +1099,9 @@ async function kanbanSelftest() {
       result.hoverSnapshot = canvas.toDataURL('image/png');
     }
     const done = [screen.texts.find(t => t.text === 'Done').x + 0.02, 0.5];
-    pointer('pointerdown', at(card('Right-click a card')[0])); await pause();
+    pointer('pointerdown', at(card('A card\'s menu')[0])); await pause();
     pointer('pointermove', done); await pause();
-    result.copiesWhileDragging = card('Right-click a card').length;
+    result.copiesWhileDragging = card('A card\'s menu').length;
     if (params.has('snapshot')) result.snapshot = canvas.toDataURL('image/png');   // mid-drag picture
     pointer('pointerup', done); await pause();
     result.status = screen.texts.find(t => t.text.startsWith('Moved #'))?.text;
@@ -1109,7 +1109,7 @@ async function kanbanSelftest() {
     result.lanes = heads.map(h => h.text + ' ' +          // (the count's on a badge beside the name)
       screen.texts.find(t => Math.abs(t.y - h.y) < 0.02 && t.x > h.x && /^\d+$/.test(t.text))?.text);
     programFiles.sync(true);
-    result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('Right-click a card'));
+    result.saved = programFiles.text('kanban.board')?.split('\n').find(l => l.includes('A card\'s menu'));
     await click(at(card('Drag cards')[0]), 2);
     result.menu = ['Edit', 'Move to Doing', 'Delete'].every(c => screen.texts.some(t => t.text === c));
     await click(at(card('Delete')[0]));

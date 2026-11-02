@@ -272,10 +272,13 @@ export function connectInput(screen, canvas, { keys = canvas, program, audio, wa
   // it leaves the canvas.
   const bit = [1, 4, 2];
   const mac = /Mac/.test(navigator.platform);
+  let held = 0;                   // the buttons the program was last told are held
+  let secondaryDown = false;      // the last press was a secondary one, as a pointerdown
+  const tell = (e, buttons) => { held = buttons; program().PointerButtons(...screen.unitPoint(e), buttons); };
   canvas.addEventListener('pointermove', e => {
     if (!program()) return;
     program().PointerMove(...screen.unitPoint(e));
-    if (e.button >= 0 && e.buttons) program().PointerButtons(...screen.unitPoint(e), e.buttons & 7);
+    if (e.button >= 0 && e.buttons) tell(e, e.buttons & 7);
   });
   canvas.addEventListener('pointerdown', e => {
     if (!program() || bit[e.button] === undefined) return;
@@ -283,12 +286,25 @@ export function connectInput(screen, canvas, { keys = canvas, program, audio, wa
     try { canvas.setPointerCapture(e.pointerId); } catch { /* not a live pointer (synthetic) */ }
     canvas.focus();
     const buttons = mac && e.ctrlKey && e.button === 0 ? 2 : (e.buttons & 7) | bit[e.button];
-    program().PointerButtons(...screen.unitPoint(e), buttons);
+    secondaryDown = (buttons & 2) !== 0;
+    tell(e, buttons);
     e.preventDefault();
     if (buttons & 1) onPress();
   });
-  canvas.addEventListener('pointerup', e => program()?.PointerButtons(...screen.unitPoint(e), 0));
-  canvas.addEventListener('pointercancel', () => program()?.PointerCancel());
-  canvas.addEventListener('lostpointercapture', () => program()?.PointerCancel());
-  canvas.addEventListener('contextmenu', e => { if (program()) e.preventDefault(); });
+  canvas.addEventListener('pointerup', e => { if (program()) tell(e, 0); });
+  canvas.addEventListener('pointercancel', () => { held = 0; program()?.PointerCancel(); });
+  canvas.addEventListener('lostpointercapture', () => { held = 0; program()?.PointerCancel(); });
+  // A right-click always comes as a contextmenu too — after its pointerdown, or (on Windows)
+  // its pointerup. Not every browser sends the pointerdown, though, nor does a touch
+  // screen's long press: then this is the right-click, pressed and let go.
+  canvas.addEventListener('contextmenu', e => {
+    if (!program()) return;
+    e.preventDefault();
+    if (secondaryDown) {
+      secondaryDown = false;
+      return;
+    }
+    tell(e, held | 2);
+    tell(e, held & ~2);
+  });
 }
